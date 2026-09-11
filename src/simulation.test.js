@@ -24,9 +24,9 @@ assert(tractionLocked({park:false,door:0,doorTarget:1,ramp:0,rampTarget:0,hold:0
 assert(tractionLocked({park:false,door:0,doorTarget:0,ramp:1,rampTarget:0,hold:0}));
 assert(!verticalOverlap({yBottom:8,yTop:12},{yBottom:0,yTop:2}));
 assert(verticalOverlap({yBottom:0,yTop:3},{yBottom:1,yTop:2}));
-assert(doorsFit([{along:0,lateral:6.74,floor:.05}],{length:89.6}));
-assert(!doorsFit([{along:46,lateral:6.74,floor:.05}],{length:89.6}));
-assert(!doorsFit([{along:0,lateral:6.74,floor:.05}],{length:89.6},-1));
+assert(doorsFit([{along:0,lateral:6.74,floor:.345}],{length:89.6}));
+assert(!doorsFit([{along:46,lateral:6.74,floor:.345}],{length:89.6}));
+assert(!doorsFit([{along:0,lateral:6.74,floor:.345}],{length:89.6},-1));
 assert.deepEqual(freeStep(0,2,0,0,1,0,0,10,1),{x:0,y:2,z:-10});
 assert.deepEqual(freeStep(0,2,0,0,0,1,0,10,1),{x:-10,y:2,z:0});
 assert.equal(freeStep(0,2,0,0,1,1,1,10,1).y,2+10/Math.sqrt(3));
@@ -86,9 +86,9 @@ const terminal=sample(STOPS[0].s),dx=LOOP.center.x-terminal.x,dz=LOOP.center.z-t
 assert.equal(toChainage(LENGTH),4526);
 console.log(`Drawing corrections passed: minimum centreline radius ${minimum.toFixed(1)} m; 15 m steering, bridge FRLs/clearances, crossings, cycle adjacency and terminal registration.`);
 
-// Actor stops are direction-independent and cannot step through a red stop line.
+// Feasible actor stops are direction-independent and do not cross the stop line.
 const {approachStep}=await import('./operating.js');
-for(const direction of [-1,1]){let position=-direction*30,speed=10;for(let i=0;i<600;i++){const step=approachStep(position,speed,direction,10,0,1/60);position=step.position;speed=step.speed;assert(position*direction<=0);}assert(Math.abs(position)<.001);assert.equal(speed,0);}
+for(const direction of [-1,1]){let position=-direction*50,speed=10;for(let i=0;i<600;i++){const step=approachStep(position,speed,direction,10,0,1/60);position=step.position;speed=step.speed;assert(position*direction<=0);}assert(Math.abs(position)<.001);assert.equal(speed,0);}
 const {sceneryClear}=await import('./environment.js');
 for(let s=0;s<LENGTH;s+=30){const r=sample(s);assert(!sceneryClear(r.x,r.z,10));}
 console.log('Realism checks passed: both traffic directions stop without overshoot; scenery clears the full alignment.');
@@ -103,8 +103,41 @@ assert.equal(DEPOT.opening,30);assert.equal(BRIDGES[1].end,3524.2);
 assert(-cycleOffset((L35.start+L35.end)/2)-2>L35.offset+L35.width/2);
 for(const j of JUNCTIONS)assert(cycleCrossing(j.s));
 for(const c of CROSSINGS)for(const st of STOPS)assert(Math.abs(c.s-st.s)>st.length/2+20,'Crossing outside platform and bus bay');
-for(const dir of [-1,1]){const leader={s:dir*100,dir,active:true},follower={s:0,v:10,dir,active:true};for(let i=0;i<1200;i++){const m=approachStep(follower.s,follower.v,dir,10,followingStop(follower.s,dir,[leader,follower],follower),1/60);follower.s=m.position;follower.v=m.speed;}assert(Math.abs((leader.s-follower.s)*dir-40)<.001);assert.equal(follower.v,0);leader.s+=dir*20;const m=approachStep(follower.s,follower.v,dir,10,followingStop(follower.s,dir,[leader]),1);assert(m.speed>0);}
+for(const dir of [-1,1]){const leader={s:dir*100,dir,active:true},follower={s:0,v:10,dir,active:true};for(let i=0;i<1200;i++){const m=approachStep(follower.s,follower.v,dir,10,followingStop(follower.s,dir,[leader,follower],follower),1/60);follower.s=m.position;follower.v=m.speed;}assert(Math.abs((leader.s-follower.s)*dir-40)<.001);assert.equal(follower.v,0);leader.s+=dir*20;const m=approachStep(follower.s,follower.v,dir,10,followingStop(follower.s,dir,[leader]),.1);assert(m.speed>0);}
 console.log('Latest layout and queue regressions passed: channels, D1, depot opening, L35, crossing positions and both-direction following.');
 
 assert(followingStop(100,1,[{s:120,dir:1,active:true}])<100,'Emergency following stop remains behind an already-too-close follower');
 assert(L35.end>STOPS[5].s+300,'L35 continues past A6 toward VB2');
+
+// Boarding failures must not be accepted as a completed passenger exchange.
+const platform={length:67.6},door={along:0,lateral:6.735,floor:.345};
+assert(doorsFit([door],platform));
+for(const invalid of [{lateral:6.15},{floor:.81},{lateral:7.06},{along:34},{floor:NaN}])
+ assert(!doorsFit([{...door,...invalid}],platform));
+assert(!doorsFit([door,{...door,along:34}],platform));
+assert(!doorsFit([],platform));
+const {rampFits}=await import('./operating.js');
+assert(rampFits({gap:.315,rise:.035}));
+assert(!rampFits({gap:.9,rise:0}));
+assert(!rampFits({gap:.3,rise:.5}));
+// An impossible late stop preserves bounded braking, even after crossing a line.
+for(const dir of [-1,1])for(const dt of [1/120,1/60,.05]){
+ const step=approachStep(0,10,dir,10,dir,dt);
+ assert(step.conflict);assert(Math.abs(step.speed-(10-1.6*dt))<1e-9);
+ assert(Math.abs(step.position-dir*(10+step.speed)*dt/2)<1e-9);
+ const behind=approachStep(0,10,dir,10,-dir,dt);
+ assert(behind.conflict);assert(behind.speed>9);assert(behind.position*dir>0);
+}
+for(const dir of [-1,1])for(const dt of [1/120,1/60,.05])for(const deceleration of [1.1,1.6]){
+ let position=-dir*80,speed=10;
+ for(let i=0;i<Math.ceil(30/dt);i++){
+  const step=approachStep(position,speed,dir,10,0,dt,{deceleration});
+  assert(step.speed>=speed-deceleration*dt-1e-9);
+  assert(step.speed<=speed+1.1*dt+1e-9);
+  assert(!step.conflict);assert(step.position*dir<=1e-6);
+  position=step.position;speed=step.speed;
+ }
+ assert(Math.abs(position)<.001);assert(speed<.001);
+}
+assert.throws(()=>approachStep(0,10,0,10,10,1/60),RangeError);
+console.log('Boarding geometry and physically bounded dry/wet actor braking passed.');

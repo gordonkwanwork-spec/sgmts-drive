@@ -8,7 +8,7 @@ import {energyFlow,boxesOverlap,SCENARIOS} from './simulation.js';
 import * as audio from './audio.js';
 import './experience.css';
 const asset=f=>import.meta.env.BASE_URL+'assets/'+f;
-import {tractionLocked,verticalOverlap,doorsFit,driveStep,angleDelta,freeStep,MAX_WHEEL_ANGLE,approachStep,followingStop} from './operating.js';
+import {tractionLocked,verticalOverlap,doorsFit,BOARDING,rampFits,driveStep,angleDelta,freeStep,MAX_WHEEL_ANGLE,approachStep,followingStop} from './operating.js';
 const $=s=>document.querySelector(s),clamp=(x,a,b)=>Math.max(a,Math.min(b,x)),smooth=(a,b,t)=>a+(b-a)*clamp(t,0,1);
 const point=(s,lat=0)=>{let p=sample(s);return new T.Vector3(p.x+p.lx*lat,p.y,p.z+p.lz*lat);};
 const state={screen:'loading',mode:'service',condition:'morning',headway:300,s:STOPS[0].s+10.6,v:0,lat:5.4,steer:0,yaw:0,park:true,door:0,doorTarget:0,doorSide:1,ramp:0,rampTarget:0,index:0,phase:'approach',dwell:0,pax:0,score:0,energy:0,regen:0,battery:92,time:0,cruise:false,guide:true,cam:0,muted:false,indicator:0,accel:0,travel:0,served:[],missed:[],incidents:0,penalties:0,crashed:false,hold:0,priority:false,loopS:0,loopDone:false,requestAck:false,requestRequired:false,freeX:0,freeY:0,freeZ:0,freeS:0,freeSpeed:0,freeHeading:0,frameTimes:[],frames:0};
@@ -96,6 +96,12 @@ function makeStreetLife(){
   for(const [y,z,d,angle] of [[.55,0,1.2,0],[.65,-.25,.7,-.6],[.65,.25,.7,.6]]){const bar=meshBox(.06,.06,d,0xdba751);bar.position.set(0,y,z);bar.rotation.x=angle;group.add(bar);}const handle=meshBox(.55,.055,.055,0x384842);handle.position.set(0,1.06,-.55);group.add(handle);group.name='cyclist';scene.add(group);cyclists.push({group,wheels,s:LENGTH*(i+.5)/20,dir:i%2?1:-1,v:0});
  }
 }
+function advanceActor(actor,position,speed,direction,limit,stop,dt){
+ const move=approachStep(position,speed,direction,limit,stop,dt,{deceleration:state.condition==='rain'?1.1:1.6});
+ if(move.conflict&&!actor.stoppingConflict){state.motionConflicts=(state.motionConflicts||0)+1;}
+ actor.stoppingConflict=move.conflict;
+ return move;
+}
 const nextDispatch={1:300,'-1':300};
 function startService(a,s){a.s=s;a.v=0;a.lat=a.dir*1.9;a.dwell=0;a.door=0;a.served=[];a.posed=false;a.active=true;a.terminal=null;a.stopIndex=a.dir===1?STOPS.findIndex(st=>stopTarget(st)>s+20):STOPS.findLastIndex(st=>st.s-10.6<s-20);if(a.dir===1&&a.stopIndex<0)a.stopIndex=7;}
 function resetStreetLife(){
@@ -118,7 +124,7 @@ function updateStreetLife(dt,subjectS){
  }
  for(const c of cyclists){let stop=c.s+c.dir*1e6;
   for(const j of [...JUNCTIONS,...UNDERPASSES]){const dist=(j.s-c.s)*c.dir,line=j.s-c.dir*(j.halfWidth+2);if(dist>0&&(line-c.s)*c.dir>=0&&traffic.some(t=>t.junction===j&&Math.abs(t.lat-cycleOffset(j.s))<(t.v>.2?25:t.length/2+1)))stop=c.dir===1?Math.min(stop,line):Math.max(stop,line);}
-  const move=approachStep(c.s,c.v,c.dir,4.2,stop,dt);c.s=move.position;c.v=move.speed;if(c.s>LENGTH-4||c.s<4){c.dir*=-1;c.v=0;}
+  const move=advanceActor(c,c.s,c.v,c.dir,4.2,stop,dt);c.s=move.position;c.v=move.speed;if(c.s>LENGTH-4||c.s<4){c.dir*=-1;c.v=0;}
   const r=sample(c.s);c.group.position.copy(point(c.s,cycleOffset(c.s)+c.dir*.85));c.group.position.y=r.groundY+cycleHeight(c.s)+.035;c.group.rotation.y=r.heading+(c.dir===1?0:Math.PI);c.group.visible=Math.abs(c.s-subjectS)<400;
  }
 }
@@ -127,9 +133,9 @@ const stopCentre=st=>st.s+(st.platforms?.find(p=>p.side===1)?.centerOffset||0);
 const stopTarget=st=>stopCentre(st)+10.6;
 function dockError(st){
  const centre=point(stopCentre(st)),frame=sample(st.s),doors=[];
- for(const d of vehicle.doors.filter(d=>d.side===1)){const pos=d.node.parent.localToWorld(d.base.clone()),delta=pos.clone().sub(centre),along=delta.x*frame.tx+delta.z*frame.tz,lateral=delta.x*frame.lx+delta.z*frame.lz;doors.push({along,lateral,floor:pos.y-centre.y-along*frame.grade});}
+ for(const d of vehicle.doors.filter(d=>d.side===1)){const pos=d.node.parent.localToWorld(d.base.clone().add(new T.Vector3(0,BOARDING.sillHeight,0))),delta=pos.clone().sub(centre),along=delta.x*frame.tx+delta.z*frame.tz,lateral=delta.x*frame.lx+delta.z*frame.lz;doors.push({along,lateral,floor:pos.y-centre.y-along*frame.grade});}
  const error=Math.abs(state.s-stopTarget(st)),maxGap=Math.max(...doors.map(d=>Math.abs(7.05-d.lateral)));
- return {valid:doorsFit(doors,{length:st.length||89.6},state.doorSide)&&error<4.5,maxGap,error,doors};
+ return {valid:doorsFit(doors,{length:st.platformLength},state.doorSide)&&error<4.5,maxGap,error,doors};
 }
 const nightLights=Array.from({length:8},()=>{const light=new T.PointLight(0xffdfad,0,30,2);scene.add(light);return light;});
 const headlights=[-1,1].map(side=>{const light=new T.SpotLight(0xe5efff,0,65,.4,.6,1.5);light.userData.side=side;scene.add(light,light.target);return light;});
@@ -138,7 +144,7 @@ function lightScene(){const night=state.condition==='night';const near=night?env
 $('#night').onclick=()=>{state.condition=state.condition==='night'?'morning':'night';$('#condition').value=state.condition;weather();};
 $('#headway').onchange=()=>{state.headway=clamp(Number($('#headway').value)||300,120,300);for(const dir of [-1,1])nextDispatch[dir]=Math.min(nextDispatch[dir],state.time+state.headway);toast(`Departures every ${state.headway/60} minutes · existing services continue`);};
 
-function reset(mode=$('#mode').value){Object.assign(state,{screen:'driving',mode,condition:$('#condition').value,s:stopTarget(STOPS[0]),v:0,lat:5.4,steer:0,yaw:0,park:true,door:0,doorTarget:0,doorSide:1,ramp:0,rampTarget:0,index:0,phase:'approach',dwell:0,pax:0,score:0,energy:0,regen:0,battery:92,time:0,cruise:false,guide:true,cam:0,indicator:0,accel:0,travel:0,served:[],missed:[],incidents:0,penalties:0,crashed:false,eventLog:[],priority:false,loopS:0,loopDone:false,requestAck:false,hold:0,lastKerb:-10,lastCrash:-10,lastHarsh:-10,speedingT:0,freeSpeed:0,frameTimes:[],frames:0});keys.clear();vehicle.yaws.fill(0);vehicle.posed=false;resetOrbit();firstCamera=true;walkerObjects.forEach(p=>p.progress=0);resetStreetLife();traffic.forEach((c,i)=>{c.lat=c.start;c.v=0;});signalObjects.forEach(s=>s.passed=false);if(mode==='turnback'){state.loopS=0;state.lat=0;state.s=0;state.park=true;}if(mode==='explore'){state.s=35;state.lat=1.9;}if(mode==='free'){const p=point(35,10);state.s=35;state.lat=1.9;state.freeX=p.x;state.freeY=p.y+3;state.freeZ=p.z;state.freeS=35;state.freeHeading=sample(35).heading;}document.body.dataset.mode=mode;weather();show('driving');poseTram(vehicle,state.s,state.lat,false,0,mode==='turnback');audio.initAudio();toast(mode==='turnback'?'A1 loop · release brake and complete a smooth circuit':mode==='explore'?'Explore the line · drag to rotate, scroll to zoom':mode==='free'?'Free roam · WASD move · Shift boost · Space/Ctrl altitude':'Welcome aboard · E to open the left doors at A1');}
+function reset(mode=$('#mode').value){Object.assign(state,{screen:'driving',mode,condition:$('#condition').value,s:stopTarget(STOPS[0]),v:0,lat:5.4,steer:0,yaw:0,park:true,door:0,doorTarget:0,doorSide:1,ramp:0,rampTarget:0,index:0,phase:'approach',dwell:0,pax:0,score:0,energy:0,regen:0,battery:92,time:0,cruise:false,guide:true,cam:0,indicator:0,accel:0,travel:0,served:[],missed:[],incidents:0,penalties:0,crashed:false,eventLog:[],motionConflicts:0,priority:false,loopS:0,loopDone:false,requestAck:false,hold:0,lastKerb:-10,lastCrash:-10,lastHarsh:-10,speedingT:0,freeSpeed:0,frameTimes:[],frames:0});keys.clear();for(const actor of [...ai,...traffic,...cyclists])actor.stoppingConflict=false;vehicle.yaws.fill(0);vehicle.posed=false;resetOrbit();firstCamera=true;walkerObjects.forEach(p=>p.progress=0);resetStreetLife();traffic.forEach((c,i)=>{c.lat=c.start;c.v=0;});signalObjects.forEach(s=>s.passed=false);if(mode==='turnback'){state.loopS=0;state.lat=0;state.s=0;state.park=true;}if(mode==='explore'){state.s=35;state.lat=1.9;}if(mode==='free'){const p=point(35,10);state.s=35;state.lat=1.9;state.freeX=p.x;state.freeY=p.y+3;state.freeZ=p.z;state.freeS=35;state.freeHeading=sample(35).heading;}document.body.dataset.mode=mode;weather();show('driving');poseTram(vehicle,state.s,state.lat,false,0,mode==='turnback');audio.initAudio();toast(mode==='turnback'?'A1 loop · release brake and complete a smooth circuit':mode==='explore'?'Explore the line · drag to rotate, scroll to zoom':mode==='free'?'Free roam · WASD move · Shift boost · Space/Ctrl altitude':'Welcome aboard · E to open the left doors at A1');}
 function show(screen){state.screen=screen;$('#menu').classList.toggle('hidden',screen!=='menu');$('#hud').classList.toggle('hidden',!['driving','paused'].includes(screen));$('#pause-sheet').classList.toggle('hidden',screen!=='paused');$('#report').classList.toggle('hidden',screen!=='complete');document.body.dataset.screen=screen;for(const el of document.querySelectorAll('#camera,#score-panel,#cluster,#route-strip,#buttons,#dwell'))el.classList.toggle('hidden',state.mode==='free');}
 function penalty(message,points=20){state.score=Math.max(0,state.score-points);state.penalties++;(state.eventLog ||= []).push({time:state.time,message,points});toast(message+' −'+points);audio.playWarning();}
 function action(name){if(name==='camera'&&state.mode!=='free'){state.cam=(state.cam+1)%CAMERAS.length;resetOrbit();firstCamera=true;return;}if(name==='sound'){state.muted=!state.muted;audio.setMuted(state.muted);$('#sound').textContent=state.muted?'Sound off':'Sound on';return;}if(name==='pause'){if(state.screen==='driving')show('paused');else if(state.screen==='paused')show('driving');audio.setDrive(0,false);return;}if(state.screen!=='driving'||state.mode==='free')return;
@@ -158,7 +164,7 @@ addEventListener('keydown',e=>{if(['SELECT','INPUT','BUTTON'].includes(e.target.
 addEventListener('keyup',e=>{keys.delete(e.code);if(e.code==='KeyH')audio.playHorn(false);});addEventListener('blur',()=>{keys.clear();audio.playHorn(false);if(state.screen==='driving'&&!window.__sgmts?.proof)action('pause');});
 $('#begin').onclick=()=>reset();$('#resume').onclick=()=>action('pause');$('#pause').onclick=()=>action('pause');$('#camera').onclick=()=>action('camera');$('#sound').onclick=()=>action('sound');document.querySelectorAll('[data-action]').forEach(el=>el.onclick=()=>action(el.dataset.action));document.querySelectorAll('.menu-return').forEach(el=>el.onclick=()=>{keys.clear();state.v=0;audio.setDrive(0,false);state.s=stopTarget(STOPS[1]);state.lat=5.4;show('menu');});$('#explore-tail').onclick=()=>{state.mode='explore';state.park=true;show('driving');toast('Explore the elevated section beyond A7');};$('#condition').onchange=()=>{state.condition=$('#condition').value;weather();};
 function finish(){$('#report h1').textContent='Journey complete.';$('#explore-tail').classList.remove('hidden');state.v=0;state.park=true;let count=state.served.length,grade=state.mode==='turnback'?(state.loopDone?'A':'—'):count===7&&state.penalties<3?'A':count>=5?'B':'C';$('#report-grade').textContent=grade;let best=0;try{best=Math.max(Number(localStorage.getItem('sgmts-drawing-best')||0),state.score);localStorage.setItem('sgmts-drawing-best',String(best));}catch{}
- $('#report-data').innerHTML=[['Stations served',`${count} / 7`],['Journey time',`${Math.floor(state.time/60)}m ${Math.floor(state.time%60)}s`],['Energy used',state.energy.toFixed(2)+' kWh'],['Regeneration',state.regen.toFixed(2)+' kWh'],['Passenger load',state.pax],['Service score',state.score],['Personal best',best],['Penalties',state.penalties]].map(([a,b])=>`<div><span>${a}</span><b>${b}</b></div>`).join('');show('complete');audio.setDrive(0,false);}
+ $('#report-data').innerHTML=[['Stations served',`${count} / 7`],['Journey time',`${Math.floor(state.time/60)}m ${Math.floor(state.time%60)}s`],['Energy used',state.energy.toFixed(2)+' kWh'],['Regeneration',state.regen.toFixed(2)+' kWh'],['Passenger load',state.pax],['Service score',state.score],['Personal best',best],['Penalties',state.penalties],['AI infeasible stops',state.motionConflicts||0]].map(([a,b])=>`<div><span>${a}</span><b>${b}</b></div>`).join('');show('complete');audio.setDrive(0,false);}
 function service(dt){if(['explore','turnback'].includes(state.mode))return;const st=STOPS[state.index];if(!st)return;
  const target=stopTarget(st),distance=target-state.s,error=dockError(st),aligned=error.valid;
  if(distance < -45){state.missed.push(st.id);state.index++;state.phase='approach';state.dwell=0;penalty('Missed '+st.id,100);if(state.index===7)finish();return;}
@@ -168,7 +174,9 @@ function service(dt){if(['explore','turnback'].includes(state.mode))return;const
  }
  if(state.phase==='boarding'){
   const rampNeeded=state.mode==='access'&&state.index%2===0;
-  if(aligned&&state.park&&state.door>.98&&Math.abs(state.v)<.08&&(!rampNeeded||state.ramp>.98))state.dwell+=dt;
+  const rampDoor=error.doors[0];
+  const rampReady=state.ramp>.98&&rampDoor&&rampFits({gap:st.platformEdge-rampDoor.lateral,rise:.31-rampDoor.floor});
+  if(aligned&&state.park&&state.door>.98&&Math.abs(state.v)<.08&&(!rampNeeded||rampReady))state.dwell+=dt;
   if(state.dwell>=state.requiredDwell){state.phase='departure';state.pax=Math.min(180,Math.round(state.pax*.7)+12+state.index*3);state.score+=Math.max(50,Math.round(120-error.error*12-error.maxGap*10));state.hold=state.mode==='priority'?3:0;audio.playDeparture();}
  }
  if(state.phase==='departure'){
@@ -264,7 +272,7 @@ function actors(dt){const subjectS=viewS();
   if(a.dir===1&&ai.some(o=>o!==a&&o.terminal==='reverse'))limit(END_STOP-100);
   if(a.dir===-1&&ai.some(o=>o!==a&&o.terminal==='loop'))limit(85);
   if(a.dwell>0){a.dwell=Math.max(0,a.dwell-dt);a.v=0;a.door=Math.min(1,a.dwell,10-a.dwell);if(!a.dwell)a.stopIndex+=a.dir;}
-  else{const move=approachStep(a.s,a.v,a.dir,8.3,stop,dt);a.s=move.position;a.v=move.speed;a.door=0;if(st&&Math.abs(a.s-target)<.03){a.dwell=10;a.served.push(st.id);}if(!st&&Math.abs(a.s-target)<.03){a.terminal=a.dir===1?'reverse':'loop';a.turnTime=0;a.loopDistance=0;a.v=0;}}
+  else{const move=advanceActor(a,a.s,a.v,a.dir,8.3,stop,dt);a.s=move.position;a.v=move.speed;a.door=0;if(st&&a.v<.01&&Math.abs(a.s-target)<.03){a.dwell=10;a.served.push(st.id);}if(!st&&a.v<.01&&Math.abs(a.s-target)<.03){a.terminal=a.dir===1?'reverse':'loop';a.turnTime=0;a.loopDistance=0;a.v=0;}}
   const dock=(st&&Math.abs(a.s-target)<100?5.4:1.9)*a.dir,edge=roadSection(a.s);a.lat=clamp(smooth(a.lat,dock,dt*.35),edge.left+1.35,edge.right-1.35);
   poseTram(a,a.s,a.lat,a.dir===-1,a.door);for(const g of a.sections){g.visible=a.active&&Math.abs(a.s-subjectS)<700;if(g.visible)contact(g,2.54,10.6,3.5,'ART');}
  }
@@ -273,7 +281,7 @@ function actors(dt){const subjectS=viewS();
   if(!go&&distance>=-.01)stop=line;
   for(const other of traffic)if(other!==c&&other.junction===j&&other.dir===c.dir&&other.along===c.along&&(other.lat-c.lat)*c.dir>0){const limit=other.lat-c.dir*((other.length+c.length)/2+3);if((limit-c.lat)*c.dir<(stop-c.lat)*c.dir)stop=limit;}
   if(state.mode!=='free'&&state.mode!=='turnback')for(const g of vehicle.sections){const dx=g.position.x-r.x,dz=g.position.z-r.z,along=dx*r.tx+dz*r.tz,lat=dx*r.lx+dz*r.lz;if(Math.abs(along-c.along)<7&&Math.abs(g.position.y-(r.elevated?r.groundY:r.y))<3.5&&(lat-c.lat)*c.dir> -c.length/2){const blocked=lat-c.dir*(c.length/2+7);if((blocked-stop)*c.dir<0)stop=blocked;}}
-  const move=approachStep(c.lat,c.v,c.dir,j.underpass?11:7,stop,dt);c.lat=move.position;c.v=move.speed;
+  const move=advanceActor(c,c.lat,c.v,c.dir,j.underpass?11:7,stop,dt);c.lat=move.position;c.v=move.speed;
   if(c.lat*c.dir>j.extent+c.length){const entry=-c.dir*(j.extent+c.length);if(!traffic.some(o=>o!==c&&o.junction===j&&o.along===c.along&&Math.abs(o.lat-entry)<(o.length+c.length)/2+4))c.lat=entry;}
   c.group.position.set(r.x+r.lx*c.lat+r.tx*c.along,(r.elevated?r.groundY:r.y)+c.along*(r.elevated?0:r.grade)+.08,r.z+r.lz*c.lat+r.tz*c.along);c.group.rotation.y=r.heading+c.dir*Math.PI/2;c.group.visible=Math.abs(j.s-subjectS)<450;
   if(c.group.visible)contact(c.group,c.width,c.length,c.height,'Traffic');

@@ -197,3 +197,30 @@ The simulation does model passenger mass, gradient forces, rolling resistance, r
 braking, door and ramp interlocks, signals and crossing traffic — but the numbers are tuned to
 be fun and legible, not to predict real vehicle performance. Do not use it for anything that
 matters.
+
+
+### Stage 1 operating-model corrections
+
+Docking uses each station's usable platform length, the full door width, a
+non-negative horizontal gap of at most 0.35 m, and a vertical mismatch of at most
+0.18 m. These are **gameplay allowances, not accessibility acceptance criteria**.
+The 0.18 m allowance retains A7 playability: its existing road profile and rigid
+platform plane differ by approximately 0.16 m at a nominal docking position.
+The explicit 0.32 m simulated boarding sill is independent of the artwork's
+road-level door pivots and higher interior floor. Correcting the vehicle and
+station surfaces remains necessary before assessing accessible boarding.
+The front-door ramp additionally checks a maximum 0.50 m horizontal gap and
+0.125 m rise (a nominal 1 m run at 1:8); it does not certify a usable ramp landing.
+
+AI transit, road traffic and cyclists share bounded longitudinal motion:
+acceleration is at most 1.1 m/s², with net braking at 1.6 m/s² dry or 1.1 m/s²
+in rain. These are uncalibrated gameplay settings. A newly imposed stop inside
+the braking distance causes an infeasible-stop event, not instant deceleration
+or a position clamp. The journey report counts these events separately from
+player penalties. A single ongoing infeasible episode counts once per actor.
+Only sub-nanometre numerical residue is removed after a vehicle stops.
+
+This stage does not model jerk, driver reaction delay, grade-adjusted AI braking,
+conflict-area signal clearance, or swept paths. Fixed-cycle signals can still
+create late stopping demands; the new counter exposes them. Passing the tests
+establishes the tested motion bounds, not an engineering safety validation.
