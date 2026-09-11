@@ -1,0 +1,21 @@
+node_modules/
+dist/
+.DS_Store
+
+# Working material kept out of the public repo: design-drawing renders,
+# PDF extracts, verification proofs and internal planning notes.
+docs/
+tmp/
+output/
+tasks/
+.playwright-cli/
+.claude/
+PLAN.md
+PLAN-REVIEW-LOG.md
+FIX-SPEC.md
+ONFOOT-SPEC.md
+*.tar.gz
+
+# Blender autosave backups and build logs
+*.blend1
+assets/blender/*.log

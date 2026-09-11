@@ -1,0 +1,415 @@
+{
+  "vehicle": {
+    "forward": "-Z",
+    "width": 2.65,
+    "height": 3.5,
+    "length": 32.4,
+    "sections": [
+      {
+        "name": "section_front",
+        "pivot": [
+          0,
+          0,
+          0.0
+        ],
+        "hitchFront": [
+          0,
+          0.9,
+          -5.3
+        ],
+        "hitchRear": [
+          0,
+          0.9,
+          5.3
+        ],
+        "doors": [
+          {
+            "name": "section_front_door_left_0",
+            "position": [
+              -1.335,
+              0,
+              1.6
+            ]
+          },
+          {
+            "name": "section_front_door_left_1",
+            "position": [
+              -1.335,
+              0,
+              -1.2
+            ]
+          },
+          {
+            "name": "section_front_door_right_0",
+            "position": [
+              1.335,
+              0,
+              1.6
+            ]
+          },
+          {
+            "name": "section_front_door_right_1",
+            "position": [
+              1.335,
+              0,
+              -1.2
+            ]
+          }
+        ]
+      },
+      {
+        "name": "section_mid",
+        "pivot": [
+          0,
+          0,
+          10.6
+        ],
+        "hitchFront": [
+          0,
+          0.9,
+          -5.3
+        ],
+        "hitchRear": [
+          0,
+          0.9,
+          5.3
+        ],
+        "doors": [
+          {
+            "name": "section_mid_door_left_0",
+            "position": [
+              -1.335,
+              0,
+              1.6
+            ]
+          },
+          {
+            "name": "section_mid_door_left_1",
+            "position": [
+              -1.335,
+              0,
+              -1.2
+            ]
+          },
+          {
+            "name": "section_mid_door_right_0",
+            "position": [
+              1.335,
+              0,
+              1.6
+            ]
+          },
+          {
+            "name": "section_mid_door_right_1",
+            "position": [
+              1.335,
+              0,
+              -1.2
+            ]
+          }
+        ]
+      },
+      {
+        "name": "section_rear",
+        "pivot": [
+          0,
+          0,
+          21.2
+        ],
+        "hitchFront": [
+          0,
+          0.9,
+          -5.3
+        ],
+        "hitchRear": [
+          0,
+          0.9,
+          5.3
+        ],
+        "doors": [
+          {
+            "name": "section_rear_door_left_0",
+            "position": [
+              -1.335,
+              0,
+              1.6
+            ]
+          },
+          {
+            "name": "section_rear_door_left_1",
+            "position": [
+              -1.335,
+              0,
+              -1.2
+            ]
+          },
+          {
+            "name": "section_rear_door_right_0",
+            "position": [
+              1.335,
+              0,
+              1.6
+            ]
+          },
+          {
+            "name": "section_rear_door_right_1",
+            "position": [
+              1.335,
+              0,
+              -1.2
+            ]
+          }
+        ]
+      }
+    ],
+    "triangles": 42616,
+    "bytes": 2677936
+  },
+  "stations": [
+    {
+      "id": "A2",
+      "platforms": [
+        {
+          "name": "A2_platform_-1",
+          "side": -1,
+          "width": 6,
+          "length": 89.6,
+          "offsetZ": 9.25,
+          "edgeX": -7.05,
+          "height": 0.31,
+          "bent": false,
+          "bendStartLocalZ": 25,
+          "bendSlope": 0
+        },
+        {
+          "name": "A2_platform_1",
+          "side": 1,
+          "width": 6,
+          "length": 89.6,
+          "offsetZ": -9.25,
+          "edgeX": 7.05,
+          "height": 0.31,
+          "bent": false,
+          "bendStartLocalZ": 25,
+          "bendSlope": 0
+        }
+      ],
+      "roadGap": 14.1,
+      "source": "ST-1102",
+      "appearance": "ACABAS Issue 3 station render and ST-5301\u20135307 curved cladding",
+      "inferred": "Poster artwork, furniture positions and A1 wing interpolation; platform dimensions from GA. Bench backs are outboard of seats, facing the carriageway.",
+      "triangles": 42702,
+      "bytes": 2597592
+    },
+    {
+      "id": "A1",
+      "platforms": [
+        {
+          "name": "A1_platform_-1",
+          "side": -1,
+          "width": 5,
+          "length": 89.6,
+          "offsetZ": 0,
+          "edgeX": -7.05,
+          "height": 0.31,
+          "bent": true,
+          "bendStartLocalZ": 25,
+          "bendSlope": 0.42
+        },
+        {
+          "name": "A1_platform_1",
+          "side": 1,
+          "width": 5,
+          "length": 89.6,
+          "offsetZ": 0,
+          "edgeX": 7.05,
+          "height": 0.31,
+          "bent": true,
+          "bendStartLocalZ": 25,
+          "bendSlope": 0.42
+        }
+      ],
+      "roadGap": 14.1,
+      "source": "ST-1101",
+      "appearance": "ACABAS Issue 3 station render and ST-5301\u20135307 curved cladding",
+      "inferred": "Poster artwork, furniture positions and A1 wing interpolation; platform dimensions from GA. Bench backs are outboard of seats, facing the carriageway.",
+      "triangles": 40380,
+      "bytes": 2446076
+    },
+    {
+      "id": "A3",
+      "platforms": [
+        {
+          "name": "A3_platform_-1",
+          "side": -1,
+          "width": 4,
+          "length": 89.6,
+          "offsetZ": 0,
+          "edgeX": -7.05,
+          "height": 0.31,
+          "bent": false,
+          "bendStartLocalZ": 25,
+          "bendSlope": 0
+        },
+        {
+          "name": "A3_platform_1",
+          "side": 1,
+          "width": 4,
+          "length": 89.6,
+          "offsetZ": 0,
+          "edgeX": 7.05,
+          "height": 0.31,
+          "bent": false,
+          "bendStartLocalZ": 25,
+          "bendSlope": 0
+        }
+      ],
+      "roadGap": 14.1,
+      "source": "ST-1103",
+      "appearance": "ACABAS Issue 3 station render and ST-5301\u20135307 curved cladding",
+      "inferred": "Poster artwork, furniture positions and A1 wing interpolation; platform dimensions from GA. Bench backs are outboard of seats, facing the carriageway.",
+      "triangles": 38590,
+      "bytes": 2305200
+    },
+    {
+      "id": "A4",
+      "platforms": [
+        {
+          "name": "A4_platform_-1",
+          "side": -1,
+          "width": 4,
+          "length": 89.6,
+          "offsetZ": 0,
+          "edgeX": -7.05,
+          "height": 0.31,
+          "bent": false,
+          "bendStartLocalZ": 25,
+          "bendSlope": 0
+        },
+        {
+          "name": "A4_platform_1",
+          "side": 1,
+          "width": 4,
+          "length": 89.6,
+          "offsetZ": 0,
+          "edgeX": 7.05,
+          "height": 0.31,
+          "bent": false,
+          "bendStartLocalZ": 25,
+          "bendSlope": 0
+        }
+      ],
+      "roadGap": 14.1,
+      "source": "ST-1104",
+      "appearance": "ACABAS Issue 3 station render and ST-5301\u20135307 curved cladding",
+      "inferred": "Poster artwork, furniture positions and A1 wing interpolation; platform dimensions from GA. Bench backs are outboard of seats, facing the carriageway.",
+      "triangles": 38450,
+      "bytes": 2299932
+    },
+    {
+      "id": "A5",
+      "platforms": [
+        {
+          "name": "A5_platform_-1",
+          "side": -1,
+          "width": 4,
+          "length": 89.6,
+          "offsetZ": 0,
+          "edgeX": -7.05,
+          "height": 0.31,
+          "bent": false,
+          "bendStartLocalZ": 25,
+          "bendSlope": 0
+        },
+        {
+          "name": "A5_platform_1",
+          "side": 1,
+          "width": 4,
+          "length": 89.6,
+          "offsetZ": 0,
+          "edgeX": 7.05,
+          "height": 0.31,
+          "bent": false,
+          "bendStartLocalZ": 25,
+          "bendSlope": 0
+        }
+      ],
+      "roadGap": 14.1,
+      "source": "ST-1105",
+      "appearance": "ACABAS Issue 3 station render and ST-5301\u20135307 curved cladding",
+      "inferred": "Poster artwork, furniture positions and A1 wing interpolation; platform dimensions from GA. Bench backs are outboard of seats, facing the carriageway.",
+      "triangles": 38464,
+      "bytes": 2301340
+    },
+    {
+      "id": "A6",
+      "platforms": [
+        {
+          "name": "A6_platform_-1",
+          "side": -1,
+          "width": 4,
+          "length": 89.6,
+          "offsetZ": 0,
+          "edgeX": -7.05,
+          "height": 0.31,
+          "bent": false,
+          "bendStartLocalZ": 25,
+          "bendSlope": 0
+        },
+        {
+          "name": "A6_platform_1",
+          "side": 1,
+          "width": 4,
+          "length": 89.6,
+          "offsetZ": 0,
+          "edgeX": 7.05,
+          "height": 0.31,
+          "bent": false,
+          "bendStartLocalZ": 25,
+          "bendSlope": 0
+        }
+      ],
+      "roadGap": 14.1,
+      "source": "ST-1106",
+      "appearance": "ACABAS Issue 3 station render and ST-5301\u20135307 curved cladding",
+      "inferred": "Poster artwork, furniture positions and A1 wing interpolation; platform dimensions from GA. Bench backs are outboard of seats, facing the carriageway.",
+      "triangles": 38534,
+      "bytes": 2305064
+    },
+    {
+      "id": "A7",
+      "platforms": [
+        {
+          "name": "A7_platform_-1",
+          "side": -1,
+          "width": 4,
+          "length": 89.6,
+          "offsetZ": 0,
+          "edgeX": -7.05,
+          "height": 0.31,
+          "bent": false,
+          "bendStartLocalZ": 25,
+          "bendSlope": 0
+        },
+        {
+          "name": "A7_platform_1",
+          "side": 1,
+          "width": 4,
+          "length": 89.6,
+          "offsetZ": 0,
+          "edgeX": 7.05,
+          "height": 0.31,
+          "bent": false,
+          "bendStartLocalZ": 25,
+          "bendSlope": 0
+        }
+      ],
+      "roadGap": 14.1,
+      "source": "ST-1107",
+      "appearance": "ACABAS Issue 3 station render and ST-5301\u20135307 curved cladding",
+      "inferred": "Poster artwork, furniture positions and A1 wing interpolation; platform dimensions from GA. Bench backs are outboard of seats, facing the carriageway.",
+      "triangles": 38296,
+      "bytes": 2294404
+    }
+  ]
+}
