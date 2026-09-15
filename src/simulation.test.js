@@ -108,3 +108,26 @@ console.log('Latest layout and queue regressions passed: channels, D1, depot ope
 
 assert(followingStop(100,1,[{s:120,dir:1,active:true}])<100,'Emergency following stop remains behind an already-too-close follower');
 assert(L35.end>STOPS[5].s+300,'L35 continues past A6 toward VB2');
+
+const {laneOffset,curveRadius}=await import('./alignment.js');
+for(let s=0;s<LENGTH;s+=.5){for(const dir of [-1,1]){assert.ok(Math.abs(laneOffset(s,dir))<=roadSection(s).right-1.6+1e-5,'Bay path remains within carriageway');assert.ok(Math.abs(laneOffset(s+.01,dir)-laneOffset(s,dir))<.002,'Continuous distance-based bay path');}}
+assert.ok(Math.min(...Array.from({length:Math.floor(LENGTH/2)-10},(_,i)=>curveRadius(10+i*2)))>28,'No short-radius key-plan kinks');
+console.log('Smooth bay paths and broadened curves passed.');
+
+const {musicLevels}=await import('./audio.js');
+const cruise={screen:'driving',mode:'service',condition:'morning',v:10,park:false,crashed:false};
+assert.equal(musicLevels({...cruise,screen:'menu'}).menu,.65);
+assert.equal(musicLevels(cruise).day,.65);
+assert.equal(musicLevels({...cruise,condition:'night'}).night,.65);
+assert.equal(musicLevels({...cruise,condition:'night'}).day,0);
+for(const extra of [{v:0},{crashed:true},{park:true},{mobileBrake:true},{screen:'paused'}])assert.equal(musicLevels({...cruise,...extra}).day,0);
+console.log('Menu/day/night selection and stop/crash music fade targets passed.');
+
+const {returnOffset,CROSSOVER_START}=await import('./alignment.js');
+assert.equal(returnOffset(CROSSOVER_START),1.9);
+assert.equal(returnOffset(CROSSOVER_START-70),-1.9);
+for(let s=CROSSOVER_START-75;s<LENGTH;s+=.1)assert(Math.abs(returnOffset(s+.01)-returnOffset(s))<.002,'Crossover remains spatially continuous');
+for(const st of STOPS)assert.equal(laneOffset(st.s,1,[st.id]),1.9,'Express branch remains in through lane');
+const {terminalCurve,depotCurve,l35BendCurve,l35TrafficCurve}=await import('./routes.js');
+for(const curve of [terminalCurve,depotCurve,l35BendCurve,l35TrafficCurve])for(let i=0;i<=100;i++){const p=curve.getPointAt(i/100);assert([p.x,p.y,p.z].every(Number.isFinite),'Shared branch route has finite coordinates');}
+console.log('Express, crossover and shared branch route checks passed.');

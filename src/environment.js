@@ -1,5 +1,7 @@
+import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
+import {terminalCurve,depotCurve,l35BendCurve} from './routes.js';
 import * as T from 'three';
-import {LENGTH,STOPS,sample,LOOP,roadSection,fromChainage,project,PATH,BRIDGES,CROSSINGS,footpathHeight,cycleOffset,CYCLE_WIDTH,CHANNELS,JUNCTIONS,UNDERPASSES,L35,l35Offset,DEPOT,RAILWAY,railSample,cycleCrossing,cycleHeight,D1ROAD} from './alignment.js';
+import {LENGTH,STOPS,sample,LOOP,roadSection,fromChainage,project,PATH,BRIDGES,CROSSINGS,footpathHeight,cycleOffset,CYCLE_WIDTH,CHANNELS,JUNCTIONS,UNDERPASSES,L35,l35Offset,DEPOT,RAILWAY,railSample,cycleCrossing,cycleHeight,D1ROAD,laneOffset,curveRadius,returnOffset,CROSSOVER_START,END_STOP} from './alignment.js';
 export {JUNCTIONS,UNDERPASSES} from './alignment.js';
 const inJunction=s=>JUNCTIONS.some(j=>Math.abs(s-j.s)<j.halfWidth+6);
 const inDepot=s=>Math.abs(s-DEPOT.s)<DEPOT.opening/2;
@@ -22,9 +24,9 @@ export function paintTexture(kind){
   x.clearRect(0,0,512,512);
   for(let i=0;i<220;i++){let px=256+(rnd()-.5)*430,py=256+(rnd()-.5)*420; if(Math.hypot((px-256)/230,(py-256)/235)>1)continue;x.fillStyle=`hsl(${88+rnd()*32} 25% ${19+rnd()*24}%)`;x.beginPath();x.ellipse(px,py,10+rnd()*16,5+rnd()*11,rnd()*6.28,0,6.28);x.fill();}
  }else{
-  const base={road:[75,79,77],walk:[171,164,148],grass:[85,102,60],wall:[191,187,169]}[kind]||[160,160,150];
+  const base={road:[75,79,77],walk:[77,81,79],grass:[85,102,60],wall:[191,187,169]}[kind]||[160,160,150];
   const d=x.createImageData(512,512);for(let i=0;i<d.data.length;i+=4){const n=(rnd()-.5)*(kind==='grass'?48:22);d.data[i]=base[0]+n;d.data[i+1]=base[1]+n;d.data[i+2]=base[2]+n;d.data[i+3]=255;}x.putImageData(d,0,0);
-  if(kind==='walk'){x.strokeStyle='#736f62';x.lineWidth=2;for(let y=0;y<512;y+=64){x.beginPath();x.moveTo(0,y);x.lineTo(512,y);x.stroke();for(let a=(y%128?32:0);a<512;a+=128){x.beginPath();x.moveTo(a,y);x.lineTo(a,y+64);x.stroke();}}}
+  if(kind==='walk'){x.strokeStyle='#a5a69a';x.lineWidth=2;for(let a=-512;a<1024;a+=32)for(let b=-512;b<1024;b+=32){if(((a+b)/32)%4===0)x.strokeRect(a,b,64,32);if(((a+b)/32)%4===2)x.strokeRect(a,b,32,64);}}
   if(kind==='wall'){x.strokeStyle='#9d9a8e';x.lineWidth=3;for(let y=0;y<512;y+=128){x.beginPath();x.moveTo(0,y);x.lineTo(512,y);x.stroke();}}
  }
  const t=new T.CanvasTexture(c);t.colorSpace=T.SRGBColorSpace;t.wrapS=t.wrapT=T.RepeatWrapping;t.anisotropy=8;return t;
@@ -53,7 +55,7 @@ export function terrainPatch(start,end){
 export function cycleGeometry(){return ribbon(0,LENGTH,s=>cycleOffset(s)-CYCLE_WIDTH/2,s=>cycleOffset(s)+CYCLE_WIDTH/2,cycleHeight,true,cycleCrossing);}
 // Sweep a closed structural cross-section along the same centreline as the road.
 export function structureGeometry(start,end,section){const positions=[],indices=[],n=Math.ceil((end-start)/2),count=section.length;
- for(let i=0;i<=n;i++){const s=start+(end-start)*i/n,r=sample(s);for(const [x,y] of section)positions.push(r.x+r.lx*x,r.y+(typeof y==='function'?y(s):y),r.z+r.lz*x);}
+ for(let i=0;i<=n;i++){const s=start+(end-start)*i/n,r=sample(s);for(const [x,y] of section)positions.push(r.x+r.lx*(typeof x==='function'?x(s):x),r.y+(typeof y==='function'?y(s):y),r.z+r.lz*(typeof x==='function'?x(s):x));}
  for(let i=0;i<n;i++)for(let j=0;j<count;j++){const a=i*count+j,b=i*count+(j+1)%count;indices.push(a,b,a+count,b,b+count,a+count);}
  for(const i of [0,n])for(let j=1;j<count-1;j++)indices.push(i*count,i*count+j,i*count+j+1);
  const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(positions,3));g.setIndex(indices);g.computeVertexNormals();return g;
@@ -61,12 +63,13 @@ export function structureGeometry(start,end,section){const positions=[],indices=
 export function buildEnvironment(scene){
  const backdrop=new T.Mesh(new T.PlaneGeometry(14000,14000),new T.MeshStandardMaterial({color:0x657647,roughness:1}));backdrop.rotation.x=-Math.PI/2;backdrop.position.y=-5;scene.add(backdrop);
  const roadTex=paintTexture('road'),paverTex=paintTexture('walk');
- const mats={road:new T.MeshStandardMaterial({map:roadTex,roughness:.91}),walk:new T.MeshStandardMaterial({map:paverTex,roughness:.96}),grass:new T.MeshStandardMaterial({map:paintTexture('grass'),roughness:1}),concrete:new T.MeshStandardMaterial({color:0xc6c2ac,roughness:.9,side:T.DoubleSide}),lamp:new T.MeshStandardMaterial({color:0xffecc9,emissive:0xffd995,emissiveIntensity:0}),white:new T.MeshStandardMaterial({color:0xece8d3,roughness:.8}),teal:new T.MeshStandardMaterial({color:0x47776b,roughness:.85}),metal:new T.MeshStandardMaterial({color:0x465654,metalness:.65,roughness:.4})};
+ const mats={road:new T.MeshStandardMaterial({map:roadTex,roughness:.91}),walk:new T.MeshStandardMaterial({map:paverTex,roughness:.96}),grass:new T.MeshStandardMaterial({map:paintTexture('grass'),roughness:1}),concrete:new T.MeshStandardMaterial({color:0xc6c2ac,roughness:.9,side:T.DoubleSide}),lamp:new T.MeshStandardMaterial({color:0xffecc9,emissive:0xffd995,emissiveIntensity:0}),yellow:new T.MeshStandardMaterial({color:0xffcf22,roughness:.8}),white:new T.MeshStandardMaterial({color:0xece8d3,roughness:.8}),teal:new T.MeshStandardMaterial({color:0x47776b,roughness:.85}),metal:new T.MeshStandardMaterial({color:0x465654,metalness:.65,roughness:.4})};
  const groups=[],instances={},plots=[],lampPositions=[];
  const geo={box:new T.BoxGeometry(1,1,1),cyl:new T.CylinderGeometry(1,1,1,7),leaf:new T.PlaneGeometry(1,1),cone:new T.ConeGeometry(1,1,8)};
  const foliage=new T.MeshStandardMaterial({map:paintTexture('leaf'),alphaTest:.38,side:T.DoubleSide,roughness:1,color:0xe2e5b5});
  const trunk=new T.MeshStandardMaterial({color:0x665b43,roughness:1});
- const windowMats=[0x788d8b,0x6d8384,0x718784].map(color=>new T.MeshStandardMaterial({color,metalness:.35,roughness:.33}));
+ const windowCanvas=document.createElement('canvas');windowCanvas.width=256;windowCanvas.height=64;const wx=windowCanvas.getContext('2d');wx.fillStyle='#192b30';wx.fillRect(0,0,256,64);for(let i=0;i<16;i++){wx.fillStyle=rnd()<.48?'#293c42':rnd()<.5?'#ffe6ae':'#b9d8dd';wx.fillRect(i*16+2,4,11,55);}const windowTexture=new T.CanvasTexture(windowCanvas);windowTexture.colorSpace=T.SRGBColorSpace;
+ const windowMats=[0x788d8b,0x6d8384,0x718784].map(color=>new T.MeshStandardMaterial({color,map:windowTexture,emissiveMap:windowTexture,metalness:.35,roughness:.33}));
  const wallMats=[0xc8c7b7,0xb6b6a7,0xc5c5be,0xaebcb5].map(color=>new T.MeshStandardMaterial({color,roughness:.84,map:paintTexture('wall')}));
  function batch(key,geometry,material,pos,scale,rot=new T.Euler(),chunk=0){
   const k=key+'-'+chunk;if(!instances[k])instances[k]={geometry,material,matrices:[],chunk};
@@ -80,15 +83,19 @@ export function buildEnvironment(scene){
    const mesh=new T.Mesh(ribbon(start,end,left,right,offset,terrain,mat===mats.walk?(s=>groundCrossing(s)||left(DEPOT.s)>0&&inDepot(s)):false),mat);mesh.receiveShadow=true;group.add(mesh);
   }
   for(const edge of [s=>roadSection(s).left,s=>roadSection(s).right]){const line=new T.Mesh(ribbon(start,end,s=>edge(s)-.05,s=>edge(s)+.05,.025,false,true),mats.white);group.add(line);}
-  for(let s=start;s<end;s+=7){const r=sample(s);for(const lat of roadSection(s).right>3.85?[-3.8,0,3.8]:[0]){const line=new T.Mesh(ribbon(s,Math.min(s+3.1,end),lat-.045,lat+.045,.027,false,true),mats.white);group.add(line);}}
+  for(const lat of [-.14,.14]){const line=new T.Mesh(ribbon(start,Math.min(end,CROSSOVER_START-75),lat-.055,lat+.055,.028,false,true),mats.white);if(start<CROSSOVER_START-75)group.add(line);}
+  for(let s=Math.max(start,CROSSOVER_START-75);s<end;s+=7)group.add(new T.Mesh(ribbon(s,Math.min(s+3,end),-.05,.05,.029),mats.white));
+  for(let s=Math.ceil(start/1.5)*1.5;s<end;s+=1.5)for(const dir of [-1,1])for(const branch of [0,...(Math.abs(laneOffset(s,dir))>1.91?[1]:[])])for(const track of [-.24,.24]){const offset=q=>branch?dir*1.9:dir===-1?returnOffset(q):laneOffset(q),guide=new T.Mesh(ribbon(s,Math.min(s+.55,end),q=>offset(q)+track-.085,q=>offset(q)+track+.085,.105,false,false),mats.white);guide.name='ART guidance marks';group.add(guide);}
+  const marks=group.children.filter(m=>m.name==='ART guidance marks'),positions=[],indices=[];for(const m of marks){const offset=positions.length/3;positions.push(...m.geometry.attributes.position.array);indices.push(...Array.from(m.geometry.index.array,i=>i+offset));m.geometry.dispose();group.remove(m);}const guideGeo=new T.BufferGeometry();guideGeo.setAttribute('position',new T.Float32BufferAttribute(positions,3));guideGeo.setIndex(indices);guideGeo.computeVertexNormals();const guides=new T.Mesh(guideGeo,mats.white);guides.name='ART guidance marks';group.add(guides);
   for(let s=start;s<end;s+=2){const e=Math.min(s+2,end),r=sample((s+e)/2),a=sample(s),b=sample(e);
    for(const side of [-1,1]){if(inJunction(s)||side===1&&inDepot(s))continue;const la=side*(roadSection(s).right+(r.elevated?.21:0)),lb=side*(roadSection(e).right+(r.elevated?.21:0)),ax=a.x+a.lx*la,az=a.z+a.lz*la,bx=b.x+b.lx*lb,bz=b.z+b.lz*lb,len=Math.hypot(bx-ax,bz-az)+.03,heading=Math.atan2(ax-bx,az-bz),x=(ax+bx)/2,z=(az+bz)/2,y=(a.y+b.y)/2;
-    if(r.elevated){box('parapet',mats.concrete,x,y+.4,z,.42,.8,len,heading,ch);for(const h of [1.02,1.3])box('parapet-rail',mats.metal,x,y+h,z,.06,.06,len,heading,ch);box('parapet-post',mats.metal,x,y+1.03,z,.07,.55,.07,heading,ch);
-     if(r.structure==='ramp'){const h=Math.max(.2,y-r.groundY);box('retained-ramp',mats.concrete,x,y-h/2,z,.55,h,len,heading,ch);}
-    }else{const h=footpathHeight((s+e)/2);box('kerb',mats.concrete,x,y+h/2,z,.15,h,len,heading,ch);}
+    if(r.elevated){if(Math.floor(s/2)%3===0){box('parapet-light-housing',mats.metal,x-r.lx*side*.24,y+.56,z-r.lz*side*.24,.09,.19,1.35,heading,ch);box('parapet-light',mats.lamp,x-r.lx*side*.3,y+.56,z-r.lz*side*.3,.035,.11,1.15,heading,ch);}if(Math.floor(s)%12<2)lampPositions.push({s,x:x-r.lx*side*1.8,y:y+.6,z:z-r.lz*side*1.8});const swept=(name,mat,width,bottom,top)=>{const l=q=>side*(roadSection(q).right+.21),m=new T.Mesh(structureGeometry(s,e,[[q=>l(q)-width/2,bottom],[q=>l(q)+width/2,bottom],[q=>l(q)+width/2,top],[q=>l(q)-width/2,top]]),mat);m.name=name;group.add(m);};swept('parapet',mats.concrete,.42,0,.8);for(const h of [1.02,1.3])swept('parapet-rail',mats.metal,.06,h-.03,h+.03);box('parapet-post',mats.metal,x,y+1.03,z,.07,.55,.07,heading,ch);
+     if(r.structure==='ramp'){const h=Math.max(.2,y-r.groundY);swept('retained-ramp',mats.concrete,.55,q=>sample(q).groundY-sample(q).y,0);}
+    }else{const h=footpathHeight((s+e)/2);const l=q=>side*roadSection(q).right,m=new T.Mesh(structureGeometry(s,e,[[q=>l(q)-.075,0],[q=>l(q)+.075,0],[q=>l(q)+.075,footpathHeight],[q=>l(q)-.075,footpathHeight]]),mats.concrete);m.name='continuous-kerb';group.add(m);}
    }
   }
-  for(let s=start+3;s<end;s+=34){let r=sample(s);if(inJunction(s)||STOPS.some(st=>Math.abs(st.s-s)<st.footprintLength/2+5))continue;for(const side of [-1,1]){
+  for(const name of ['parapet','parapet-rail','retained-ramp','continuous-kerb']){const list=group.children.filter(m=>m.name===name);if(list.length){const mesh=new T.Mesh(mergeGeometries(list.map(m=>m.geometry)),list[0].material);mesh.name=name;mesh.castShadow=true;mesh.receiveShadow=true;for(const m of list){group.remove(m);m.geometry.dispose();}group.add(mesh);}}
+  for(let s=start+3;s<end;s+=34){let r=sample(s);if(r.elevated||inJunction(s)||STOPS.some(st=>Math.abs(st.s-s)<st.footprintLength/2+5))continue;for(const side of [-1,1]){if(side===1&&inDepot(s))continue;
     let lat=side*(r.elevated?roadSection(s).right+.35:roadSection(s).right+2.7),p=at(s,lat);p.y=r.y;
     box('lamp',mats.metal,p.x,p.y+5,p.z,.12,10,.12,0,ch);
     box('arm',mats.metal,p.x-r.lx*side*1.5,p.y+9.85,p.z-r.lz*side*1.5,3.2,.1,.12,r.heading,ch);
@@ -138,20 +145,23 @@ export function buildEnvironment(scene){
  for(const x of [-3.4,3.4]){const post=new T.Mesh(new T.BoxGeometry(.15,3.8,.15),mats.metal);post.position.set(x,1.9,0);endGroup.add(post);}for(let x=-3.5;x<3.5;x+=.7){const bar=new T.Mesh(new T.BoxGeometry(.7,.45,.35),new T.MeshStandardMaterial({color:Math.round((x+3.5)/.7)%2?0xf0c55b:0x283a37}));bar.position.set(x+.35,.8,0);endGroup.add(bar);}
  // Continuous corner footpaths join the corridor and crossing-road approaches.
  for(const j of [...JUNCTIONS,...UNDERPASSES]){const r=sample(j.s),g=new T.Group(),w=roadSection(j.s).right,h=j.halfWidth,R=6;g.name=(j.underpass?'underpass-':'junction-')+j.c;g.position.set(r.x,j.underpass?r.groundY:r.y,r.z);g.rotation.y=r.heading;scene.add(g);
-  const slab=(width,depth,x,z,mat,y=.045)=>{const m=new T.Mesh(new T.BoxGeometry(width,.05,depth),mat);m.position.set(x,y-.025-(j.underpass?0:r.grade*z),z);m.receiveShadow=true;g.add(m);return m;};
+  const slab=(width,depth,x,z,mat,y=.045)=>{const m=new T.Mesh(new T.BoxGeometry(width,.05,depth,Math.max(1,Math.ceil(width/6)),1,Math.max(1,Math.ceil(depth/6))),mat);m.position.set(x,y-.025-(j.underpass?0:r.grade*z),z);m.receiveShadow=true;g.add(m);return m;};
   slab(j.extent*2,h*2,0,0,mats.road);
   for(const side of [-1,1]){if(j.c===3395&&side===1){slab(j.extent+5,3.75,(5-j.extent)/2,side*(h+1.875),mats.walk,.3);slab(j.extent-30,3.75,(j.extent+30)/2,side*(h+1.875),mats.walk,.3);}else slab(j.extent*2,3.75,0,side*(h+1.875),mats.walk,.3);for(let x=-j.extent;x<j.extent;x+=7)for(const lane of j.underpass?[-h/2,0,h/2]:[0])slab(3,.09,x,lane,mats.white,.079);}
+  if(j.c===3395){for(let k=-34;k<=34;k+=4)for(const sign of [-1,1]){const pts=[];for(const x of [-24,24]){const z=sign*x+k;if(Math.abs(z)<=h)pts.push(new T.Vector3(x,.11,z));}for(const z of [-h,h]){const x=(z-k)/sign;if(Math.abs(x)<24)pts.push(new T.Vector3(x,.11,z));}if(pts.length===2){const m=new T.Mesh(new T.BoxGeometry(.16,.015,pts[0].distanceTo(pts[1])),mats.yellow);m.position.copy(pts[0]).add(pts[1]).multiplyScalar(.5);m.rotation.y=Math.atan2(pts[1].x-pts[0].x,pts[1].z-pts[0].z);g.add(m);}}for(const side of [-1,1])for(let z=-h+.4;z<h;z+=1.1)slab(3,.55,side*30,z,mats.yellow,.11);}
+
   if(!j.underpass){
+   for(let k=-w-h;k<=w+h;k+=3)for(const sign of [-1,1]){const pts=[];for(const x of [-w,w]){const z=sign*x+k;if(Math.abs(z)<=h)pts.push(new T.Vector3(x,.11,z));}for(const z of [-h,h]){const x=(z-k)/sign;if(Math.abs(x)<w)pts.push(new T.Vector3(x,.11,z));}if(pts.length===2){const d=pts[0].distanceTo(pts[1]),m=new T.Mesh(new T.BoxGeometry(.13,.015,d),mats.yellow);m.position.copy(pts[0]).add(pts[1]).multiplyScalar(.5);m.rotation.y=Math.atan2(pts[1].x-pts[0].x,pts[1].z-pts[0].z);g.add(m);}}
    // Remove the two continuous sidewalk slabs just created and rebuild with four corner returns.
    for(const child of [...g.children])if(child.material===mats.walk){g.remove(child);child.geometry.dispose();}
    for(const side of [-1,1])for(const bank of [-1,1])for(const [a,b] of [[w+R,w+8.5],[w+11.5,j.extent]])slab(b-a,3.75,side*(a+b)/2,bank*(h+1.875),mats.walk,.3);
    const shape=new T.Shape();shape.moveTo(-w,h+R);shape.lineTo(w,h+R);shape.lineTo(w,h+R);shape.absarc(w+R,h+R,R,Math.PI,Math.PI*1.5,false);shape.lineTo(w+R,-h);shape.absarc(w+R,-h-R,R,Math.PI/2,Math.PI,false);shape.lineTo(-w,-h-R);shape.absarc(-w-R,-h-R,R,0,Math.PI/2,false);shape.lineTo(-w-R,h);shape.absarc(-w-R,h+R,R,-Math.PI/2,0,false);shape.closePath();const roadGeo=new T.ShapeGeometry(shape,16);roadGeo.rotateX(-Math.PI/2);const road=new T.Mesh(roadGeo,mats.road);road.position.y=.07;g.add(road);
-   for(const sx of [-1,1])for(const sz of [-1,1]){const pos=[],ids=[];for(let i=0;i<=16;i++)for(const rad of [R,R-3.75]){const a=i*Math.PI/32,x=sx*(w+R-rad*Math.cos(a)),z=sz*(h+R-rad*Math.sin(a));pos.push(x,.3-r.grade*z,z);}for(let i=0;i<16;i++){const a=i*2;ids.push(a,a+2,a+1,a+1,a+2,a+3);}const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(pos,3));geo.setIndex(ids);geo.computeVertexNormals();const m=new T.Mesh(geo,new T.MeshStandardMaterial({map:paverTex,side:T.DoubleSide,roughness:.96}));m.name='connected-corner-footpath';g.add(m);}
+   for(const sx of [-1,1])for(const sz of [-1,1]){const pos=[],ids=[];for(let i=0;i<=16;i++)for(const rad of [R,R-3.75]){const a=i*Math.PI/32,x=sx*(w+R-rad*Math.cos(a)),z=sz*(h+R-rad*Math.sin(a));pos.push(x,.3-r.grade*z,z);}for(let i=0;i<16;i++){const a=i*2;ids.push(a,a+2,a+1,a+1,a+2,a+3);}const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(pos,3));geo.setIndex(ids);geo.setAttribute('uv',new T.Float32BufferAttribute(pos.flatMap((v,i)=>i%3===0?[v/5,pos[i+2]/5]:[]),2));geo.computeVertexNormals();const m=new T.Mesh(geo,new T.MeshStandardMaterial({map:paverTex,side:T.DoubleSide,roughness:.96}));m.name='connected-corner-footpath';g.add(m);}
    for(const side of [-1,1]){slab(w-.15,.25,-side*w/2,side*j.stop,mats.white,.09);slab(.25,h-.15,side*j.stop,side*h/2,mats.white,.09);
-    for(let x=-w+.4;x<w;x+=1.1)slab(.55,3,x,side*(h+10),mats.white,.085);
-    for(let z=-h+.4;z<h;z+=1.1)slab(3,.55,side*(w+10),z,mats.white,.085);
+    for(let x=-w+.4;x<w;x+=1.1)slab(.55,3,x,side*(h+10),mats.yellow,.085);
+    for(let z=-h+.4;z<h;z+=1.1)slab(3,.55,side*(j.c===2650&&side===1?L35.offset+L35.width/2+6:w+10),z,mats.yellow,.085);
     // Crossing-road kerb ramps replace the flat sidewalk within a 3 m wheelchair route.
-    for(const bank of [-1,1]){const x=side*(w+10),z=bank*(h+1.875),ramp=new T.Mesh(new T.PlaneGeometry(3,3.75),mats.walk);ramp.geometry.rotateX(-Math.PI/2);const p=ramp.geometry.attributes.position;for(let i=0;i<p.count;i++){const zz=p.getZ(i)+z;p.setY(i,.02+.28*Math.min(1,(Math.abs(zz)-h)/3.75)-r.grade*zz);}ramp.geometry.computeVertexNormals();ramp.position.set(x,.005,z);ramp.name='junction-wheelchair-ramp';g.add(ramp);}
+    for(const bank of [-1,1]){const x=side*(j.c===2650&&side===1?L35.offset+L35.width/2+6:w+10),z=bank*(h+1.875),ramp=new T.Mesh(new T.PlaneGeometry(3,3.75),mats.walk);ramp.geometry.rotateX(-Math.PI/2);const p=ramp.geometry.attributes.position;for(let i=0;i<p.count;i++){const zz=p.getZ(i)+z;p.setY(i,.02+.28*Math.min(1,(Math.abs(zz)-h)/3.75)-r.grade*zz);}ramp.geometry.computeVertexNormals();ramp.position.set(x,.005,z);ramp.name='junction-wheelchair-ramp';g.add(ramp);}
    }
   }
  }
@@ -175,17 +185,19 @@ export function buildEnvironment(scene){
  for(const c of CHANNELS){const r=sample(c.s),g=new T.Group();g.name=c.name;g.position.set(r.x,r.y,r.z);g.rotation.y=r.heading;scene.add(g);
   const part=(w,h,d,x,y,z,mat)=>{const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);m.receiveShadow=true;g.add(m);return m;};
   part(c.extent*2,.08,c.width,0,-3.25,0,new T.MeshStandardMaterial({color:0x4f8587,metalness:.35,roughness:.2}));
-  for(const side of [-1,1])part(c.extent*2,3.6,.55,0,-1.8,side*c.width/2,mats.concrete);
+  for(const side of [-1,1]){const e=roadSection(c.s),a=e.right+3.75,b=-cycleOffset(c.s)+2.5;part(c.extent-a,3.6,.55,-(c.extent+a)/2,-1.8,side*c.width/2,mats.concrete);part(c.extent-b,3.6,.55,(c.extent+b)/2,-1.8,side*c.width/2,mats.concrete);}
   const edge=roadSection(c.s),left=edge.left-3.75-4,right=edge.right+3.75,w=right-left;
-  part(w,.5,c.width+1,-(left+right)/2,-.3,0,mats.concrete);
-  for(const portal of [-right,-left]){for(let z=-c.width/2;z<=c.width/2;z+=c.width/3)part(.7,3.2,.5,portal,-1.85,z,mats.concrete);part(.75,.6,c.width+1,portal,-.25,0,mats.concrete);}
+  part(w,.5,c.width+1,-(left+right)/2,-1,0,mats.concrete);
+  for(const portal of [-right,-left]){for(let z=-c.width/2;z<=c.width/2;z+=c.width/3)part(.7,3.2,.5,portal,-1.85,z,mats.concrete);part(.75,.6,c.width+1,portal,-1,0,mats.concrete);}
  }
+ for(const c of CHANNELS){const start=c.s-c.width/2-3,end=c.s+c.width/2+3;scene.add(new T.Mesh(ribbon(start,end,q=>roadSection(q).left,q=>roadSection(q).right,.012),mats.road));for(const side of [-1,1]){const lat=side===1?roadSection(c.s).right+3.6:cycleOffset(c.s)-2;for(const y of [.55,1.25])scene.add(new T.Mesh(structureGeometry(start,end,[[lat-.035,y-.035],[lat+.035,y-.035],[lat+.035,y+.035],[lat-.035,y+.035]]),mats.metal));for(let q=start;q<end;q+=1.5){const p=at(q,lat);box('river-fence',mats.metal,p.x,p.y+.8,p.z,.06,1.2,.06,0,Math.floor(q/240));}}}
  // L35 begins at D6 beside the dedicated corridor; the 4 m cycleway lies outboard.
  const bendStart=fromChainage(3310),join=sample(L35.end),bend=sample(bendStart),bp=at(bendStart,-l35Offset(bendStart));
- const bendCurve=new T.CubicBezierCurve3(bp,new T.Vector3(bp.x+bend.tx*45,bp.y,bp.z+bend.tz*45),new T.Vector3(join.x-join.lx*35,join.groundY,join.z-join.lz*35),new T.Vector3(join.x,join.groundY,join.z));
+ const bendCurve=l35BendCurve;
  for(const [side,mat,y] of [[0,mats.road,.07],[1,mats.walk,.3],[-1,mats.walk,.3]]){const w=side?3.75:L35.width,offset=s=>-l35Offset(s)+side*(L35.width/2+1.875),m=new T.Mesh(ribbon(L35.start,bendStart,s=>offset(s)-w/2,s=>offset(s)+w/2,y,true,side?s=>s<L35.start+JUNCTIONS.find(j=>j.name==='Road D6').halfWidth:false),mat);m.name=side?'L35 footpath':'Road L35';m.receiveShadow=true;scene.add(m);}
+ for(const side of [-1,1]){scene.add(new T.Mesh(ribbon(L35.start+12,bendStart,q=>-l35Offset(q)+side*(L35.width/2-.18)-.06,q=>-l35Offset(q)+side*(L35.width/2-.18)+.06,.105,true),mats.white));scene.add(new T.Mesh(curveRibbon(bendCurve,side*(L35.width/2-.18)-.06,side*(L35.width/2-.18)+.06,.105),mats.white));}
  for(let s=L35.start+15;s<bendStart;s+=7){const m=new T.Mesh(ribbon(s,Math.min(s+3,bendStart),s=>-l35Offset(s)-.05,s=>-l35Offset(s)+.05,.1,true),mats.white);scene.add(m);}
- for(let i=1;i<=32;i++){const a=bendCurve.getPoint((i-1)/32),b=bendCurve.getPoint(i/32),n=a.distanceTo(b),heading=Math.atan2(a.x-b.x,a.z-b.z);for(const [offset,w,mat] of [[0,L35.width,mats.road],[-5.525,3.75,mats.walk],[5.525,3.75,mats.walk]]){if(offset&&Math.abs(((a.x+b.x)/2-join.x)*join.tx+((a.z+b.z)/2-join.z)*join.tz)<UNDERPASSES.find(j=>j.c===3395).halfWidth+2)continue;const m=new T.Mesh(new T.BoxGeometry(w,.1,n+.3),mat);m.name='L35 turn beneath VB2';m.position.set((a.x+b.x)/2+Math.cos(heading)*offset,(a.y+b.y)/2+(offset?.3:.08),(a.z+b.z)/2-Math.sin(heading)*offset);m.rotation.y=heading;scene.add(m);}}
+ for(const [offset,width,mat,y] of [[0,L35.width,mats.road,.08],[-5.525,3.75,mats.walk,.3],[5.525,3.75,mats.walk,.3],[0,.12,mats.white,.105]]){const m=new T.Mesh(curveRibbon(bendCurve,offset-width/2,offset+width/2,y),mat);m.name='L35 turn beneath VB2';m.receiveShadow=true;scene.add(m);}
  // Open the D6 sidewalk across the connected L35 mouth.
  const d6=scene.getObjectByName('junction-2650');if(d6)for(const child of [...d6.children]){if(!child.isMesh||child.material.map!==paverTex)continue;child.updateMatrix();const original=child.geometry.index?child.geometry.toNonIndexed():child.geometry.clone(),p=original.attributes.position,points=[];for(let i=0;i<p.count;i++)points.push(new T.Vector3().fromBufferAttribute(p,i).applyMatrix4(child.matrix));if(!points.some(p=>p.x>0&&p.z<0))continue;
   const out=[],uv=[],lo=L35.offset-L35.width/2,hi=L35.offset+L35.width/2;
@@ -218,6 +230,25 @@ export function buildEnvironment(scene){
  // Road D1 connects the at-grade junction after A7 to its northern bridge crossing.
  for(let i=1;i<D1ROAD.length;i++){const a=D1ROAD[i-1],b=D1ROAD[i],n=Math.hypot(b.x-a.x,b.z-a.z),heading=Math.atan2(a.x-b.x,a.z-b.z);for(const [offset,w,mat,y] of [[0,18,mats.road,.025],[-10.875,3.75,mats.walk,.3],[10.875,3.75,mats.walk,.3],...(i%2?[[0,.1,mats.white,.09]]:[])]){const m=new T.Mesh(new T.BoxGeometry(w,.1,n+.3),mat);m.name='Road D1 connecting alignment';m.position.set((a.x+b.x)/2+Math.cos(heading)*offset,(a.y+b.y)/2+y,(a.z+b.z)/2-Math.sin(heading)*offset);m.rotation.set(Math.atan2(b.y-a.y,n),heading,0,'YXZ');m.receiveShadow=true;scene.add(m);}}
 
+ for(const c of CROSSINGS){const l=cycleOffset(c.s),m=new T.Mesh(ribbon(c.s-1.8,c.s+1.8,l-2,l+2,.33,true),mats.yellow);m.name='Cycle pedestrian crossing';scene.add(m);for(const ds of [-4,4]){const p=at(c.s+ds,l+2.5);box('cycle-crossing-sign',mats.teal,p.x,p.y+2,p.z,.45,.6,.08,sample(c.s).heading,Math.floor(c.s/240));box('cycle-sign-pole',mats.metal,p.x,p.y+1,p.z,.06,2,.06,0,Math.floor(c.s/240));}}
+
+ for(const j of [...JUNCTIONS,...UNDERPASSES])for(let lat=-135;lat<=135;lat+=30){if(Math.abs(lat)<30)continue;const r=sample(j.s),p=at(j.s,lat);p.x+=r.tx*(j.halfWidth+2);p.z+=r.tz*(j.halfWidth+2);const ch=Math.floor(j.s/240);box('side-road-lamp',mats.metal,p.x,p.y+4,p.z,.12,8,.12,0,ch);box('side-road-fixture',mats.lamp,p.x,p.y+8,p.z,.7,.16,.7,0,ch);lampPositions.push({s:j.s,x:p.x,y:p.y+8,z:p.z});}
+ for(let q=L35.start+35;q<L35.end-45;q+=40){const p=at(q,-l35Offset(q)-5.2),ch=Math.floor(q/240);box('L35-lamp',mats.metal,p.x,p.y+4,p.z,.1,8,.1,0,ch);box('L35-light',mats.lamp,p.x,p.y+8,p.z,.7,.15,.7,0,ch);lampPositions.push({s:q,x:p.x,y:p.y+8,z:p.z});}
+ for(const j of [JUNCTIONS.find(j=>j.c===2650),UNDERPASSES.find(j=>j.c===3395)]){const p=at(j.s-25,-l35Offset(j.s)-6),ch=Math.floor(j.s/240);box('L35-direction-post',mats.metal,p.x,p.y+1.5,p.z,.12,3,.12,0,ch);p.y+=3;landmarkBoard('L35  →  '+j.name,p,sample(j.s).heading,6);}
+ // Covered footbridges, straight lift towers and external stair flights.
+ function footbridge(name,centre,heading,length,width=4.5){const g=new T.Group();g.name=name;g.position.copy(centre);g.rotation.y=heading;scene.add(g);const part=(w,h,d,x,y,z,mat)=>{const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);m.castShadow=m.receiveShadow=true;g.add(m);return m;};
+ part(width,.45,length,0,6.15,0,mats.concrete);part(width+.8,.22,length+1,0,9,0,mats.teal);
+ for(let z=-length/2;z<=length/2;z+=4)for(const side of [-1,1]){part(.12,2.6,.12,side*width/2,7.7,z,mats.metal);part(.07,1,.09,side*width/2,6.9,z,mats.metal);}
+ for(const side of [-1,1]){part(.09,1.1,length,side*width/2,6.95,0,glass);const z=side*(length/2+2);part(3.6,9,4.2,0,4.5,z,mats.concrete);part(2.2,2.5,.08,0,1.25,z+side*2.12,glass);part(2.2,2.5,.08,0,7.55,z-side*2.12,glass);for(let i=0;i<36;i++)part(2.4,(i+1)*6.3/36,.42,width/2+1.6,(i+1)*6.3/72,z-side*(i-17.5)*.42,mats.concrete);const top=g.localToWorld(new T.Vector3(0,8.7,side*length/3));lampPositions.push({s:project(top.x,top.z),x:top.x,y:top.y,z:top.z});part(width-.6,.08,1,0,8.8,side*length/3,mats.lamp);}
+ return g;
+ }
+ for(const j of [...UNDERPASSES,...JUNCTIONS.filter(j=>j.halfWidth>7)]){const r=sample(j.s),p=at(j.s,cycleOffset(j.s));footbridge('Cycle footbridge '+j.name,p,r.heading,j.halfWidth*2+16);const m=new T.Mesh(ribbon(j.s-j.halfWidth-8,j.s+j.halfWidth+8,q=>cycleOffset(q)-2,q=>cycleOffset(q)+2,6.39,true),mats.teal);m.name='Elevated cycle connection';scene.add(m);}
+ const plazaPoint=at(a2.s+40,-48),fountain=new T.Group();fountain.name='HSWRL plaza fountain';fountain.position.copy(plazaPoint);scene.add(fountain);
+ const basin=new T.Mesh(new T.CylinderGeometry(11,11,1,64),mats.concrete);basin.position.y=.65;fountain.add(basin);const waterMat=new T.MeshStandardMaterial({color:0x55b9d2,metalness:.35,roughness:.12,transparent:true,opacity:.8,emissive:0x0d526b,emissiveIntensity:.4}),water=new T.Mesh(new T.CylinderGeometry(10.3,10.3,.08,64),waterMat);water.position.y=1.2;fountain.add(water);
+ for(let i=0;i<16;i++){const a=i*Math.PI/8,curve=new T.QuadraticBezierCurve3(new T.Vector3(Math.cos(a)*8,1.3,Math.sin(a)*8),new T.Vector3(Math.cos(a)*4,8,Math.sin(a)*4),new T.Vector3(0,1.3,0)),jet=new T.Mesh(new T.TubeGeometry(curve,24,.07,5,false),waterMat);fountain.add(jet);}const jet=new T.Mesh(new T.CylinderGeometry(.15,.5,6,12),waterMat);jet.position.y=4;fountain.add(jet);
+ for(const ds of [-55,90]){const p=at(a2.s+ds,-48),g=new T.Group();g.name='HSWRL underground entrance';g.position.copy(p);g.rotation.y=sample(a2.s).heading;scene.add(g);for(const [w,h,d,x,y,z,mat] of [[9,.4,12,0,4.2,0,mats.teal],[.35,4,12,-4.3,2,0,glass],[.35,4,12,4.3,2,0,glass],[8,3,.3,0,1.5,5.5,mats.metal]]){const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);g.add(m);}for(let i=0;i<12;i++){const m=new T.Mesh(new T.BoxGeometry(7,.16,.5),mats.concrete);m.position.set(0,.32-i*.12,-5+i*.5);g.add(m);}const sign=landmarkBoard('HSWRL  高速鐵路  ↓',p.clone().add(new T.Vector3(0,3.5,0)),sample(a2.s).heading,8);sign.position.addScaledVector(new T.Vector3(sample(a2.s).tx,0,sample(a2.s).tz),6);}
+ const bridgeCentre=at(a2.s+115,-28);footbridge('HSWRL plaza pedestrian bridge',bridgeCentre,sample(a2.s+115).heading+Math.PI/2,104,7);
+ for(let ds=-100;ds<=115;ds+=25)for(const lat of [-22,-72]){const p=at(a2.s+ds,lat),ch=Math.floor(a2.s/240);box('plaza-light-pole',mats.metal,p.x,p.y+3.5,p.z,.12,7,.12,0,ch);box('plaza-globe',mats.lamp,p.x,p.y+7,p.z,.7,.25,.7,0,ch);lampPositions.push({s:a2.s+ds,x:p.x,y:p.y+7,z:p.z});}
  for(const [key,b] of Object.entries(instances)){if(/^(trunk|foliage|planter)-/.test(key))b.matrices=b.matrices.filter(m=>plots.every(p=>Math.hypot(m.elements[12]-p.x,m.elements[14]-p.z)>p.radius+2));if(!b.matrices.length)continue;const mesh=new T.InstancedMesh(b.geometry,b.material,b.matrices.length);b.matrices.forEach((m,i)=>mesh.setMatrixAt(i,m));mesh.receiveShadow=true;mesh.castShadow=b.material!==foliage;groups[b.chunk]?.add(mesh);}
  // The source-dimensioned A1 annular driving area is rendered as well as simulated.
  const ringGeo=new T.RingGeometry(LOOP.innerRadius,LOOP.outerRadius,96);ringGeo.rotateX(-Math.PI/2);const ring=new T.Mesh(ringGeo,mats.road);ring.position.set(LOOP.center.x,LOOP.y+.02,LOOP.center.z);ring.receiveShadow=true;scene.add(ring);
@@ -230,5 +261,14 @@ export function buildEnvironment(scene){
  // Distant hills: a continuous ridgeline, well outside the traced corridor.
  const hillMat=new T.MeshStandardMaterial({color:0x65765c,roughness:1});
  for(let i=0;i<26;i++){let r=sample(LENGTH*i/25),hill=new T.Mesh(new T.SphereGeometry(1,18,12),hillMat);hill.position.set(r.x-450-rnd()*280,r.groundY-25,r.z);hill.scale.set(210+rnd()*160,80+rnd()*130,260);if(sceneryClear(hill.position.x,hill.position.z,Math.max(hill.scale.x,hill.scale.z)+20))scene.add(hill);}
- return {groups,plots,lampPositions,nightMaterials:[mats.lamp,...windowMats],materials:mats,update(s){for(const g of groups)g.visible=Math.abs(g.userData.s-s)<850;},weather(wet){mats.road.roughness=wet?.32:.91;mats.road.color.set(wet?0x9da8ac:0xffffff);}};
+ const ringCurve=new T.CatmullRomCurve3(Array.from({length:97},(_,i)=>{const p=LOOP.sample(LOOP.length*i/96);return new T.Vector3(p.x,p.y,p.z);}),false,'centripetal');
+ for(const curve of [terminalCurve,depotCurve,ringCurve])for(let d=0;d<curve.getLength();d+=1.5)for(const offset of [-.24,.24]){const m=new T.Mesh(curveRibbon(curve,offset-.085,offset+.085,.105,d,Math.min(d+.55,curve.getLength())),mats.white);m.name='ART branch guidance';scene.add(m);}
+ // ponytail: fixed baked pavement illumination keeps every lamp on without
+ // hundreds of realtime lights on mobile; dynamic shadows still come from headlights.
+ const nightMaterial=new T.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:.28,blending:T.AdditiveBlending,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+ const nightSurfaces=[];scene.updateMatrixWorld(true);scene.traverse(m=>{if(m.isMesh&&!m.isInstancedMesh&&(m.material===mats.road||m.material===mats.walk))nightSurfaces.push(m);});
+ for(const m of nightSurfaces){const geo=m.geometry.clone(),p=geo.attributes.position,colors=[];for(let i=0;i<p.count;i++){const v=new T.Vector3().fromBufferAttribute(p,i).applyMatrix4(m.matrixWorld);let glow=0;for(const l of lampPositions){if(Math.abs(l.y-v.y)>13)continue;const d=(v.x-l.x)**2+(v.z-l.z)**2;glow=Math.max(glow,Math.exp(-d/95));}colors.push(glow*.65,glow*.52,glow*.32);}geo.setAttribute('color',new T.Float32BufferAttribute(colors,3));const overlay=new T.Mesh(geo,nightMaterial);overlay.name='Fixed night illumination';overlay.visible=false;m.add(overlay);m.userData.nightOverlay=overlay;}
+ return {groups,plots,lampPositions,setNight(on){nightSurfaces.forEach(m=>m.userData.nightOverlay.visible=on);},nightMaterials:[mats.lamp,...windowMats],markingMaterial:mats.white,materials:mats,update(s){for(const g of groups)g.visible=Math.abs(g.userData.s-s)<850;},weather(wet){mats.road.roughness=wet?.32:.91;mats.road.color.set(wet?0x9da8ac:0xffffff);}};
 }
+
+export function curveRibbon(curve,left,right,y=0,start=0,end=curve.getLength()){const p=[],uv=[],idx=[],n=Math.max(1,Math.ceil((end-start)/.6)),length=curve.getLength();for(let i=0;i<=n;i++){const d=start+(end-start)*i/n,u=d/length,v=curve.getPointAt(u),t=curve.getTangentAt(u);for(const lat of [left,right]){p.push(v.x+t.z*lat,v.y+y,v.z-t.x*lat);uv.push(lat/5,d/5);}if(i<n){const a=i*2;idx.push(a,a+2,a+1,a+1,a+2,a+3);}}const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(p,3));g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();return g;}

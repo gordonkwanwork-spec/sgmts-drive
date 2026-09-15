@@ -163,7 +163,7 @@
       }
     ],
     "triangles": 42616,
-    "bytes": 2677936
+    "bytes": 2677940
   },
   "stations": [
     {
@@ -234,7 +234,7 @@
       "appearance": "ACABAS Issue 3 station render and ST-5301\u20135307 curved cladding",
       "inferred": "Poster artwork, furniture positions and A1 wing interpolation; platform dimensions from GA. Bench backs are outboard of seats, facing the carriageway.",
       "triangles": 40380,
-      "bytes": 2446076
+      "bytes": 2422820
     },
     {
       "id": "A3",

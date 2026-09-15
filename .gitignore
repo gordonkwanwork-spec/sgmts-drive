@@ -19,3 +19,6 @@ ONFOOT-SPEC.md
 # Blender autosave backups and build logs
 *.blend1
 assets/blender/*.log
+
+# Original recordings stay local; browser-ready music is in public/audio.
+Music/

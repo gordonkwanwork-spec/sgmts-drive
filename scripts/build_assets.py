@@ -93,9 +93,9 @@ def vehicle():
     mesh('Skyline livery',[(x,y,.35),(x,y+.23,.35),(x,y+.23,.35+h*.8),(x,y+.1,.35+h),(x,y,.35+h*.8)],[(0,1,2,3,4)],['teal','orange','blue','yellow','sand'][k%5],p)
    for wi,y in enumerate([-3.0,3.0]):
     bpy.ops.mesh.primitive_cylinder_add(vertices=24,radius=.48,depth=.22,location=(side*1.23,y,.49),rotation=(0,math.pi/2,0));w=bpy.context.object;w.name=f'{name}_wheel_{"left" if side<0 else "right"}_{wi}';w.parent=p;w.data.materials.append(M['rubber']);w['animated']=True
-    bpy.ops.mesh.primitive_cylinder_add(vertices=20,radius=.31,depth=.025,location=(side*1.355,y,.49),rotation=(0,math.pi/2,0));hub=bpy.context.object;hub.data.materials.append(M['steel']);hub.parent=p
+    bpy.ops.mesh.primitive_cylinder_add(vertices=20,radius=.31,depth=.025,location=(side*1.20,y,.49),rotation=(0,math.pi/2,0));hub=bpy.context.object;hub.data.materials.append(M['steel']);hub.parent=p
     for a in range(6):
-     theta=a*math.pi/3;box('Hub spoke',(side*1.37,y+.15*math.cos(theta),.49+.15*math.sin(theta)),(.015,.055,.055),'dark',p,.012)
+     theta=a*math.pi/3;box('Hub spoke',(side*1.21,y+.15*math.cos(theta),.49+.15*math.sin(theta)),(.015,.055,.055),'dark',p,.012)
    for di,y in enumerate([-1.6,1.2]):
     dn=f'{name}_door_{"left" if side<0 else "right"}_{di}';d=empty(dn,(side*1.335,y,0),p);d['door']=True
     box('Door frame',(0,0,1.59),(.042,1.12,2.46),'steel',d,.035)
@@ -125,7 +125,12 @@ def platform(id,side,width,offset,length=89.6,bent=False):
  p=empty(f'{id}_platform_{side}',(0,offset,0));edge=7.05
  # Bent A1 wing follows its dimensioned GA break; extension coordinate is measured approximation.
  def pt(x,y,z):return (side*(x+(max(0,-y-25)*.42 if bent else 0)),y,z)
- def b(n,x,y,z,sx,sy,sz,m,bev=0):return box(n,pt(x,y,z),(sx,sy,sz),m,p,bev)
+ def b(n,x,y,z,sx,sy,sz,m,bev=0):
+  o=box(n,(x,y,z),(sx,sy,sz),m,p,bev)
+  origin=Vector(pt(x,y,z))
+  for v in o.data.vertices:v.co=Vector(pt(*(v.co+Vector((x,y,z)))))-origin
+  o.location=origin
+  return o
  for y in range(-44,44,2):
   mesh('Platform slab',[pt(x,yy,z) for z in [0,.3] for yy in [y,y+2] for x in [edge,edge+width]],[(0,2,3,1),(4,5,7,6),(0,1,5,4),(2,6,7,3),(0,4,6,2),(1,3,7,5)],'concrete',p) if bent else b('Platform slab',edge+width/2,y+1,.15,width,2,.3,'concrete')
   for lane in range(int(width*2)):
@@ -198,6 +203,8 @@ def station(id):
 
 if __name__=='__main__':
  OUT.mkdir(exist_ok=True,parents=True);BLEND.mkdir(exist_ok=True,parents=True)
+ if '--vehicle' in sys.argv:
+  manifest=json.loads((OUT/'asset-manifest.json').read_text());manifest['vehicle']=vehicle();(OUT/'asset-manifest.json').write_text(json.dumps(manifest,indent=2));sys.exit(0)
  if '--station' in sys.argv:
   sid=sys.argv[sys.argv.index('--station')+1]
   if sid not in ['A'+str(i) for i in range(1,8)]:raise ValueError('Unknown station')

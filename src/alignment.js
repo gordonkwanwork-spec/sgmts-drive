@@ -42,6 +42,10 @@ export function project(x,z,sGuess) {
 const anchors=[[40,847,1145],[820,854,981],[1470,861,863],[1870,878,772],[2310,922,686],[2890,927,572],[3840,784,482]];
 // Densify long trace segments before applying the station straight sections.
 const dense=[];for(let i=1;i<PATH.length;i++){const a=PATH[i-1],b=PATH[i],n=Math.ceil((b.s-a.s)/2);for(let j=0;j<n;j++){const t=j/n;dense.push({x:a.x+(b.x-a.x)*t,z:a.z+(b.z-a.z)*t,s:a.s+(b.s-a.s)*t});}}dense.push({...PATH.at(-1)});PATH.splice(0,PATH.length,...dense);
+// Remove short-radius kinks inherited from the coarse key-plan trace. The GA
+// curves span tens of metres; preserve endpoints and reapply straight platforms below.
+const unsmoothed=PATH.map(p=>({...p}));
+for(const p of PATH){if(p.s<80||p.s>LENGTH-80)continue;let x=0,z=0,w=0;for(const q of unsmoothed){const d=q.s-p.s;if(Math.abs(d)>65)continue;const weight=Math.exp(-d*d/(2*22*22));x+=q.x*weight;z+=q.z*weight;w+=weight;}const blend=Math.min(1,(p.s-80)/50,(LENGTH-80-p.s)/50);p.x+=(x/w-p.x)*blend;p.z+=(z/w-p.z)*blend;}
 // Station GAs show straight platforms. Remove key-plan trace kinks within each
 // station footprint, blending back outside it; geographic station anchors stay put.
 for(const [,x,z] of anchors){const wx=(x*K-TRACE_PIXELS[0][0])*METRES_PER_PIXEL,wz=(z*K-TRACE_PIXELS[0][1])*METRES_PER_PIXEL,s=project(wx,wz);let i=1;while(PATH[i].s<s)i++;const a=PATH[i-1],b=PATH[i],t=(s-a.s)/(b.s-a.s),cx=a.x+(b.x-a.x)*t,cz=a.z+(b.z-a.z)*t,dx=b.x-a.x,dz=b.z-a.z,n=Math.hypot(dx,dz),lx=dz/n,lz=-dx/n;
@@ -116,3 +120,14 @@ export function railSample(s){const r=sample(s),offset=interp([[80,35],[160,0],[
 const d1a=sample(JUNCTIONS.find(j=>j.name==='Road D1').s),d1b=sample(UNDERPASSES.find(j=>j.name==='Road D1').s);
 const da={x:d1a.x-d1a.lx*80,z:d1a.z-d1a.lz*80,y:d1a.y},db={x:d1b.x-d1b.lx*80,z:d1b.z-d1b.lz*80,y:d1b.groundY};
 export const D1ROAD=Array.from({length:41},(_,i)=>{const t=i/40,u=1-t;return {x:u**3*da.x+3*u*u*t*(da.x-d1a.lx*120)+3*u*t*t*(db.x-d1b.lx*120)+t**3*db.x,z:u**3*da.z+3*u*u*t*(da.z-d1a.lz*120)+3*u*t*t*(db.z-d1b.lz*120)+t**3*db.z,y:da.y+(db.y-da.y)*(3*t*t-2*t*t*t)};});
+
+// Bay alignment is spatial: stationary vehicles never drift sideways.
+export function laneOffset(s,dir=1,skip=[]){let lane=1.9;for(const st of STOPS){if(skip.includes(st.id))continue;const platform=st.platforms.find(p=>p.side===dir),d=Math.abs(s-st.s-platform.centerOffset),u=clamp((st.footprintLength/2+40-d)/65,0,1);lane=Math.max(lane,1.9+3.5*u*u*u*(10-15*u+6*u*u));}return dir*lane;}
+export function curveRadius(s){const a=sample(s-4),b=sample(s+4),turn=Math.abs(Math.atan2(Math.sin(b.heading-a.heading),Math.cos(b.heading-a.heading)));return turn>1e-6?8/turn:Infinity;}
+
+// The opposite cab starts in the same lane; the crossover is travelled, never teleported.
+export const CROSSOVER_START=END_STOP-25.2;
+export function returnOffset(s){const u=clamp((CROSSOVER_START-s)/70,0,1);return s>CROSSOVER_START-70?1.9-3.8*u*u*u*(10-15*u+6*u*u):laneOffset(s,-1);}
+
+export const CYCLE_BRIDGES=[...UNDERPASSES,...JUNCTIONS.filter(j=>j.halfWidth>7)];
+export function cycleBridgeHeight(s){return CYCLE_BRIDGES.some(j=>Math.abs(s-j.s)<j.halfWidth+8)?6.4:cycleHeight(s);}

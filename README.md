@@ -48,7 +48,7 @@ The rest are there when you want them.
 | **Space** | Parking brake on/off (gradual emergency stop if you are moving) |
 | **E** | Open / close the doors |
 | **X** | Choose left or right doors while they are closed |
-| **V** | Cruise assist — it manages speed for you; you still do doors and brake |
+| **V** | Cruise assist — follows the marked route and manages speed; you handle doors and brake |
 | **G** | Lane guidance on/off |
 | **B** | Boarding ramp (doors open + brake applied) |
 | **Q** | Acknowledge a passenger request |
@@ -65,6 +65,16 @@ altitude, drag to look.
 ![Driving between stations](screenshots/driving.jpg)
 
 ---
+
+## Route choices and live map
+
+- **Skip next station** selects the through lane for an express stop. Choose before the station approach.
+- **Depot** selects the depot branch when approaching its entrance.
+- Beyond A7, stop with doors closed and choose **Change cab** to cross to the return lane. Cruise returns via the A1 roundabout.
+- The live map uses a gold triangle for your vehicle, blue rectangles for other ART services and cream circles for stations. Junction callouts show their road name and GO, WAIT or STOP phase; D3 is below the viaduct.
+- The circular button at the top right hides the interface. Tap it again to restore controls.
+
+Menu music plays at launch when the browser permits audio, or after the first tap. Day and night driving tracks fade in as speed builds and fade out when stopped or crashed. **Sound** mutes both music and driving sounds.
 
 ## Things to try
 
@@ -136,9 +146,7 @@ npm run dev
 
 ### Requirements
 
-A desktop or laptop with a reasonably modern browser. Chrome is what this is tested on; Edge,
-Firefox and Safari also work. Phones and tablets are not supported — there is no touch control
-scheme and the models are heavy. The game needs WebGL, which any current desktop browser has.
+A modern WebGL browser on a desktop, phone or tablet. Touch devices have automatic steering and large Go, Stop, Doors and Camera controls. Desktop and emulated mobile Chrome have been checked; performance on physical phones and other browsers varies with the device.
 
 ![The corridor](screenshots/corridor.jpg)
 
