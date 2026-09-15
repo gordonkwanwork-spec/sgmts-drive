@@ -68,10 +68,10 @@ altitude, drag to look.
 
 ## Route choices and live map
 
-- **Skip next station** selects the through lane for an express stop. Choose before the station approach.
+- Open **☰ Journey options** for settings and route choices. **Skip next station** selects the through lane for an express stop. Choose before the station approach.
 - **Depot** selects the depot branch when approaching its entrance.
 - Beyond A7, stop with doors closed and choose **Change cab** to cross to the return lane. Cruise returns via the A1 roundabout.
-- The live map uses a gold triangle for your vehicle, blue rectangles for other ART services and cream circles for stations. Junction callouts show their road name and GO, WAIT or STOP phase; D3 is below the viaduct.
+- Tap the circular nearby map to open the full route. Gold is your vehicle, blue arrows show other ART services and their directions, cream circles are stations, and the purple square identifies the depot. Only junctions crossing the corridor show signal phases.
 - The circular button at the top right hides the interface. Tap it again to restore controls.
 
 Menu music plays at launch when the browser permits audio, or after the first tap. Day and night driving tracks fade in as speed builds and fade out when stopped or crashed. **Sound** mutes both music and driving sounds.
