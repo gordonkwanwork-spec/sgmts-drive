@@ -150,3 +150,11 @@ for(const st of STOPS)for(const platform of st.platforms)for(const dir of [-1,1]
  assert(Math.abs(a[0].y-b[0].y)/a[0].distanceTo(b[0])<1/12,'Station approach remains a gentle ramp');
 }
 console.log('Intersection fence openings and all station ramp endpoints passed.');
+
+const {pavementLight}=await import('./environment.js');
+const cycleLamp={s:1200,x:sample(1200).x,y:sample(1200).groundY+5,z:sample(1200).z,kind:'cycle'},surface={x:cycleLamp.x,y:cycleLamp.y-4.7,z:cycleLamp.z};
+assert(pavementLight(surface,[cycleLamp])>.8,'LED must light the pavement beneath it');
+assert(pavementLight({...surface,x:surface.x+60},[cycleLamp])<.01,'Light must fade outside its pool');
+assert.equal(pavementLight({...surface,y:cycleLamp.y+1},[cycleLamp]),0,'Downward light must not illuminate a surface above the fixture');
+assert(pavementLight({...surface,x:surface.x+sample(1200).tx*11.5,z:surface.z+sample(1200).tz*11.5},[cycleLamp])>.1,'Cycle lighting must reach halfway to the next pole');
+console.log('Night pavement light coverage and falloff passed.');

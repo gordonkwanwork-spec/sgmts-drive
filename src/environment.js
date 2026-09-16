@@ -1,3 +1,4 @@
+import {TessellateModifier} from 'three/addons/modifiers/TessellateModifier.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {terminalCurve,depotCurve,l35BendCurve} from './routes.js';
 import * as T from 'three';
@@ -30,6 +31,17 @@ export function stationAccess(st,platform,dir){
  return {a,b,end};
 }
 const stationFenceSpans=STOPS.flatMap(st=>st.platforms.map(p=>({side:p.side,start:stationAccess(st,p,-1).end,end:stationAccess(st,p,1).end})));
+// Static neutral-white LED pools; preserve the pavement colour beneath them.
+export function pavementLight(v,lamps){
+ let glow=0;
+ for(const l of lamps){
+  const height=l.y-v.y;if(height<.1||height>15)continue;
+  const dx=v.x-l.x,dz=v.z-l.z;if(Math.abs(dx)>55||Math.abs(dz)>55)continue;const r=l.axis||sample(l.s),along=dx*r.tx+dz*r.tz,across=dx*r.lx+dz*r.lz;
+  const radius=l.kind==='cycle'?8:Math.max(9,Math.min(18,height*1.5)),width=l.kind==='cycle'?4:Math.max(5,height*.9);
+  glow=Math.max(glow,Math.exp(-(along*along/(radius*radius)+across*across/(width*width)))*.9);
+ }
+ return glow;
+}
 export function channelDepth(x,z){return Math.max(0,...CHANNELS.map(c=>{const r=sample(c.s),dx=x-r.x,dz=z-r.z;return Math.abs(dx*r.lx+dz*r.lz)<c.extent?3.8*Math.max(0,Math.min(1,(c.width/2+3-Math.abs(dx*r.tx+dz*r.tz))/3)):0;}));}
 // Scenery must clear every nearby bend and crossing road, not just its placement sample.
 export function sceneryClear(x,z,radius){
@@ -157,7 +169,7 @@ export function buildEnvironment(scene){
   if(!r.elevated&&!inJunction(s)&&!STOPS.some(st=>Math.abs(st.s-s)<st.footprintLength/2+6))for(const side of wide||near?[-1,1]:[1])if(!(side===1&&inDepot(s)))utilityPole(s,side*(roadSection(s).right+3.95),near&&wide?12:10,'road',side);
   s+=near||bend?27:35;
  }
- for(let s=12;s<LENGTH;s+=23){if([...JUNCTIONS,...UNDERPASSES].some(j=>Math.abs(j.s-s)<j.halfWidth+26))continue;utilityPole(s,cycleOffset(s)+2.3,5,'cycle',1,true);}
+ for(let s=12;s<LENGTH;s+=23){if([...JUNCTIONS,...UNDERPASSES].some(j=>Math.abs(j.s-s)<j.halfWidth+5))continue;utilityPole(s,cycleOffset(s)+2.3,5,'cycle',1,true);}
  for(const st of STOPS)for(const ds of [-30,0,30])for(const lat of [-9,9]){const p=at(st.s+ds,lat);lampPositions.push({s:st.s+ds,x:p.x,y:sample(st.s+ds).y+3.4,z:p.z});}
  const cycle=new T.Mesh(cycleGeometry(),new T.MeshStandardMaterial({color:0x286e58,roughness:.92,side:T.DoubleSide}));cycle.name='continuous-green-cycleway';cycle.receiveShadow=true;scene.add(cycle);
  for(const side of [-1,1]){const line=new T.Mesh(ribbon(0,LENGTH,s=>cycleOffset(s)+side*1.86-.045,s=>cycleOffset(s)+side*1.86+.045,s=>cycleHeight(s)+.018,true,cycleCrossing),mats.white);scene.add(line);}
@@ -321,10 +333,18 @@ export function buildEnvironment(scene){
  for(const curve of [terminalCurve,depotCurve])for(let d=0;d<curve.getLength();d+=1.5)for(const offset of [-.24,.24]){const m=new T.Mesh(curveRibbon(curve,offset-.085,offset+.085,.105,d,Math.min(d+.55,curve.getLength())),mats.white);m.name='ART branch guidance';scene.add(m);}
  // ponytail: fixed baked pavement illumination keeps every lamp on without
  // hundreds of realtime lights on mobile; dynamic shadows still come from headlights.
- const nightMaterial=new T.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:.28,blending:T.AdditiveBlending,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+ const tessellate=new TessellateModifier(4,8);
  scene.updateMatrixWorld(true);scene.traverse(m=>{if(!m.isMesh||m.isInstancedMesh||!m.material?.map||![roadTex,paverTex].includes(m.material.map))return;const p=m.geometry.attributes.position,uv=[];for(let i=0;i<p.count;i++){const v=new T.Vector3().fromBufferAttribute(p,i).applyMatrix4(m.matrixWorld);uv.push(v.x/3.2,v.z/3.2);}m.geometry.setAttribute('uv',new T.Float32BufferAttribute(uv,2));});
- const nightSurfaces=[];scene.updateMatrixWorld(true);scene.traverse(m=>{if(m.isMesh&&!m.isInstancedMesh&&(m.material===mats.road||m.material===mats.walk))nightSurfaces.push(m);});
- for(const m of nightSurfaces){const geo=m.geometry.clone(),p=geo.attributes.position,colors=[];for(let i=0;i<p.count;i++){const v=new T.Vector3().fromBufferAttribute(p,i).applyMatrix4(m.matrixWorld);let glow=0;for(const l of lampPositions){if(Math.abs(l.y-v.y)>13)continue;const d=(v.x-l.x)**2+(v.z-l.z)**2;glow=Math.max(glow,Math.exp(-d/95));}colors.push(glow*.72,glow*.68,glow*.58);}geo.setAttribute('color',new T.Float32BufferAttribute(colors,3));const overlay=new T.Mesh(geo,nightMaterial);overlay.name='Fixed night illumination';overlay.visible=false;m.add(overlay);m.userData.nightOverlay=overlay;}
+ const nightSurfaces=[];scene.updateMatrixWorld(true);scene.traverse(m=>{if(m.isMesh&&!m.isInstancedMesh&&(m.material===mats.road||m.material===mats.walk||m===cycle||m.name==='Elevated cycle connection'))nightSurfaces.push(m);});
+ for(const m of nightSurfaces){
+  const geo=tessellate.modify(m.geometry),p=geo.attributes.position,colors=[],v=new T.Vector3(),base=m.material.color;
+  geo.computeBoundingBox();const bounds=geo.boundingBox.clone().applyMatrix4(m.matrixWorld).expandByScalar(55),lamps=lampPositions.filter(l=>bounds.containsPoint(new T.Vector3(l.x,l.y,l.z))).map(l=>({...l,axis:sample(l.s)}));
+  for(let i=0;i<p.count;i++){v.fromBufferAttribute(p,i).applyMatrix4(m.matrixWorld);const glow=pavementLight(v,lamps)*1.05;colors.push(glow*base.r,glow*base.g*.94,glow*base.b*.83);}
+  geo.setAttribute('color',new T.Float32BufferAttribute(colors,3));
+  const material=new T.MeshBasicMaterial({map:m.material.map,vertexColors:true,transparent:true,opacity:.85,blending:T.AdditiveBlending,depthWrite:false,side:m.material.side,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+  const overlay=new T.Mesh(geo,material);overlay.name='Fixed night illumination';overlay.visible=false;m.add(overlay);m.userData.nightOverlay=overlay;
+ }
+
  return {groups,plots,lampPositions,setNight(on){nightSurfaces.forEach(m=>m.userData.nightOverlay.visible=on);},nightMaterials:[mats.lamp,...windowMats],markingMaterial:mats.white,materials:mats,update(s){for(const g of groups)g.visible=Math.abs(g.userData.s-s)<850;},weather(wet){mats.road.roughness=wet?.32:.91;mats.road.color.set(wet?0x9da8ac:0xffffff);}};
 }
 
