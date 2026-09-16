@@ -139,3 +139,14 @@ const artBuffer=readFileSync('public/assets/art.glb');
 const artJSON=JSON.parse(artBuffer.subarray(20,20+artBuffer.readUInt32LE(12)).toString());
 for(const [prefix,count] of [['driver_eye',2],['cockpit_section_',2],['passenger_interior_',3],['cab_display',10]])assert.equal(artJSON.nodes.filter(n=>n.name?.startsWith(prefix)&&(prefix==='cab_display'||n.mesh===undefined)).length,count,prefix+' Blender nodes');
 assert(manifest.vehicle.triangles<100000,'Detailed vehicle stays within the geometry budget');
+
+const {fenceAllowed,stationAccess}=await import('./environment.js');
+for(const c of [...CROSSINGS,...JUNCTIONS.flatMap(j=>[-1,1].map(d=>({s:j.s+d*(j.halfWidth+10)})))])for(const side of [-1,1])for(let q=c.s-7;q<c.s+6;q+=.5)if(q+2.2>c.s-6)assert(!fenceAllowed(q,q+2.2,side),'Fence must leave the full crossing opening clear');
+for(const st of STOPS)for(const platform of st.platforms)for(const dir of [-1,1]){
+ const {a,b,end}=stationAccess(st,platform,dir),r=sample(end);
+ for(const p of [...a,...b])assert(p.toArray().every(Number.isFinite));
+ assert(Math.abs(b[0].y-r.groundY-footpathHeight(end)-.003)<1e-9,'Ramp meets sidewalk without a step');
+ assert(a[0].distanceTo(a[1])>st.width-.001,'Full-width station entrance');
+ assert(Math.abs(a[0].y-b[0].y)/a[0].distanceTo(b[0])<1/12,'Station approach remains a gentle ramp');
+}
+console.log('Intersection fence openings and all station ramp endpoints passed.');

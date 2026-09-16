@@ -6,6 +6,30 @@ export {JUNCTIONS,UNDERPASSES} from './alignment.js';
 const inJunction=s=>JUNCTIONS.some(j=>Math.abs(s-j.s)<j.halfWidth+6);
 const inDepot=s=>Math.abs(s-DEPOT.s)<DEPOT.opening/2;
 const groundCrossing=s=>inJunction(s)||UNDERPASSES.some(j=>Math.abs(j.s-s)<j.halfWidth+.5);
+// Test the whole panel, including the junction zebras beyond the corner returns.
+export function fenceAllowed(start,end,side){
+ const overlaps=(centre,half)=>start<centre+half&&end>centre-half;
+ return !sample(start).elevated&&!sample(end).elevated&&!groundCrossing(start)&&!groundCrossing(end)
+  &&!CROSSINGS.some(c=>overlaps(c.s,6))
+  &&!JUNCTIONS.some(j=>[-1,1].some(d=>overlaps(j.s+d*(j.halfWidth+10),6)))
+  &&!stationFenceSpans.some(p=>p.side===side&&start<p.end&&end>p.start)
+  &&!(side===1&&overlaps(DEPOT.s,22));
+}
+export function stationAccess(st,platform,dir){
+ const r=sample(st.s),along=platform.centerOffset+dir*44.8,angle=0;
+ const transform=new T.Matrix4().makeRotationFromEuler(new T.Euler(angle,r.heading,0,'YXZ')).setPosition(r.x,r.y,r.z);
+ const bend=st.id==='A1'?Math.max(0,-dir*44.8-25)*.42:0;
+ const a=[7.05,7.05+st.width].map(x=>new T.Vector3(-platform.side*(x+bend),sample(st.s+along).y-r.y+.30,-along).applyMatrix4(transform));
+ let end,b;
+ for(let length=10;length<=80;length+=2){
+  end=st.s+along+dir*length;const q=sample(end);
+  b=[roadSection(end).right,roadSection(end).right+3.75].map(x=>new T.Vector3(q.x+q.lx*platform.side*x,q.groundY+footpathHeight(end)+.003,q.z+q.lz*platform.side*x));
+  if(Math.abs(a[0].y-b[0].y)/a[0].distanceTo(b[0])<=1/15)break;
+ }
+
+ return {a,b,end};
+}
+const stationFenceSpans=STOPS.flatMap(st=>st.platforms.map(p=>({side:p.side,start:stationAccess(st,p,-1).end,end:stationAccess(st,p,1).end})));
 export function channelDepth(x,z){return Math.max(0,...CHANNELS.map(c=>{const r=sample(c.s),dx=x-r.x,dz=z-r.z;return Math.abs(dx*r.lx+dz*r.lz)<c.extent?3.8*Math.max(0,Math.min(1,(c.width/2+3-Math.abs(dx*r.tx+dz*r.tz))/3)):0;}));}
 // Scenery must clear every nearby bend and crossing road, not just its placement sample.
 export function sceneryClear(x,z,radius){
@@ -137,7 +161,15 @@ export function buildEnvironment(scene){
  for(const st of STOPS)for(const ds of [-30,0,30])for(const lat of [-9,9]){const p=at(st.s+ds,lat);lampPositions.push({s:st.s+ds,x:p.x,y:sample(st.s+ds).y+3.4,z:p.z});}
  const cycle=new T.Mesh(cycleGeometry(),new T.MeshStandardMaterial({color:0x286e58,roughness:.92,side:T.DoubleSide}));cycle.name='continuous-green-cycleway';cycle.receiveShadow=true;scene.add(cycle);
  for(const side of [-1,1]){const line=new T.Mesh(ribbon(0,LENGTH,s=>cycleOffset(s)+side*1.86-.045,s=>cycleOffset(s)+side*1.86+.045,s=>cycleHeight(s)+.018,true,cycleCrossing),mats.white);scene.add(line);}
- for(const st of STOPS)for(const platform of st.platforms)for(const dir of [-1,1]){const edgeS=st.s+platform.centerOffset+dir*44.8,start=Math.max(0,Math.min(edgeS,edgeS+dir*10)),end=Math.min(LENGTH,Math.max(edgeS,edgeS+dir*10));const u=q=>Math.min(1,Math.abs(q-edgeS)/10),inner=q=>platform.side*roadSection(q).right,outer=q=>inner(q)+platform.side*(st.width+(3.75-st.width)*u(q));const mesh=new T.Mesh(ribbon(start,end,q=>Math.min(inner(q),outer(q)),q=>Math.max(inner(q),outer(q)),q=>.31+(footpathHeight(q)-.31)*(u(q)*u(q)*(3-2*u(q))),true),mats.walk);mesh.name='Smooth station footpath connection';scene.add(mesh);}
+ for(const st of STOPS)for(const platform of st.platforms)for(const dir of [-1,1]){
+  if(st.id==='A1'&&dir===-1)continue;
+  const {a,b}=stationAccess(st,platform,dir),g=new T.BufferGeometry();
+  g.setAttribute('position',new T.Float32BufferAttribute([...a[0].toArray(),...a[1].toArray(),...b[0].toArray(),...b[1].toArray()],3));
+  g.setAttribute('uv',new T.Float32BufferAttribute([0,0,st.width/5,0,0,2,.75,2],2));
+  g.setIndex(platform.side*dir===1?[0,2,1,1,2,3]:[0,1,2,1,3,2]);g.computeVertexNormals();
+  const mesh=new T.Mesh(g,mats.walk);mesh.name='Smooth station footpath connection';scene.add(mesh);
+ }
+
  // White lane divider, direction arrows, cycle symbols and amber approach bands (user photo).
  for(let s=0;s<LENGTH-3;s+=6){if(cycleCrossing(s)||cycleCrossing(s+2))continue;const line=new T.Mesh(ribbon(s,s+2,s=>cycleOffset(s)-.045,s=>cycleOffset(s)+.045,q=>cycleHeight(q)+.018,true),mats.white);scene.add(line);}
  const label=document.createElement('canvas');label.width=128;label.height=256;const ctx=label.getContext('2d');ctx.strokeStyle='white';ctx.lineWidth=5;for(const x of [35,93]){ctx.beginPath();ctx.arc(x,172,23,0,Math.PI*2);ctx.stroke();}ctx.beginPath();ctx.moveTo(35,172);ctx.lineTo(51,133);ctx.lineTo(76,172);ctx.closePath();ctx.moveTo(51,133);ctx.lineTo(82,133);ctx.lineTo(93,172);ctx.moveTo(82,133);ctx.lineTo(88,117);ctx.stroke();ctx.fillStyle='white';ctx.font='65px sans-serif';ctx.fillText('↑',37,83);const signTex=new T.CanvasTexture(label),signMat=new T.MeshBasicMaterial({map:signTex,transparent:true,depthWrite:false});
@@ -256,13 +288,23 @@ export function buildEnvironment(scene){
  for(let ds=-100;ds<=115;ds+=25)for(const lat of [-22,-72]){const p=at(a2.s+ds,lat),ch=Math.floor(a2.s/240);box('plaza-light-pole',mats.metal,p.x,p.y+3.5,p.z,.12,7,.12,0,ch);box('plaza-globe',mats.lamp,p.x,p.y+7,p.z,.7,.25,.7,0,ch);lampPositions.push({s:a2.s+ds,x:p.x,y:p.y+7,z:p.z});}
  // Steel pedestrian panels sit on the kerb side, leaving junctions and crossings open.
  function pedestrianPanel(a,b,ch){const length=a.distanceTo(b),heading=Math.atan2(a.x-b.x,a.z-b.z),mid=a.clone().add(b).multiplyScalar(.5);
-  for(const h of [.18,1.05])box('pedestrian-steel-rail',mats.galvanised,mid.x,mid.y+h,mid.z,.045,.045,length,heading,ch);
+  for(const h of [.18,1.05])batch('pedestrian-steel-rail',geo.box,mats.galvanised,new T.Vector3(mid.x,mid.y+h,mid.z),new T.Vector3(.045,.045,length),new T.Euler(Math.atan2(b.y-a.y,Math.hypot(b.x-a.x,b.z-a.z)),heading,0,'YXZ'),ch);
   for(let d=0;d<=length;d+=.22){const p=a.clone().lerp(b,d/length);box('pedestrian-steel-bar',mats.galvanised,p.x,p.y+.61,p.z,.025,.88,.025,heading,ch);}
   box('pedestrian-steel-post',mats.galvanised,a.x,a.y+.6,a.z,.065,1.2,.065,heading,ch);
  }
  for(const j of [...JUNCTIONS,...UNDERPASSES])for(const side of [-1,1])for(let lat=-j.extent;lat<j.extent-2;lat+=2.2){if(Math.abs(lat)<42)continue;const r=sample(j.s),a=at(j.s,lat),b=at(j.s,lat+2.2);for(const p of [a,b]){p.x+=r.tx*side*(j.halfWidth+.25);p.z+=r.tz*side*(j.halfWidth+.25);p.y+=.3;}pedestrianPanel(a,b,Math.floor(j.s/240));}
  for(let q=L35.start+30;q<bendStart-4;q+=2.2)for(const side of [-1,1]){const a=at(q,-l35Offset(q)+side*(L35.width/2+.25)),b=at(q+2.2,-l35Offset(q+2.2)+side*(L35.width/2+.25));a.y+=.3;b.y+=.3;pedestrianPanel(a,b,Math.floor(q/240));}
- for(let q=35;q<LENGTH-3;q+=2.2){if(sample(q).elevated||groundCrossing(q)||CROSSINGS.some(c=>Math.abs(c.s-q)<6)||STOPS.some(st=>Math.abs(st.s-q)<st.footprintLength/2+20))continue;for(const side of [-1,1]){if(side===1&&Math.abs(q-DEPOT.s)<22)continue;const a=at(q,side*(roadSection(q).right+.25)),b=at(q+2.2,side*(roadSection(q+2.2).right+.25));a.y+=footpathHeight(q);b.y+=footpathHeight(q+2.2);pedestrianPanel(a,b,Math.floor(q/240));}}
+ for(let q=35;q<LENGTH-3;q+=2.2)for(const side of [-1,1]){if(!fenceAllowed(q,q+2.2,side))continue;const a=at(q,side*(roadSection(q).right+.25)),b=at(q+2.2,side*(roadSection(q+2.2).right+.25));a.y+=footpathHeight(q);b.y+=footpathHeight(q+2.2);pedestrianPanel(a,b,Math.floor(q/240));}
+ // Continue the roadside barrier along each ramp, without fencing across its entrance.
+ for(const st of STOPS)for(const platform of st.platforms)for(const dir of [-1,1]){
+  if(st.id==='A1'&&dir===-1)continue;
+  const {a,b,end}=stationAccess(st,platform,dir),inner=a[0].clone().lerp(a[1],.18/st.width),outer=b[0].clone().lerp(b[1],.25/3.75);
+  const q=dir===1?Math.ceil((end-35)/2.2)*2.2+35:Math.floor((end-35)/2.2)*2.2+35;
+  const tie=at(q,platform.side*(roadSection(q).right+.25));tie.y+=footpathHeight(q);
+  for(let i=0;i<5;i++)pedestrianPanel(inner.clone().lerp(outer,i/5),inner.clone().lerp(outer,(i+1)/5),Math.floor(st.s/240));
+  pedestrianPanel(outer,tie,Math.floor(st.s/240));
+ }
+
  for(const [key,b] of Object.entries(instances)){if(/^(trunk|foliage|planter)-/.test(key))b.matrices=b.matrices.filter(m=>plots.every(p=>Math.hypot(m.elements[12]-p.x,m.elements[14]-p.z)>p.radius+2));if(!b.matrices.length)continue;const mesh=new T.InstancedMesh(b.geometry,b.material,b.matrices.length);b.matrices.forEach((m,i)=>mesh.setMatrixAt(i,m));mesh.receiveShadow=true;mesh.castShadow=b.material!==foliage;groups[b.chunk]?.add(mesh);}
  // The source-dimensioned A1 annular driving area is rendered as well as simulated.
  const ringGeo=new T.RingGeometry(LOOP.innerRadius,LOOP.outerRadius,96);ringGeo.rotateX(-Math.PI/2);const ring=new T.Mesh(ringGeo,mats.road);ring.position.set(LOOP.center.x,LOOP.y+.02,LOOP.center.z);ring.receiveShadow=true;scene.add(ring);
@@ -271,7 +313,7 @@ export function buildEnvironment(scene){
  const shape=new T.Shape();shape.moveTo(-7.05,25);shape.lineTo(-15.37,44.8);shape.lineTo(-14.28,47.55);shape.lineTo(14.28,47.55);shape.lineTo(15.37,44.8);shape.lineTo(7.05,25);shape.closePath();const tie=new T.ShapeGeometry(shape);tie.rotateX(Math.PI/2);const tieMesh=new T.Mesh(tie,new T.MeshStandardMaterial({map:roadTex,roughness:.91,side:T.DoubleSide}));tieMesh.position.y=.012;throat.add(tieMesh);
  const outerWalk=new T.Mesh(new T.RingGeometry(LOOP.outerRadius,LOOP.outerRadius+3.75,96,1,Math.atan2(-r.tz,r.tx)+Math.PI/3,Math.PI*4/3),mats.walk);outerWalk.geometry.rotateX(-Math.PI/2);outerWalk.position.set(LOOP.center.x,LOOP.y+.3,LOOP.center.z);scene.add(outerWalk);
  // Connect both platform access ramps to the loop footpath without crossing its carriageway.
- for(const side of [-1,1]){const g=new T.BufferGeometry(),v=[];for(const [x,z,y] of [[15.37,44.8,.02],[20.37,44.8,.02],[20.568,49.675,.30],[17.321,51.55,.30]])v.push(r.x+r.lx*x*side-r.tx*z,r.y+y,r.z+r.lz*x*side-r.tz*z);g.setAttribute('position',new T.Float32BufferAttribute(v,3));g.setIndex(side===1?[0,2,1,0,3,2]:[0,1,2,0,2,3]);g.computeVertexNormals();const m=new T.Mesh(g,new T.MeshStandardMaterial({map:paverTex,roughness:.96,side:T.DoubleSide}));m.name='A1-loop-footpath-link-'+side;scene.add(m);}
+ for(const side of [-1,1]){const g=new T.BufferGeometry(),v=[];for(const [x,z,y] of [[15.37,44.8,.30],[20.37,44.8,.30],[20.568,49.675,.30],[17.321,51.55,.30]])v.push(r.x+r.lx*x*side-r.tx*z,r.y+y,r.z+r.lz*x*side-r.tz*z);g.setAttribute('position',new T.Float32BufferAttribute(v,3));g.setIndex(side===1?[0,2,1,0,3,2]:[0,1,2,0,2,3]);g.computeVertexNormals();const m=new T.Mesh(g,new T.MeshStandardMaterial({map:paverTex,roughness:.96,side:T.DoubleSide}));m.name='A1-loop-footpath-link-'+side;scene.add(m);}
  // Distant hills: a continuous ridgeline, well outside the traced corridor.
  const hillMat=new T.MeshStandardMaterial({color:0x65765c,roughness:1});
  for(let i=0;i<26;i++){let r=sample(LENGTH*i/25),hill=new T.Mesh(new T.SphereGeometry(1,18,12),hillMat);hill.position.set(r.x-450-rnd()*280,r.groundY-25,r.z);hill.scale.set(210+rnd()*160,80+rnd()*130,260);if(sceneryClear(hill.position.x,hill.position.z,Math.max(hill.scale.x,hill.scale.z)+20))scene.add(hill);}

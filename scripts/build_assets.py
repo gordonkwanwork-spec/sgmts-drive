@@ -216,16 +216,17 @@ def platform(id,side,width,offset,length=89.6,bent=False):
   for v in o.data.vertices:v.co=Vector(pt(*(v.co+Vector((x,y,z)))))-origin
   o.location=origin
   return o
- for y in range(-44,44,2):
-  mesh('Platform slab',[pt(x,yy,z) for z in [0,.3] for yy in [y,y+2] for x in [edge,edge+width]],[(0,2,3,1),(4,5,7,6),(0,1,5,4),(2,6,7,3),(0,4,6,2),(1,3,7,5)],'concrete',p) if bent else b('Platform slab',edge+width/2,y+1,.15,width,2,.3,'concrete')
+ for y in range(-42,42,2):
+  low=max(y,-41.8);high=min(y+2,41.8);mid=(low+high)/2;span=high-low
+  mesh('Platform slab',[pt(x,yy,z) for z in [0,.3] for yy in [low,high] for x in [edge,edge+width]],[(0,2,3,1),(4,5,7,6),(0,1,5,4),(2,6,7,3),(0,4,6,2),(1,3,7,5)],'concrete',p) if bent else b('Platform slab',edge+width/2,mid,.15,width,span,.3,'concrete')
   for lane in range(int(width*2)):
-   b('Paver course',edge+.25+lane*.5,y+1,.306,.485,1.985,.018,'tile')
-  b('Tactile warning',edge+.38,y+1,.329,.4,1.985,.026,'yellow')
-  for rail in [-.12,0,.12]:b('Tactile rib',edge+.38+rail,y+1,.348,.025,1.98,.017,'yellow')
+   b('Paver course',edge+.25+lane*.5,mid,.306,.485,span-.015,.018,'tile')
+  b('Tactile warning',edge+.38,mid,.329,.4,span-.015,.026,'yellow')
+  for rail in [-.12,0,.12]:b('Tactile rib',edge+.38+rail,mid,.348,.025,span-.02,.017,'yellow')
  # 3m end ramps, total overall 89.6m with central 83.6m flat deck.
  for end in [-1,1]:
   y0=end*41.8;y1=end*44.8;x0=edge;x1=edge+width
-  mesh('Access ramp',[pt(x0,y0,.31),pt(x1,y0,.31),pt(x1,y1,.30),pt(x0,y1,.30)],[(0,1,2,3)],'tile',p)
+  mesh('Access ramp',[pt(x0,y0,.315),pt(x1,y0,.315),pt(x1,y1,.30),pt(x0,y1,.30)],[(0,1,2,3)],'tile',p)
  # ACABAS station render and ST-5301–5307: continuous aluminium back wall,
  # curved haunch, 5 m structural bays and open boarding face.
  for bay,y in enumerate([-39.8+i*5 for i in range(17)]):
@@ -257,7 +258,7 @@ def platform(id,side,width,offset,length=89.6,bent=False):
  # Roadside approach rails run longitudinally, leaving the access through the gates clear.
  for end in [-1,1]:
   rail=empty(f'{id}_platform_{side}_approach_rail_{end}',parent=p)
-  def height(y):return .31-.29*max(0,(abs(y)-41.8)/3)
+  def height(y):return .315-.015*max(0,(abs(y)-41.8)/3)
   tube('Approach handrail',[pt(edge+.18,end*y,height(y)+1.09) for y in [36.5,41.8,44.8]],.035,'steel',rail)
   for j in range(53):
    y=end*(36.5+j*8.3/52);z=height(y)
