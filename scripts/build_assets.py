@@ -140,7 +140,7 @@ def platform(id,side,width,offset,length=89.6,bent=False):
  # 3m end ramps, total overall 89.6m with central 83.6m flat deck.
  for end in [-1,1]:
   y0=end*41.8;y1=end*44.8;x0=edge;x1=edge+width
-  mesh('Access ramp',[pt(x0,y0,.31),pt(x1,y0,.31),pt(x1,y1,.02),pt(x0,y1,.02)],[(0,1,2,3)],'tile',p)
+  mesh('Access ramp',[pt(x0,y0,.31),pt(x1,y0,.31),pt(x1,y1,.30),pt(x0,y1,.30)],[(0,1,2,3)],'tile',p)
  # ACABAS station render and ST-5301–5307: continuous aluminium back wall,
  # curved haunch, 5 m structural bays and open boarding face.
  for bay,y in enumerate([-39.8+i*5 for i in range(17)]):

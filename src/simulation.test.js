@@ -81,7 +81,7 @@ for(const b of BRIDGES){assert.equal(sample(fromChainage((b.start+b.deckStart)/2
 for(const j of UNDERPASSES){const r=sample(j.s),b=BRIDGES.find(b=>b.id===r.bridge);assert(r.y-r.groundY-b.depth>5.1,'Underpass clearance '+b.id);assert(!b.piers.some(c=>Math.abs(fromChainage(c)-j.s)<j.halfWidth+1.5),'Piers must clear the busy road');}
 assert(CROSSINGS.length>=12);for(const c of CROSSINGS){assert(!sample(c.s).elevated);assert.equal(footpathHeight(c.s),.02);}
 assert(Math.abs(footpathHeight(STOPS[1].s)-.30)<1e-12);
-assert.equal(CYCLE_WIDTH,4);for(const st of STOPS.filter(st=>st.id!=='A6'))assert(Math.abs(-cycleOffset(st.s)-CYCLE_WIDTH/2-7.05-st.width)<1e-9,'Cycle track touches '+st.id+' back edge');
+assert.equal(CYCLE_WIDTH,4);for(const st of STOPS.filter(st=>st.id!=='A6'))assert(Math.abs(-cycleOffset(st.s)-CYCLE_WIDTH/2-7.05-st.width-.6)<1e-9,'Cycle track verge clears '+st.id+' back edge');
 const terminal=sample(STOPS[0].s),dx=LOOP.center.x-terminal.x,dz=LOOP.center.z-terminal.z;assert(Math.abs(dx*terminal.lx+dz*terminal.lz)<1e-8,'Loop and station share an axis');assert(Math.abs(Math.hypot(dx,dz)-61.55)<1e-8);
 assert.equal(toChainage(LENGTH),4526);
 console.log(`Drawing corrections passed: minimum centreline radius ${minimum.toFixed(1)} m; 15 m steering, bridge FRLs/clearances, crossings, cycle adjacency and terminal registration.`);
@@ -131,3 +131,5 @@ for(const st of STOPS)assert.equal(laneOffset(st.s,1,[st.id]),1.9,'Express branc
 const {terminalCurve,depotCurve,l35BendCurve,l35TrafficCurve}=await import('./routes.js');
 for(const curve of [terminalCurve,depotCurve,l35BendCurve,l35TrafficCurve])for(let i=0;i<=100;i++){const p=curve.getPointAt(i/100);assert([p.x,p.y,p.z].every(Number.isFinite),'Shared branch route has finite coordinates');}
 console.log('Express, crossover and shared branch route checks passed.');
+
+assert.equal(ribbon(0,0,-1,1).attributes.position.count,0,'Clipped empty ribbons have no invalid vertices');

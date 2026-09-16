@@ -6,7 +6,12 @@ for(let i=0;i<=24;i++){const a=-Math.PI/2-i*Math.PI/24;points.push(new T.Vector3
 points.push(point(15,3.8),point(35,laneOffset(35)));
 export const terminalCurve=new T.CatmullRomCurve3(points,false,'centripetal');
 const d=sample(DEPOT.s);
-export const depotCurve=new T.CatmullRomCurve3([point(DEPOT.s-45,1.9),point(DEPOT.s-15,1.9),point(DEPOT.s,16),new T.Vector3(d.x+d.lx*48,d.y,d.z+d.lz*48),new T.Vector3(d.x+d.lx*74,d.y,d.z+d.lz*74)],false,'centripetal');
+export const depotCurve=new T.CurvePath();
+depotCurve.add(new T.LineCurve3(point(DEPOT.s-45,1.9),point(DEPOT.s-25,1.9)));
+depotCurve.add(new T.CubicBezierCurve3(point(DEPOT.s-25,1.9),point(DEPOT.s-8,1.9),point(DEPOT.s,8),point(DEPOT.s,28)));
+depotCurve.add(new T.LineCurve3(point(DEPOT.s,28),point(DEPOT.s,135)));
+export function depotExitCurve(start,dir){const curve=new T.CurvePath();curve.add(new T.LineCurve3(start.clone(),point(DEPOT.s,28)));curve.add(new T.CubicBezierCurve3(point(DEPOT.s,28),point(DEPOT.s,8),point(DEPOT.s+dir*8,dir*1.9),point(DEPOT.s+dir*25,dir*1.9)));curve.add(new T.LineCurve3(point(DEPOT.s+dir*25,dir*1.9),point(DEPOT.s+dir*55,dir*1.9)));return curve;}
+
 
 import {L35,l35Offset,JUNCTIONS,UNDERPASSES,fromChainage} from './alignment.js';
 const groundPoint=(s,l)=>{const p=point(s,l);p.y=sample(s).groundY;return p;};

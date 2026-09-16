@@ -38,16 +38,24 @@ function ensure() {
     ambGain = ctx.createGain(); ambGain.gain.value = 0.025;
     ambSrc.connect(ambF); ambF.connect(ambGain); ambGain.connect(master);
     ambSrc.start();
-    for(const name of ['menu','day','night']){const element=new Audio(import.meta.env.BASE_URL+'audio/'+name+'.mp3');element.loop=true;element.preload='metadata';const gain=ctx.createGain();gain.gain.value=0;ctx.createMediaElementSource(element).connect(gain);gain.connect(master);music.push({name,element,gain,target:0});}
+    for(const name of ['menu','day','night']){const element=new Audio(import.meta.env.BASE_URL+'audio/'+name+'.mp3');element.loop=true;element.preload='auto';element.setAttribute('playsinline','');const gain=ctx.createGain();gain.gain.value=0;ctx.createMediaElementSource(element).connect(gain);gain.connect(master);music.push({name,element,gain,target:0});}
     master.gain.value=muted?0:.55;
     return true;
   } catch { return false; }
 }
 
-export function initAudio() {ensure();if(ctx?.state==='suspended')ctx.resume().catch(()=>{});for(const t of music)if(t.element.paused)t.element.play().catch(()=>{});}
+export async function initAudio() {
+  if(!ensure())return false;
+  // Start both operations inside the user gesture; awaiting resume first loses activation on mobile.
+  const pending=[];
+  if(ctx.state!=='running'&&ctx.state!=='closed')pending.push(ctx.resume());
+  for(const t of music)if(t.element.paused)pending.push(t.element.play());
+  await Promise.allSettled(pending);
+  return ctx.state==='running'&&!music[0].element.paused;
+}
 export function musicLevels({screen,condition,v,crashed,park,mobileBrake,mode}){const driving=screen==='driving'&&mode!=='free'&&!crashed&&!park&&!mobileBrake,level=driving?Math.min(1,Math.max(0,(Math.abs(v)-1)/7))*.65:0;return {menu:screen==='menu'?.65:0,day:condition!=='night'?level:0,night:condition==='night'?level:0};}
 export function updateMusic(state){if(!ctx)return;const levels=musicLevels(state);for(const t of music){const target=levels[t.name];if(Math.abs(target-t.target)>.01){t.gain.gain.setTargetAtTime(target,ctx.currentTime,target>t.target?2.5:1.2);t.target=target;}}}
-export function musicStatus(){return music.map(t=>({name:t.name,target:t.target,playing:!t.element.paused,time:t.element.currentTime,error:t.element.error?.message}));}
+export function musicStatus(){return music.map(t=>({name:t.name,context:ctx?.state,gain:t.gain.gain.value,target:t.target,playing:!t.element.paused,time:t.element.currentTime,error:t.element.error?.message}));}
 
 
 export function setDrive(speedKmh, accelerating) {

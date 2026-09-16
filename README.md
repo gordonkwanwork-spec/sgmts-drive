@@ -74,7 +74,7 @@ altitude, drag to look.
 - Tap the circular nearby map to open the full route. Gold is your vehicle, blue arrows show other ART services and their directions, cream circles are stations, and the purple square identifies the depot. Only junctions crossing the corridor show signal phases.
 - The circular button at the top right hides the interface. Tap it again to restore controls.
 
-Menu music plays at launch when the browser permits audio, or after the first tap. Day and night driving tracks fade in as speed builds and fade out when stopped or crashed. **Sound** mutes both music and driving sounds.
+Menu music plays at launch when the browser permits audio. On a fresh mobile visit, tap **Play menu music** on the start screen to enable it before beginning a journey. Day and night driving tracks fade in as speed builds and fade out when stopped or crashed. **Sound** mutes both music and driving sounds.
 
 ## Things to try
 
@@ -205,3 +205,11 @@ The simulation does model passenger mass, gradient forces, rolling resistance, r
 braking, door and ramp interlocks, signals and crossing traffic — but the numbers are tuned to
 be fun and legible, not to predict real vehicle performance. Do not use it for anything that
 matters.
+
+### September lighting and driving update
+
+Six views: third person, cockpit, platform, bird’s-eye, low front and low rear. Move the desktop mouse to look; click the scene to capture the pointer and press Esc to release it.
+
+The depot has an open central bay. Stop with doors closed, then choose the left (A7) or right (A1) depot exit in options to change cab and return to the corridor. Road and cycle lighting use separate grey columns; station canopy strips and illuminated vehicle interiors are enabled at night.
+
+Keyboard buttons: F go, T stop, E doors, C camera, P pause, O options, I map, U hide/show interface, N day/night, J depot, K change cab, L skip station, [ / ] depot exits, Y recover. Tab and Enter also operate the buttons. Click the scene to capture mouse-look; Esc releases it without moving the view while using the interface.
