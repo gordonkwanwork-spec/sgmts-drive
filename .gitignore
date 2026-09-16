@@ -22,3 +22,6 @@ assets/blender/*.log
 
 # Original recordings stay local; browser-ready music is in public/audio.
 Music/
+
+# Original user recordings; published phrase clips are in public/audio/announcements.
+/Announcements/

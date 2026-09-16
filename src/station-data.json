@@ -1,0 +1,9 @@
+[
+ {"id":"A1","name":"Nai Wai","zh":"泥圍","simplified":"泥围","terminus":true},
+ {"id":"A2","name":"Hung Shui Kiu","zh":"洪水橋","simplified":"洪水桥","terminus":false},
+ {"id":"A3","name":"Hung Shui Kiu North","zh":"洪水橋北","simplified":"洪水桥北","terminus":false},
+ {"id":"A4","name":"Ha Tsuen South","zh":"厦村南","simplified":"厦村南","terminus":false},
+ {"id":"A5","name":"Ha Tsuen","zh":"厦村","simplified":"厦村","terminus":false},
+ {"id":"A6","name":"Logistics Cluster","zh":"物流圈","simplified":"物流圈","terminus":false},
+ {"id":"A7","name":"Industry Park","zh":"產業園","simplified":"产业园","terminus":true}
+]

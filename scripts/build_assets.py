@@ -4,6 +4,8 @@ from pathlib import Path
 from mathutils import Vector
 ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/'public/assets'; BLEND=ROOT/'assets/blender'
+STATION_NAMES={s['id']:s for s in json.loads((ROOT/'src/station-data.json').read_text())}
+STATION_FONT=bpy.data.fonts.load('/System/Library/Fonts/STHeiti Medium.ttc')
 random.seed(21)
 
 def mat(n,c,metal=0,rough=.45,emission=0):
@@ -39,7 +41,7 @@ def tube(n,pts,r,m,parent=None,sides=8):
  fs=[(i*sides+j,i*sides+(j+1)%sides,(i+1)*sides+(j+1)%sides,(i+1)*sides+j) for i in range(len(pts)-1) for j in range(sides)]
  return mesh(n,vs,fs,m,parent,True)
 def text(n,s,pos,size,m,parent=None,rot=(math.pi/2,0,0)):
- c=bpy.data.curves.new(n,'FONT');c.body=s;c.size=size;c.extrude=0;c.resolution_u=2;c.align_x='CENTER';o=bpy.data.objects.new(n,c);bpy.context.collection.objects.link(o);o.location=pos;o.rotation_euler=rot;o.data.materials.append(M[m]);o.parent=parent;return o
+ c=bpy.data.curves.new(n,'FONT');c.body=s;c.font=STATION_FONT;c.size=size;c.extrude=0;c.resolution_u=2;c.align_x='CENTER';o=bpy.data.objects.new(n,c);bpy.context.collection.objects.link(o);o.location=pos;o.rotation_euler=rot;o.data.materials.append(M[m]);o.parent=parent;return o
 
 def merge_static(parent=None):
  groups={}
@@ -193,7 +195,7 @@ def vehicle():
    tube('Headlamp backing',[(x,sign*(5.59-.37*(abs(x)/.94)**2),1.05+.12*(abs(x)/.94)**2) for x in [-.94,-.7,-.4,0,.4,.7,.94]],.06,'dark',p,10)
    tube('LED signature',[(x,sign*(5.66-.37*(abs(x)/.94)**2),1.05+.12*(abs(x)/.94)**2) for x in [-.94,-.7,-.4,0,.4,.7,.94]],.033,'light' if idx==0 else 'red',p,10)
    tube('Windscreen wiper',[(.55,sign*5.61,1.18),(.12,sign*5.5,1.82),(-.35,sign*5.18,2.29)],.022,'dark',p)
-   destination=text('Route destination','A1  HSK / HT',(0,sign*5.35,2.88),.16,'light',p,rot=(math.pi/2 if sign<0 else math.pi/2,0,math.pi if sign>0 else 0))
+   destination=text('Route destination','SGMTS',(0,sign*5.35,2.88),.16,'light',p,rot=(math.pi/2 if sign<0 else math.pi/2,0,math.pi if sign>0 else 0))
    destination['animated']=True
    for side in [-1,1]:box('Mirror pod',(side*1.52,sign*3.86,2.38),(.24,.32,.55),'dark',p,.09)
   if idx<2:
@@ -254,7 +256,7 @@ def platform(id,side,width,offset,length=89.6,bent=False):
      tube('Poster rays',[pt(back-.20,y+dy,2.02),pt(back-.20,y+dy+(j-2)*.12,2.37)],.016,'teal' if j%2 else 'yellow',p)
   else:
    b('Rear station board',back-.10,y,1.95,.08,3.35,1.15,'cladding')
-   text('Rear board lettering','SGMTS  /  '+id,pt(back-.16,y,1.95),.35,'teal',p,rot=(math.pi/2,0,-side*math.pi/2))
+   text('Rear board lettering',STATION_NAMES[id]['zh']+' / '+STATION_NAMES[id]['name'],pt(back-.16,y,1.95),.20,'teal',p,rot=(math.pi/2,0,-side*math.pi/2))
  # Roadside approach rails run longitudinally, leaving the access through the gates clear.
  for end in [-1,1]:
   rail=empty(f'{id}_platform_{side}_approach_rail_{end}',parent=p)
@@ -273,7 +275,7 @@ def platform(id,side,width,offset,length=89.6,bent=False):
  for y in [-30,0,30]:
   b('Suspended station sign',edge+1.5,y,2.82,.12,2.5,.46,'dark',.025)
   # Text faces inward, readable from platform and passing vehicle.
-  o=text('Station name',id+'  |  SGMTS',pt(edge+1.43,y,2.7),.22,'light',p,rot=(math.pi/2,0,-side*math.pi/2))
+  o=text('Station name',STATION_NAMES[id]['zh']+' / '+STATION_NAMES[id]['name'],pt(edge+1.43,y,2.7),.14,'light',p,rot=(math.pi/2,0,-side*math.pi/2))
  for y in [-36,36]:
   for dx in [.9,1.8,2.7]:
    b('Fare gate',edge+dx,y,.82,.22,.7,1,'steel',.08)

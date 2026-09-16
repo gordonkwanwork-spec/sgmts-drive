@@ -158,3 +158,13 @@ assert(pavementLight({...surface,x:surface.x+60},[cycleLamp])<.01,'Light must fa
 assert.equal(pavementLight({...surface,y:cycleLamp.y+1},[cycleLamp]),0,'Downward light must not illuminate a surface above the fixture');
 assert(pavementLight({...surface,x:surface.x+sample(1200).tx*11.5,z:surface.z+sample(1200).tz*11.5},[cycleLamp])>.1,'Cycle lighting must reach halfway to the next pole');
 console.log('Night pavement light coverage and falloff passed.');
+
+const {fleetPlan,nextStationIndex,journeyTerminus,parkingScore,announcementText}=await import('./service.js');
+assert.deepEqual(fleetPlan(300),{count:6,convoy:1});assert.deepEqual(fleetPlan(210),{count:17,convoy:2});
+for(const dir of [1,-1]){const sequence=[];for(let i=dir===1?0:6;i!==null;i=nextStationIndex(i,dir,7))sequence.push(i);assert.equal(sequence.length,7);assert.equal(sequence.at(-1),journeyTerminus(STOPS,dir));const st=STOPS[sequence.at(-1)];assert(announcementText(st,'next',true)[2].endsWith(', the terminus of this service.'));assert.equal(announcementText(st,'arrived')[0],`本班車已到達${st.zh}終點站，請帶齊隨身物品落車。`);}
+assert.equal(parkingScore(0,true),100);assert(parkingScore(8,true)>0);assert.equal(parkingScore(9,true),0);assert.equal(parkingScore(0,false),0);
+const recordings=JSON.parse(readFileSync('public/audio/announcements/manifest.json'));
+for(const clips of Object.values(recordings)){assert.deepEqual(clips.map(c=>c.language),['yue','zh','en']);for(const c of clips)assert(readFileSync('public/audio/announcements/'+c.file).length>1000);}
+const {depotExitCurve}=await import('./routes.js');
+for(const route of [depotCurve,depotExitCurve(depotCurve.getPointAt(1),1),depotExitCurve(depotCurve.getPointAt(1),-1)])for(let i=1;i<route.curves.length;i++)assert(route.curves[i-1].getTangent(1).dot(route.curves[i].getTangent(0))>.999,'Depot joins have continuous headings');
+console.log('Both service directions, fleet counts, parking marks, trilingual recordings and depot headings passed.');

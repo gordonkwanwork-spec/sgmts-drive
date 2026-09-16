@@ -1,3 +1,4 @@
+import stationNames from './station-data.json' with {type:'json'};
 // Hand-traced ST-1100 key-plan centreline. See docs/rebuild-recon/route-calibration.md.
 // x=east, z=south, +s=A1→A7. Dimensions metres; c is approximate profile chainage.
 export const DATUM = 8;
@@ -79,7 +80,7 @@ export function sample(s) {
  const groundY=bridge?interp(bridge.ground,c)-DATUM:y;
  return {...p,y,lx:p.tz,lz:-p.tx,heading:Math.atan2(-p.tx,-p.tz),grade,c,elevated:!!bridge,bridge:bridge?.id,structure:bridge?(c>=bridge.deckStart&&c<=bridge.deckEnd?'deck':'ramp'):null,groundY};
 }
-export const STOPS=anchors.map(([c,x,z],i)=>({id:`A${i+1}`,name:`Station A${i+1}`,nameEn:`Station A${i+1}`,nameZh:`A${i+1}站`,c,s:fromChainage(c),pixel:[x*K,z*K],platformLength:i===0?69.5:i===1?89.6:67.6,footprintLength:i===0?89.6:89.6,width:i===1?6:i===0?5:4,stagger:i===1?18.5:0,length:89.6,platformLateral:7.05,dockLateral:5.4,platformEdge:7.05,runningLane:1.9,boardingLane:5.4,platforms:[{side:1,centerOffset:i===1?-9.25:0},{side:-1,centerOffset:i===1?9.25:0}],source:`V1038-08-ST-110${i+1}`}));
+export const STOPS=anchors.map(([c,x,z],i)=>({...stationNames[i],nameEn:stationNames[i].name,nameZh:stationNames[i].zh,c,s:fromChainage(c),pixel:[x*K,z*K],platformLength:i===0?69.5:i===1?89.6:67.6,footprintLength:i===0?89.6:89.6,width:i===1?6:i===0?5:4,stagger:i===1?18.5:0,length:89.6,platformLateral:7.05,dockLateral:5.4,platformEdge:7.05,runningLane:1.9,boardingLane:5.4,platforms:[{side:1,centerOffset:i===1?-9.25:0},{side:-1,centerOffset:i===1?9.25:0}],source:`V1038-08-ST-110${i+1}`}));
 // A1 annular turning area dimensions from ST-1101; centre location inferred from terminal footprint.
 const terminal=sample(STOPS[0].s);
 // ST-1101 / GA-1101: the island is beyond the 20 m platform flare, along the station axis.

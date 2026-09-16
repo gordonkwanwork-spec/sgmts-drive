@@ -1,3 +1,4 @@
+import announcementManifest from '../public/audio/announcements/manifest.json' with {type:'json'};
 // Synthesised vehicle sounds and streamed, user-supplied music share one mixer.
 let ctx = null, master = null;
 let motorOsc = null, motorGain = null, motorOsc2 = null;
@@ -5,6 +6,9 @@ let rollSrc = null, rollFilter = null, rollGain = null;
 let ambGain = null;
 let indicatorTimer = null;
 let muted=false;
+let announcementSource=null,announcementActive=false,announcementGeneration=0;
+const announcementQueue=[];
+const announcementBuffers=new Map(),announcementLog=[];
 const music=[];
 
 function ensure() {
@@ -54,7 +58,7 @@ export async function initAudio() {
   return ctx.state==='running'&&!music[0].element.paused;
 }
 export function musicLevels({screen,condition,v,crashed,park,mobileBrake,mode}){const driving=screen==='driving'&&mode!=='free'&&!crashed&&!park&&!mobileBrake,level=driving?Math.min(1,Math.max(0,(Math.abs(v)-1)/7))*.65:0;return {menu:screen==='menu'?.65:0,day:condition!=='night'?level:0,night:condition==='night'?level:0};}
-export function updateMusic(state){if(!ctx)return;const levels=musicLevels(state);for(const t of music){const target=levels[t.name];if(Math.abs(target-t.target)>.01){t.gain.gain.setTargetAtTime(target,ctx.currentTime,target>t.target?2.5:1.2);t.target=target;}}}
+export function updateMusic(state){if(!ctx)return;const levels=musicLevels(state);for(const t of music){const target=levels[t.name]*(announcementActive?.22:1);if(Math.abs(target-t.target)>.01){t.gain.gain.setTargetAtTime(target,ctx.currentTime,target>t.target?2.5:1.2);t.target=target;}}}
 export function musicStatus(){return music.map(t=>({name:t.name,context:ctx?.state,gain:t.gain.gain.value,target:t.target,playing:!t.element.paused,time:t.element.currentTime,error:t.element.error?.message}));}
 
 
@@ -141,3 +145,20 @@ export function playCrash() {
 }
 
 export function setMuted(value) { muted=value;if(master) master.gain.setTargetAtTime(muted?0:.55,ctx.currentTime,.15); }
+
+export function cancelAnnouncement(){announcementQueue.length=0;announcementGeneration++;announcementSource?.stop();announcementSource=null;announcementActive=false;}
+export function announcementStatus(){return {active:announcementActive,queued:[...announcementQueue],log:announcementLog.slice(-30)};}
+export async function announce(key){
+ if(!ensure()||!announcementManifest[key])return false;
+ if(announcementActive){if(!announcementQueue.includes(key))announcementQueue.push(key);return true;}
+ announcementActive=true;const generation=announcementGeneration;
+ try{
+  // Decode and schedule all three clips on the same clock: no autoplay gap between languages.
+  const clips=await Promise.all(announcementManifest[key].map(async clip=>{if(!announcementBuffers.has(clip.file))announcementBuffers.set(clip.file,fetch(import.meta.env.BASE_URL+'audio/announcements/'+clip.file).then(r=>{if(!r.ok)throw Error('Announcement unavailable');return r.arrayBuffer();}).then(b=>ctx.decodeAudioData(b)));return {clip,buffer:await announcementBuffers.get(clip.file)};}));
+  if(generation!==announcementGeneration)return false;if(ctx.state!=='running'){announcementActive=false;return false;}
+  let time=ctx.currentTime+.06;announcementActive=true;const sources=[];
+  for(const {clip,buffer} of clips){const source=ctx.createBufferSource(),gain=ctx.createGain();gain.gain.value=.95;source.buffer=buffer;source.connect(gain);gain.connect(master);source.start(time);sources.push(source);announcementLog.push({key,language:clip.language,start:time,duration:buffer.duration});time+=buffer.duration+.22;}
+  announcementSource={stop(){for(const source of sources)try{source.stop();}catch{}}};
+  sources.at(-1).onended=()=>{if(generation===announcementGeneration){announcementSource=null;announcementActive=false;const next=announcementQueue.shift();if(next)announce(next);}};return true;
+ }catch(error){for(const clip of announcementManifest[key])announcementBuffers.delete(clip.file);console.warn('Announcement playback failed',key,error);if(generation===announcementGeneration)announcementActive=false;return false;}
+}

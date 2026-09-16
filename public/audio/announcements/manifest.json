@@ -1,0 +1,418 @@
+{
+  "next-A1": [
+    {
+      "language": "yue",
+      "file": "next-A1-yue.mp3",
+      "duration": 1.779,
+      "source": "MiniMax_2026-09-16_12_34_27_SGMTS_Video_Cantonese_Voice.wav",
+      "start": 0,
+      "end": 1.779
+    },
+    {
+      "language": "zh",
+      "file": "next-A1-zh.mp3",
+      "duration": 2.146,
+      "source": "MiniMax_2026-09-16_12_36_46_News_Anchor.wav",
+      "start": 0,
+      "end": 2.146
+    },
+    {
+      "language": "en",
+      "file": "next-A1-en.mp3",
+      "duration": 2.188,
+      "source": "MiniMax_2026-09-16_12_39_45_Calm_Woman.wav",
+      "start": 0,
+      "end": 2.188
+    }
+  ],
+  "next-A2": [
+    {
+      "language": "yue",
+      "file": "next-A2-yue.mp3",
+      "duration": 2.131,
+      "source": "MiniMax_2026-09-16_12_34_27_SGMTS_Video_Cantonese_Voice.wav",
+      "start": 1.779,
+      "end": 3.91
+    },
+    {
+      "language": "zh",
+      "file": "next-A2-zh.mp3",
+      "duration": 2.433,
+      "source": "MiniMax_2026-09-16_12_36_46_News_Anchor.wav",
+      "start": 2.146,
+      "end": 4.58
+    },
+    {
+      "language": "en",
+      "file": "next-A2-en.mp3",
+      "duration": 2.222,
+      "source": "MiniMax_2026-09-16_12_39_45_Calm_Woman.wav",
+      "start": 2.188,
+      "end": 4.41
+    }
+  ],
+  "next-A3": [
+    {
+      "language": "yue",
+      "file": "next-A3-yue.mp3",
+      "duration": 2.158,
+      "source": "MiniMax_2026-09-16_12_34_27_SGMTS_Video_Cantonese_Voice.wav",
+      "start": 3.91,
+      "end": 6.068
+    },
+    {
+      "language": "zh",
+      "file": "next-A3-zh.mp3",
+      "duration": 2.706,
+      "source": "MiniMax_2026-09-16_12_36_46_News_Anchor.wav",
+      "start": 4.58,
+      "end": 7.285
+    },
+    {
+      "language": "en",
+      "file": "next-A3-en.mp3",
+      "duration": 3.507,
+      "source": "MiniMax_2026-09-16_12_39_45_Calm_Woman.wav",
+      "start": 4.41,
+      "end": 7.917
+    }
+  ],
+  "next-A4": [
+    {
+      "language": "yue",
+      "file": "next-A4-yue.mp3",
+      "duration": 2.097,
+      "source": "MiniMax_2026-09-16_12_34_27_SGMTS_Video_Cantonese_Voice.wav",
+      "start": 6.068,
+      "end": 8.165
+    },
+    {
+      "language": "zh",
+      "file": "next-A4-zh.mp3",
+      "duration": 2.289,
+      "source": "MiniMax_2026-09-16_12_36_46_News_Anchor.wav",
+      "start": 7.285,
+      "end": 9.574
+    },
+    {
+      "language": "en",
+      "file": "next-A4-en.mp3",
+      "duration": 2.82,
+      "source": "MiniMax_2026-09-16_12_39_45_Calm_Woman.wav",
+      "start": 7.917,
+      "end": 10.737
+    }
+  ],
+  "next-A5": [
+    {
+      "language": "yue",
+      "file": "next-A5-yue.mp3",
+      "duration": 1.956,
+      "source": "MiniMax_2026-09-16_12_34_27_SGMTS_Video_Cantonese_Voice.wav",
+      "start": 8.165,
+      "end": 10.121
+    },
+    {
+      "language": "zh",
+      "file": "next-A5-zh.mp3",
+      "duration": 1.833,
+      "source": "MiniMax_2026-09-16_12_36_46_News_Anchor.wav",
+      "start": 9.574,
+      "end": 11.407
+    },
+    {
+      "language": "en",
+      "file": "next-A5-en.mp3",
+      "duration": 2.891,
+      "source": "MiniMax_2026-09-16_12_39_45_Calm_Woman.wav",
+      "start": 10.737,
+      "end": 13.627
+    }
+  ],
+  "next-A6": [
+    {
+      "language": "yue",
+      "file": "next-A6-yue.mp3",
+      "duration": 2.058,
+      "source": "MiniMax_2026-09-16_12_34_27_SGMTS_Video_Cantonese_Voice.wav",
+      "start": 10.121,
+      "end": 12.179
+    },
+    {
+      "language": "zh",
+      "file": "next-A6-zh.mp3",
+      "duration": 2.105,
+      "source": "MiniMax_2026-09-16_12_36_46_News_Anchor.wav",
+      "start": 11.407,
+      "end": 13.513
+    },
+    {
+      "language": "en",
+      "file": "next-A6-en.mp3",
+      "duration": 3.123,
+      "source": "MiniMax_2026-09-16_12_39_45_Calm_Woman.wav",
+      "start": 13.627,
+      "end": 16.75
+    }
+  ],
+  "next-A7": [
+    {
+      "language": "yue",
+      "file": "next-A7-yue.mp3",
+      "duration": 2.051,
+      "source": "MiniMax_2026-09-16_12_34_27_SGMTS_Video_Cantonese_Voice.wav",
+      "start": 12.179,
+      "end": 14.231
+    },
+    {
+      "language": "zh",
+      "file": "next-A7-zh.mp3",
+      "duration": 2.537,
+      "source": "MiniMax_2026-09-16_12_36_46_News_Anchor.wav",
+      "start": 13.513,
+      "end": 16.049
+    },
+    {
+      "language": "en",
+      "file": "next-A7-en.mp3",
+      "duration": 2.529,
+      "source": "MiniMax_2026-09-16_12_39_45_Calm_Woman.wav",
+      "start": 16.75,
+      "end": 19.279
+    }
+  ],
+  "doors": [
+    {
+      "language": "yue",
+      "file": "doors-yue.mp3",
+      "duration": 3.257,
+      "source": "MiniMax_2026-09-16_12_34_27_SGMTS_Video_Cantonese_Voice.wav",
+      "start": 14.231,
+      "end": 17.488
+    },
+    {
+      "language": "zh",
+      "file": "doors-zh.mp3",
+      "duration": 3.543,
+      "source": "MiniMax_2026-09-16_12_36_46_News_Anchor.wav",
+      "start": 16.049,
+      "end": 19.592
+    },
+    {
+      "language": "en",
+      "file": "doors-en.mp3",
+      "duration": 3.779,
+      "source": "MiniMax_2026-09-16_12_39_45_Calm_Woman.wav",
+      "start": 19.279,
+      "end": 23.058
+    }
+  ],
+  "handrail": [
+    {
+      "language": "yue",
+      "file": "handrail-yue.mp3",
+      "duration": 2.439,
+      "source": "MiniMax_2026-09-16_12_34_27_SGMTS_Video_Cantonese_Voice.wav",
+      "start": 17.488,
+      "end": 19.926
+    },
+    {
+      "language": "zh",
+      "file": "handrail-zh.mp3",
+      "duration": 2.765,
+      "source": "MiniMax_2026-09-16_12_36_46_News_Anchor.wav",
+      "start": 19.592,
+      "end": 22.357
+    },
+    {
+      "language": "en",
+      "file": "handrail-en.mp3",
+      "duration": 3.167,
+      "source": "MiniMax_2026-09-16_12_39_45_Calm_Woman.wav",
+      "start": 23.058,
+      "end": 26.226
+    }
+  ],
+  "lean": [
+    {
+      "language": "yue",
+      "file": "lean-yue.mp3",
+      "duration": 1.571,
+      "source": "MiniMax_2026-09-16_12_34_27_SGMTS_Video_Cantonese_Voice.wav",
+      "start": 19.926,
+      "end": 21.498
+    },
+    {
+      "language": "zh",
+      "file": "lean-zh.mp3",
+      "duration": 2.095,
+      "source": "MiniMax_2026-09-16_12_36_46_News_Anchor.wav",
+      "start": 22.357,
+      "end": 24.452
+    },
+    {
+      "language": "en",
+      "file": "lean-en.mp3",
+      "duration": 2.566,
+      "source": "MiniMax_2026-09-16_12_39_45_Calm_Woman.wav",
+      "start": 26.226,
+      "end": 28.792
+    }
+  ],
+  "alight": [
+    {
+      "language": "yue",
+      "file": "alight-yue.mp3",
+      "duration": 3.016,
+      "source": "MiniMax_2026-09-16_12_34_27_SGMTS_Video_Cantonese_Voice.wav",
+      "start": 21.498,
+      "end": 24.514
+    },
+    {
+      "language": "zh",
+      "file": "alight-zh.mp3",
+      "duration": 3.418,
+      "source": "MiniMax_2026-09-16_12_36_46_News_Anchor.wav",
+      "start": 24.452,
+      "end": 27.87
+    },
+    {
+      "language": "en",
+      "file": "alight-en.mp3",
+      "duration": 3.07,
+      "source": "MiniMax_2026-09-16_12_39_45_Calm_Woman.wav",
+      "start": 28.792,
+      "end": 31.862
+    }
+  ],
+  "gap": [
+    {
+      "language": "yue",
+      "file": "gap-yue.mp3",
+      "duration": 3.702,
+      "source": "MiniMax_2026-09-16_12_34_27_SGMTS_Video_Cantonese_Voice.wav",
+      "start": 24.514,
+      "end": 28.216
+    },
+    {
+      "language": "zh",
+      "file": "gap-zh.mp3",
+      "duration": 4.576,
+      "source": "MiniMax_2026-09-16_12_36_46_News_Anchor.wav",
+      "start": 27.87,
+      "end": 32.446
+    },
+    {
+      "language": "en",
+      "file": "gap-en.mp3",
+      "duration": 3.802,
+      "source": "MiniMax_2026-09-16_12_39_45_Calm_Woman.wav",
+      "start": 31.862,
+      "end": 35.664
+    }
+  ],
+  "next-A7-terminus": [
+    {
+      "language": "yue",
+      "file": "next-A7-terminus-yue.mp3",
+      "duration": 3.736,
+      "source": "MiniMax_2026-09-16_12_34_27_SGMTS_Video_Cantonese_Voice.wav",
+      "start": 28.216,
+      "end": 31.952
+    },
+    {
+      "language": "zh",
+      "file": "next-A7-terminus-zh.mp3",
+      "duration": 3.786,
+      "source": "MiniMax_2026-09-16_12_36_46_News_Anchor.wav",
+      "start": 32.446,
+      "end": 36.232
+    },
+    {
+      "language": "en",
+      "file": "next-A7-terminus-en.mp3",
+      "duration": 4.099,
+      "source": "MiniMax_2026-09-16_12_39_45_Calm_Woman.wav",
+      "start": 35.664,
+      "end": 39.763
+    }
+  ],
+  "next-A1-terminus": [
+    {
+      "language": "yue",
+      "file": "next-A1-terminus-yue.mp3",
+      "duration": 3.602,
+      "source": "MiniMax_2026-09-16_12_34_27_SGMTS_Video_Cantonese_Voice.wav",
+      "start": 31.952,
+      "end": 35.554
+    },
+    {
+      "language": "zh",
+      "file": "next-A1-terminus-zh.mp3",
+      "duration": 3.277,
+      "source": "MiniMax_2026-09-16_12_36_46_News_Anchor.wav",
+      "start": 36.232,
+      "end": 39.509
+    },
+    {
+      "language": "en",
+      "file": "next-A1-terminus-en.mp3",
+      "duration": 4.016,
+      "source": "MiniMax_2026-09-16_12_39_45_Calm_Woman.wav",
+      "start": 39.763,
+      "end": 43.779
+    }
+  ],
+  "arrived-A7": [
+    {
+      "language": "yue",
+      "file": "arrived-A7-yue.mp3",
+      "duration": 4.947,
+      "source": "MiniMax_2026-09-16_12_34_27_SGMTS_Video_Cantonese_Voice.wav",
+      "start": 35.554,
+      "end": 40.501
+    },
+    {
+      "language": "zh",
+      "file": "arrived-A7-zh.mp3",
+      "duration": 5.522,
+      "source": "MiniMax_2026-09-16_12_36_46_News_Anchor.wav",
+      "start": 39.509,
+      "end": 45.031
+    },
+    {
+      "language": "en",
+      "file": "arrived-A7-en.mp3",
+      "duration": 5.282,
+      "source": "MiniMax_2026-09-16_12_39_45_Calm_Woman.wav",
+      "start": 43.779,
+      "end": 49.061
+    }
+  ],
+  "arrived-A1": [
+    {
+      "language": "yue",
+      "file": "arrived-A1-yue.mp3",
+      "duration": 4.539,
+      "source": "MiniMax_2026-09-16_12_34_27_SGMTS_Video_Cantonese_Voice.wav",
+      "start": 40.501,
+      "end": 45.04
+    },
+    {
+      "language": "zh",
+      "file": "arrived-A1-zh.mp3",
+      "duration": 5.199,
+      "source": "MiniMax_2026-09-16_12_36_46_News_Anchor.wav",
+      "start": 45.031,
+      "end": 50.23
+    },
+    {
+      "language": "en",
+      "file": "arrived-A1-en.mp3",
+      "duration": 4.809,
+      "source": "MiniMax_2026-09-16_12_39_45_Calm_Woman.wav",
+      "start": 49.061,
+      "end": 53.87
+    }
+  ]
+}

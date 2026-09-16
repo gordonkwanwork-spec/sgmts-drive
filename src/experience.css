@@ -56,3 +56,15 @@ body[data-mode=free] #mobile-buttons,body[data-mode=free] #cluster{display:none!
 @media(max-width:480px){#map-button{width:104px;height:104px}#hud #next-panel{left:126px;right:70px;padding:7px 9px}#hud #next-panel h2{font-size:13px}#hud #next-distance{font-size:10px}#hud #cluster{left:44%;width:92px;padding-left:7px}#hud #instruction{font-size:11px}#mobile-buttons button{width:52px;height:52px;min-height:52px}#mobile-buttons [data-action=stop]{right:74px}}
 @media(max-height:400px){#map-button{width:96px;height:96px}#hud #next-panel{left:120px;top:12px}#edge-tools{top:62px;gap:6px}#edge-tools button{width:42px;height:42px;min-height:42px}#hud #instruction{bottom:78px;max-width:52vw;font-size:11px}#hud #dwell{bottom:72px}#drive-options{max-height:calc(100dvh - 16px)}}
 body.map-expanded #next-panel{visibility:hidden}body[data-mode=free] #mobile-buttons button{display:none!important}
+
+/* Essential service actions stay available while driving. */
+#hud #route-choices{position:fixed;left:12px;bottom:84px;display:flex;flex-direction:column;gap:6px;max-width:155px;z-index:9}
+#hud #route-choices button{min-height:38px;padding:7px 12px;font-size:12px;background:#18382eea;border-radius:18px;white-space:nowrap}
+#hud #route-choices [data-action^="depot-"]{display:none}body[data-depot=true] #hud #route-choices [data-action^="depot-"]{display:block}
+#clean-view{font-weight:bold;font-size:27px}#edge-tools svg{width:25px;height:25px}
+#speed-dial{display:none}.mobile #speed-dial{position:fixed;right:12px;bottom:84px;width:112px;height:112px;border:2px solid #9ebaae;border-radius:50%;background:#17382fed;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:auto;z-index:9;box-shadow:0 2px 8px #0006}
+#speed-dial span{font-size:8px;letter-spacing:1px}#speed-dial output{font-size:28px;line-height:30px}#speed-dial small{font-size:9px}#speed-control{width:80px;height:28px;margin:0;accent-color:#e6b579;touch-action:none}
+body[data-mode=free] #speed-dial{display:none}
+@media(max-height:500px) and (orientation:landscape){#hud #next-panel{left:120px;top:10px;right:auto;width:220px;max-width:calc(100vw - 210px);padding:5px 10px;border-radius:14px}#hud #next-panel h2{font-size:12px;margin-bottom:2px}#hud #next-distance{font-size:10px}#hud #route-choices{bottom:76px;gap:4px}#hud #route-choices button{min-height:32px;font-size:11px;padding:5px 10px}.mobile #speed-dial{right:68px;bottom:80px;width:96px;height:96px}#hud #instruction{max-width:calc(100vw - 340px)}}
+
+body[data-depot=true] #hud #route-choices [data-action=express],body[data-depot=true] #hud #route-choices [data-action=depot],body[data-mode=free] #hud #route-choices{display:none}
