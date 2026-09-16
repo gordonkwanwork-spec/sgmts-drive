@@ -8,7 +8,7 @@ import {buildEnvironment,JUNCTIONS,UNDERPASSES} from './environment.js';
 import {energyFlow,boxesOverlap,SCENARIOS} from './simulation.js';
 import * as audio from './audio.js';
 import './experience.css';
-const asset=f=>import.meta.env.BASE_URL+'assets/'+f;
+const asset=f=>import.meta.env.BASE_URL+'assets/'+f+(f==='art.glb'?'?v=cab-20260916':'');
 import {tractionLocked,verticalOverlap,doorsFit,driveStep,angleDelta,freeStep,MAX_WHEEL_ANGLE,approachStep,followingStop} from './operating.js';
 const $=s=>document.querySelector(s),clamp=(x,a,b)=>Math.max(a,Math.min(b,x)),smooth=(a,b,t)=>a+(b-a)*clamp(t,0,1);
 const point=(s,lat=0)=>{let p=sample(s);return new T.Vector3(p.x+p.lx*lat,p.y,p.z+p.lz*lat);};
@@ -50,13 +50,18 @@ function setupTram(gltf,isAI=false){
  for(const name of ['section_front','section_mid','section_rear']){let g=root.getObjectByName(name);if(!g)throw Error('Missing Blender node '+name);root.updateMatrixWorld(true);scene.attach(g);sections.push(g);}
  for(const g of sections)for(const side of [-1,1]){const skirt=meshBox(.08,.85,8.5,0xcdd5d0);skirt.name='Wheel fairing';skirt.position.set(side*1.29,.59,0);g.add(skirt);}
  for(const section of sections){for(const side of [-1,1]){const spill=new T.Mesh(new T.PlaneGeometry(3.5,9),spillMaterial);spill.name='Interior light spill';spill.rotation.x=-Math.PI/2;spill.position.set(side*2,.055,0);spill.visible=false;section.add(spill);const strip=new T.Mesh(new T.BoxGeometry(.08,.04,8.2),new T.MeshBasicMaterial({color:0xfff0da}));strip.name='Interior ceiling LED';strip.position.set(side*.6,3.02,0);strip.visible=false;section.add(strip);}section.traverse(n=>{if(n.isMesh&&n.material){n.material=n.material.clone();n.userData.vehicleMaterial=true;}});}
- scene.remove(root);const doors=[],wheels=[],lights=[];
+ scene.remove(root);const doors=[],wheels=[],lights=[],cabDisplays=[],steering=[],glazing=[];
  sections.forEach((g,si)=>g.traverse(n=>{if(n.isMesh){n.castShadow=true;n.receiveShadow=true;if(n.material){n.material.envMapIntensity=.8;}}
  if(/_door_(left|right)_[01]$/.test(n.name))doors.push({node:n,base:n.position.clone(),side:n.name.includes('_left_')?1:-1,si});
- if(n.name.includes('_wheel_')){n.scale.multiplyScalar(.8);n.position.x*=.91;wheels.push(n);}
+ if(n.name.startsWith('Route_destination'))n.material.side=T.FrontSide;
+ if(n.name.startsWith('driver_eye'))g.userData.driverEye=n;
+ if(n.name.startsWith('cab_display'))cabDisplays.push(n);
+ if(n.isMesh&&n.material?.name==='glass')glazing.push(n);
+ if(n.name.startsWith('steering_wheel')&&!n.isMesh)steering.push({node:n,base:n.quaternion.clone()});
+ if(n.name.includes('_wheel_')&&!n.name.startsWith('steering')){n.scale.multiplyScalar(.8);n.position.x*=.91;wheels.push(n);}
  if(n.name.includes('light'))lights.push(n);
  }));
- return {sections,doors,wheels,lights,yaws:[0,0,0],isAI,s:1000,lat:-1.9,v:7,door:0};
+ return {sections,doors,wheels,lights,cabDisplays,steering,glazing,yaws:[0,0,0],isAI,s:1000,lat:-1.9,v:7,door:0};
 }
 function poseTram(t,s,lat,reverse=false,door=0,loop=false){
  const spacing=10.6;let prev=null;
@@ -334,20 +339,14 @@ function actors(dt){const subjectS=viewS();
  for(const sig of signalObjects)for(const head of sig.heads){const phase=head.axis==='pedestrian'?(signalAt(sig)==='stop'?'go':'stop'):signalAt(sig,head.axis==='side'),lit=phase==='go'?2:phase==='amber'?1:0;head.bulbs.forEach((b,i)=>b.material.color.setHex(i===lit?[0xff4633,0xffd65b,0x55ff95][i]:0x293731));}
 
 }
-const cockpit=new T.Group();cockpit.name='ART cockpit';camera.add(cockpit);scene.add(camera);
-const cabMat=new T.MeshBasicMaterial({color:0x242c2d}),trimMat=new T.MeshBasicMaterial({color:0xc6cbca});
-const cabBox=(w,h,d,x,y,z,mat=cabMat)=>{const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);cockpit.add(m);return m;};
-cabBox(1.7,.34,.28,0,-.57,-1);cabBox(.64,.16,.25,0,-.33,-1.02);for(const side of [-1,1]){const wing=cabBox(.55,.12,.38,side*.57,-.36,-.94);wing.rotation.z=-side*.22;const pillar=cabBox(.10,1.2,.12,side*.91,.12,-1.24,trimMat);pillar.rotation.z=-side*.28;}
-cabBox(2.2,.14,.13,0,.66,-1.36,trimMat);
-const steering=new T.Mesh(new T.TorusGeometry(.235,.026,10,48),cabMat);steering.position.set(0,-.29,-.70);steering.rotation.x=-.28;cockpit.add(steering);for(const angle of [0,Math.PI*2/3,Math.PI*4/3]){const spoke=cabBox(.028,.23,.028,Math.sin(angle)*.1,-.29+Math.cos(angle)*.1,-.70);spoke.rotation.z=-angle;}cabBox(.13,.10,.035,0,-.29,-.67);
-const cabDisplay=document.createElement('canvas');cabDisplay.width=256;cabDisplay.height=160;const cabTexture=new T.CanvasTexture(cabDisplay);const displayMat=new T.MeshBasicMaterial({map:cabTexture});cabBox(.31,.195,.012,0,-.155,-1.00,displayMat);
-for(const side of [-1,1]){const panel=cabBox(.28,.18,.014,side*.43,-.27,-.80,displayMat);panel.rotation.y=-side*.15;cabBox(.26,.17,.03,side*.82,.30,-1.16,displayMat);for(let i=0;i<8;i++){const button=new T.Mesh(new T.CylinderGeometry(.014,.014,.012,12),new T.MeshBasicMaterial({color:[0x6bc2a4,0xdfb760,0xa3c5d5,0xdd6d58][i%4]}));button.rotation.x=Math.PI/2;button.position.set(side*(.64+(i%2)*.055),-.25-Math.floor(i/2)*.045,-.72);cockpit.add(button);}}
-function updateCockpit(){cockpit.visible=state.screen==='driving'&&state.mode!=='free'&&state.cam===1;if(!cockpit.visible)return;const x=cabDisplay.getContext('2d');x.fillStyle='#0e2028';x.fillRect(0,0,256,160);x.strokeStyle='#6bb9c6';x.lineWidth=5;x.beginPath();x.arc(80,83,57,Math.PI*.75,Math.PI*2.25);x.stroke();x.fillStyle='#d7f3e7';x.font='42px sans-serif';x.textAlign='center';x.fillText(Math.round(Math.abs(state.v)*3.6),80,96);x.font='14px sans-serif';x.fillText('km/h',80,120);x.textAlign='left';x.fillText('SGMTS',157,32);x.fillText(state.door>.1?'DOORS OPEN':'DOORS LOCK',148,65);x.fillText('BAT '+state.battery.toFixed(0)+'%',148,94);x.fillText(state.park?'BRAKE ON':'READY',148,122);cabTexture.needsUpdate=true;steering.rotation.z=-state.steer*.5;}
+const cabDisplay=document.createElement('canvas');cabDisplay.width=512;cabDisplay.height=320;const cabTexture=new T.CanvasTexture(cabDisplay);cabTexture.colorSpace=T.SRGBColorSpace;cabTexture.flipY=false;
+function updateCockpit(){if(!vehicle)return;const inside=state.screen==='driving'&&state.cam===1&&state.mode!=='free';for(const glass of vehicle.glazing)glass.material.opacity=inside?.035:state.condition==='night'?.32:.45;for(const display of vehicle.cabDisplays){if(display.material.map!==cabTexture){display.material.map=cabTexture;display.material.color.set(0xffffff);display.material.emissive.set(0xffffff);display.material.emissiveMap=cabTexture;display.material.emissiveIntensity=.65;display.material.needsUpdate=true;}}const x=cabDisplay.getContext('2d');x.fillStyle='#0e2028';x.fillRect(0,0,512,320);x.strokeStyle='#6bb9c6';x.lineWidth=8;x.beginPath();x.arc(160,166,114,Math.PI*.75,Math.PI*2.25);x.stroke();x.fillStyle='#d7f3e7';x.font='84px sans-serif';x.textAlign='center';x.fillText(Math.round(Math.abs(state.v)*3.6),160,192);x.font='26px sans-serif';x.fillText('km/h',160,240);x.textAlign='left';x.fillText('SGMTS',314,64);x.fillText(state.door>.1?'DOORS OPEN':'DOORS LOCK',296,130);x.fillText('BAT '+state.battery.toFixed(0)+'%',296,188);x.fillText(state.park?'BRAKE ON':'READY',296,244);cabTexture.needsUpdate=true;for(const wheel of vehicle.steering){wheel.node.quaternion.copy(wheel.base);wheel.node.rotateZ(-state.steer*.5);}}
 const camPos=new T.Vector3(),look=new T.Vector3();let firstCamera=true;
 const orbit={yaw:0,pitch:0,zoom:1};let drag=null;
 function resetOrbit(){orbit.yaw=0;orbit.pitch=0;orbit.zoom=1;}
 const canvas=renderer.domElement;canvas.style.touchAction='none';
-canvas.addEventListener('pointerdown',e=>{if(state.screen!=='driving')return;if(!mobile){canvas.requestPointerLock?.()?.catch?.(()=>{});return;}drag={x:e.clientX,y:e.clientY};canvas.setPointerCapture(e.pointerId);});
+canvas.addEventListener('click',()=>{if(!mobile&&state.screen==='driving')canvas.requestPointerLock?.()?.catch?.(()=>toast('Click the scene again to enable mouse look'));});
+canvas.addEventListener('pointerdown',e=>{if(state.screen!=='driving'||!mobile)return;drag={x:e.clientX,y:e.clientY};canvas.setPointerCapture(e.pointerId);});
 const mouseLook=(dx,dy)=>{orbit.yaw-=dx*.003;orbit.pitch=clamp(orbit.pitch-dy*.003,-1.1,1.1);};
 canvas.addEventListener('pointermove',e=>{if(state.screen!=='driving'||document.pointerLockElement)return;if(!mobile)return;if(!drag)return;mouseLook(e.clientX-drag.x,e.clientY-drag.y);drag={x:e.clientX,y:e.clientY};});
 document.addEventListener('mousemove',e=>{if(document.pointerLockElement===canvas&&state.screen==='driving')mouseLook(e.movementX,e.movementY);});
@@ -359,8 +358,8 @@ addEventListener('keydown',e=>{if(['INPUT','SELECT'].includes(e.target.tagName))
 function aim(dt){const g=vehicle.sections[0],p=g.position,dir=new T.Vector3(0,0,vehicle.flipped?1:-1).applyQuaternion(g.quaternion),left=new T.Vector3(-1,0,0).applyQuaternion(g.quaternion);let target,focus;
  if(state.screen==='menu'){target=p.clone().addScaledVector(dir,23).addScaledVector(left,-3.5);target.y+=3.6;focus=p.clone().addScaledVector(dir,-14).addScaledVector(left,7);focus.y+=1.3;}
  else if(state.mode==='free'){const heading=state.freeHeading+orbit.yaw,cp=Math.cos(orbit.pitch),forward=new T.Vector3(-Math.sin(heading)*cp,Math.sin(orbit.pitch),-Math.cos(heading)*cp);target=new T.Vector3(state.freeX,state.freeY,state.freeZ);focus=target.clone().addScaledVector(forward,60);camera.fov=60;camera.updateProjectionMatrix();}
- // Cab eye looks through a camera-attached instrument surround.
- else if(state.cam===1){target=p.clone().addScaledVector(dir,5.9).addScaledVector(left,.4);target.y+=2.25;focus=target.clone().addScaledVector(dir,60);}
+ // The eye is anchored inside the Blender cab; only the view direction changes.
+ else if(state.cam===1){target=g.userData.driverEye.getWorldPosition(new T.Vector3());focus=target.clone().addScaledVector(dir,60);focus.y-=14;}
  else if(state.cam===2){target=p.clone().addScaledVector(dir,10).addScaledVector(left,6);target.y+=1.9;focus=p.clone().addScaledVector(dir,-9);focus.y+=1.5;}
  else if(state.cam===3){target=p.clone().addScaledVector(dir,-35).addScaledVector(left,-20);target.y+=72;focus=p.clone().addScaledVector(dir,12);}
  else if(state.cam===5){target=p.clone().addScaledVector(dir,-38);target.y+=.85;focus=p.clone().addScaledVector(dir,-15);focus.y+=1.2;}
@@ -368,9 +367,9 @@ function aim(dt){const g=vehicle.sections[0],p=g.position,dir=new T.Vector3(0,0,
  else {target=p.clone().addScaledVector(dir,-39).addScaledVector(left,-12);target.y+=11;focus=p.clone().addScaledVector(dir,-5);focus.y+=1.6;}
  if(state.screen!=='menu'&&state.mode!=='free'){
   const offset=target.clone().sub(focus),sph=new T.Spherical().setFromVector3(offset);sph.theta+=orbit.yaw;sph.phi=clamp(sph.phi+orbit.pitch,.08,Math.PI-.12);sph.radius*=orbit.zoom;
-  if(state.cam===1){const dir=focus.clone().sub(target).normalize().applyAxisAngle(new T.Vector3(0,1,0),orbit.yaw);dir.y+=orbit.pitch;focus=target.clone().addScaledVector(dir,60);camera.fov=clamp(48*orbit.zoom,20,90);}else {target.copy(focus).add(new T.Vector3().setFromSpherical(sph));target.y=Math.max(target.y,sample(state.s).y+.7);camera.fov=48;}camera.updateProjectionMatrix();
+  if(state.cam===1){const dir=focus.clone().sub(target).normalize().applyAxisAngle(new T.Vector3(0,1,0),orbit.yaw);dir.y+=orbit.pitch;focus=target.clone().addScaledVector(dir,60);camera.fov=clamp(72*orbit.zoom,40,95);camera.near=.04;}else {target.copy(focus).add(new T.Vector3().setFromSpherical(sph));target.y=Math.max(target.y,sample(state.s).y+.7);camera.fov=48;camera.near=.15;}camera.updateProjectionMatrix();
  }
- const k=firstCamera||state.mode==='free'?1:1-Math.exp(-dt*(state.cam===1?18:4));camPos.lerp(target,k);look.lerp(focus,k);camera.position.copy(camPos);camera.lookAt(look);firstCamera=false;
+ const k=firstCamera||state.mode==='free'||state.cam===1?1:1-Math.exp(-dt*(state.cam===1?18:4));camPos.lerp(target,k);look.lerp(focus,k);camera.position.copy(camPos);camera.lookAt(look);firstCamera=false;
  const subject=state.mode==='free'?target:p;sun.position.set(subject.x-75,subject.y+140,subject.z-65);sun.target.position.set(subject.x,subject.y,subject.z);}
 function hud(){drawMinimap();updateCockpit();let st=STOPS[state.index],target=st?stopTarget(st):LENGTH,d=target-state.s,loop=state.mode==='turnback',explore=state.mode==='explore';
  $('#service-label').textContent=state.mode==='free'?'FREE CAMERA · VEHICLE INDEPENDENT':state.returning?'LINE 01 · SOUTHBOUND':'LINE 01 · NORTHBOUND';

@@ -69,10 +69,95 @@ def shell(n,ys,widths,zbottom,ztop,m,parent):
     yy=y-math.copysign(max(0,z-1.0)/2.5*1.3*max(0,abs(y)-3.5)/2.1,y)
    vs.append((x,yy,z))
  fs=[(j*N+i,j*N+(i+1)%N,(j+1)*N+(i+1)%N,(j+1)*N+i) for j in range(len(ys)-1) for i in range(N)]
- fs.extend([tuple(range(N-1,-1,-1)),tuple((len(ys)-1)*N+i for i in range(N))]);return mesh(n,vs,fs,m,parent,True)
+ if n=='Lower pearl bodyshell':fs=[f for f in fs if sum(vs[i][2] for i in f)/len(f)<1.02]
+ if n!='Articulation bellows':
+  if n!='Glazed cabin' or parent.name=='section_rear':fs.append(tuple(range(N-1,-1,-1)))
+  if n!='Glazed cabin' or parent.name=='section_front':fs.append(tuple((len(ys)-1)*N+i for i in range(N)))
+ return mesh(n,vs,fs,m,parent,True)
+
+def cockpit(parent,sign):
+ cab=empty('cockpit_'+parent.name,parent=parent);cab.rotation_euler.z=0 if sign>0 else math.pi
+ empty('driver_eye',(0,2.7,2.05),cab)
+ # Curved console surrounds the seated driver, below the windscreen sightline.
+ vs=[]
+ for i in range(25):
+  a=-1.23+i*2.46/24
+  for radius,z in [(.72,.68),(1.12,.68),(1.12,1.42),(.72,1.30)]:vs.append((radius*math.sin(a),2.95+radius*math.cos(a),z))
+ fs=[(i*4+j,i*4+(j+1)%4,(i+1)*4+(j+1)%4,(i+1)*4+j) for i in range(24) for j in range(4)]
+ mesh('Curved ivory console',vs,fs,'pearl',cab)
+ vs=[]
+ for i in range(25):
+  a=-1.23+i*2.46/24
+  for radius,z in [(.70,1.32),(1.14,1.45)]:vs.append((radius*math.sin(a),2.95+radius*math.cos(a),z))
+ mesh('Charcoal instrument fascia',vs,[(i*2,i*2+1,i*2+3,i*2+2) for i in range(24)],'dark',cab)
+ for x,y,z,angle in [(0,3.97,1.47,0),(-.53,3.72,1.43,-.42),(.53,3.72,1.43,.42),(-1.04,4.00,2.34,-.35),(1.04,4.00,2.34,.35)]:
+  frame=box('Instrument surround',(x,y,z),(.40,.055,.27),'dark',cab,.025);frame.rotation_euler.x=math.radians(18);frame.rotation_euler.z=angle
+  display=mesh('cab_display',[(-.175,-.041,-.107),(.175,-.041,-.107),(.175,-.041,.107),(-.175,-.041,.107)],[(0,1,2,3)],'teal',cab);display.location=(x,y,z);display.rotation_euler=frame.rotation_euler;display['animated']=True
+  uv=display.data.uv_layers.new(name='Display UV')
+  for loop,coord in zip(uv.data,[(0,0),(1,0),(1,1),(0,1)]):loop.uv=coord
+ for side in [-1,1]:
+  box('Button bank',(side*.83,3.33,1.435),(.38,.48,.065),'dark',cab,.025)
+  for row in range(4):
+   for col in range(3):
+    x=side*(.73+col*.075);y=3.47-row*.095;z=1.48
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=10,ring_count=6,radius=.024,location=(x,y,z));o=bpy.context.object;o.name='Illuminated control';o.scale.z=.4;o.data.materials.append(M[['teal','red','yellow'][col]]);o.parent=cab
+  tube('Windshield ivory pillar',[(side*1.14,3.9,1.45),(side*1.08,4.20,2.15),(side*.94,4.14,3.05)],.07,'pearl',cab,10)
+  box('Cab side lining',(side*1.19,3.4,1.09),(.09,1.9,.9),'pearl',cab,.03)
+  box('Sun visor',(side*.51,4.12,2.88),(.8,.09,.23),'dark',cab,.025)
+ box('Cab roof lining',(0,3.4,3.02),(2.2,2.3,.10),'pearl',cab,.06)
+ box('Driver pedestal',(0,2.68,.82),(.46,.52,.40),'dark',cab,.06)
+ box('Driver seat cushion',(0,2.68,1.08),(.56,.60,.16),'dark',cab,.07)
+ back=box('Driver high back',(0,2.39,1.55),(.56,.15,.95),'dark',cab,.08);back.rotation_euler.x=-.08
+ box('Driver headrest',(0,2.36,2.07),(.36,.16,.26),'dark',cab,.06)
+ for side in [-1,1]:box('Driver armrest',(side*.36,2.7,1.32),(.10,.48,.09),'dark',cab,.035)
+ tube('Steering column',[(0,3.55,.75),(0,3.51,1.34)],.06,'dark',cab)
+ wheel=empty('steering_wheel',(0,3.50,1.43),cab);wheel.rotation_euler.x=math.radians(62)
+ tube('Steering rim',[(.245*math.cos(i*math.pi/24),.245*math.sin(i*math.pi/24),0) for i in range(49)],.024,'rubber',wheel,10)
+ for a in [0,2.1,4.2]:tube('Steering spoke',[(0,0,0),(.23*math.cos(a),.23*math.sin(a),0)],.022,'dark',wheel)
+ box('Steering hub',(0,0,0),(.15,.12,.05),'dark',wheel,.035)
+ for x in [-.12,.12]:pedal=box('Driver pedal',(x,3.47,.74),(.12,.24,.035),'rubber',cab,.012);pedal.rotation_euler.x=.32
+ for x in [-.92,.92]:box('Cab partition',(x,2.15,1.82),(.25,.08,2.35),'pearl',cab,.04)
+ box('Cab partition header',(0,2.15,2.94),(2.1,.08,.2),'pearl',cab,.04)
+ merge_static(wheel);merge_static(cab)
+
+def passenger_interior(parent,idx):
+ interior=empty('passenger_interior_'+str(idx),parent=parent)
+ box('Ivory ceiling',(0,0,3.06),(2.36,9.6,.10),'pearl',interior,.05)
+ for y in [-3,0,3]:
+  box('Ceiling service panel',(0,y,2.99),(.85,1.5,.055),'concrete',interior,.1)
+ for side in [-1,1]:
+  box('Lower interior lining',(side*1.19,0,.98),(.055,9.6,.68),'pearl',interior,.02)
+  tube('Overhead stainless rail',[(side*.79,-4.65,2.76),(side*.79,4.65,2.76)],.024,'steel',interior)
+  for y in [-4.25,-3.6,-.15,2.55,3.3,4.05]:
+   if idx==0 and y>2 or idx==2 and y< -2:continue
+   # Orange longitudinal seats, with contrasting priority seats at the gangways.
+   color='mint' if abs(y)>4 else 'seat_orange'
+   box('Moulded seat pan',(side*.94,y,1.0),(.48,.56,.13),color,interior,.065)
+   back=box('Moulded seat back',(side*1.13,y,1.33),(.11,.56,.65),color,interior,.06);back.rotation_euler.y=-side*.09
+   box('Seat plinth',(side*1.04,y,.78),(.29,.48,.31),'pearl',interior,.025)
+  for y in [-4.6,-2.4,.35,2.05,4.6]:
+   if idx==0 and y>2 or idx==2 and y< -2:continue
+   tube('Stainless stanchion',[(side*.72,y,.64),(side*.72,y,2.65),(side*.80,y,2.76)],.025,'steel',interior)
+   tube('Seat end armrest',[(side*1.17,y,1.25),(side*.7,y,1.25),(side*.7,y,1.0)],.022,'steel',interior)
+  for y in [-4,-3,-2,-1,0,1,2,3,4]:
+   if idx==0 and y>2 or idx==2 and y< -2:continue
+   tube('Strap webbing',[(side*.79,y,2.76),(side*.79,y,2.53)],.012,'dark',interior)
+   tube('Hanging hand loop',[(side*.79+.095*math.cos(a*math.pi/12),y,2.43+.10*math.sin(a*math.pi/12)) for a in range(25)],.016,'burgundy',interior)
+  for y in [-1.6,1.2]:
+   box('Door header',(side*1.19,y,2.82),(.12,1.2,.20),'pearl',interior,.035)
+   for dy in [-.62,.62]:box('Door inner pillar',(side*1.20,y+dy,1.8),(.11,.08,2.30),'pearl',interior,.02)
+   box('Door request button',(side*1.13,y+.66,1.65),(.04,.08,.11),'red',interior,.015)
+ # Open gangway rings, never a solid cap across the aisle.
+ for end in [-1,1]:
+  if idx==0 and end==1 or idx==2 and end==-1:continue
+  for k in range(6):
+   y=end*(4.78+k*.10)
+   tube('Gangway inner pleat',[(-1.1,y,.65),(-1.1,y,2.75),(-.95,y,2.92),(.95,y,2.92),(1.1,y,2.75),(1.1,y,.65)],.035,'concrete',interior)
+  box('Gangway tread',(0,end*4.99,.65),(2.13,.56,.035),'dark',interior)
+ merge_static(interior)
 
 def vehicle():
- reset();meta={'forward':'-Z','width':2.65,'height':3.5,'length':32.4,'sections':[]}
+ reset();M.update({'seat_orange':mat('seat_orange',(.95,.28,.025),0,.4),'mint':mat('mint',(.52,.76,.30),0,.42),'burgundy':mat('burgundy',(.22,.035,.07),0,.5)});meta={'forward':'-Z','width':2.65,'height':3.5,'length':32.4,'sections':[]}
  for idx,label in enumerate(['front','mid','rear']):
   name='section_'+label;p=empty(name,(0,-idx*10.6,0));p['sectionIndex']=idx
   ys=[-5,-4.8,3.5,4.6,5.25,5.6] if idx==0 else ([-5.6,-5.25,-4.6,-3.5,4.8,5] if idx==2 else [-5,-4.8,4.8,5])
@@ -84,10 +169,6 @@ def vehicle():
   for side in [-1,1]:
    for y in [-3.8,-2.5,-1.2,.1,1.4,2.7]:
     box('Window mullion',(side*1.31,y,2.1),(.035,.045,1.98),'dark',p)
-    box('Seat cushion',(side*.91,y,.95),(.5,.49,.15),'blue',p,.055)
-    box('Seat back',(side*1.07,y,1.24),(.13,.49,.65),'blue',p,.055)
-   tube('Passenger handrail',[(side*.8,-4,2.82),(side*.8,4,2.82)],.025,'steel',p)
-   for y in [-3,0,3]:tube('Vertical handrail',[(side*.83,y,.6),(side*.83,y,2.82)],.022,'yellow',p)
    for k in range(34):
     y=-4.65+k*.265;h=random.uniform(.14,.87);x=side*1.327
     mesh('Skyline livery',[(x,y,.35),(x,y+.23,.35),(x,y+.23,.35+h*.8),(x,y+.1,.35+h),(x,y,.35+h*.8)],[(0,1,2,3,4)],['teal','orange','blue','yellow','sand'][k%5],p)
@@ -109,12 +190,16 @@ def vehicle():
    # Swept nose glass, orange rails and continuous illuminated eyebrow.
    for side in [-1,1]:
     tube('Orange nose surround',[(side*1.25,sign*4.05,3.27),(side*1.19,sign*4.62,2.87),(side*1.02,sign*5.19,1.6),(side*.91,sign*5.58,.39)],.065,'orange',p,12)
+   tube('Headlamp backing',[(x,sign*(5.59-.37*(abs(x)/.94)**2),1.05+.12*(abs(x)/.94)**2) for x in [-.94,-.7,-.4,0,.4,.7,.94]],.06,'dark',p,10)
    tube('LED signature',[(x,sign*(5.66-.37*(abs(x)/.94)**2),1.05+.12*(abs(x)/.94)**2) for x in [-.94,-.7,-.4,0,.4,.7,.94]],.033,'light' if idx==0 else 'red',p,10)
    tube('Windscreen wiper',[(.55,sign*5.61,1.18),(.12,sign*5.5,1.82),(-.35,sign*5.18,2.29)],.022,'dark',p)
-   text('Route destination','A1  HSK / HT',(0,sign*5.35,2.88),.16,'light',p,rot=(math.pi/2 if sign<0 else math.pi/2,0,math.pi if sign>0 else 0))
+   destination=text('Route destination','A1  HSK / HT',(0,sign*5.35,2.88),.16,'light',p,rot=(math.pi/2 if sign<0 else math.pi/2,0,math.pi if sign>0 else 0))
+   destination['animated']=True
    for side in [-1,1]:box('Mirror pod',(side*1.52,sign*3.86,2.38),(.24,.32,.55),'dark',p,.09)
   if idx<2:
    for k in range(7):shell('Articulation bellows',[-5.01-k*.08,-5.045-k*.08],[1.23+(k%2)*.055]*2,.37,3.33,'rubber',p)
+  passenger_interior(p,idx)
+  if idx in [0,2]:cockpit(p,1 if idx==0 else -1)
   empty(name+'_hitch_front',(0,5.3,.9),p);empty(name+'_hitch_rear',(0,-5.3,.9),p)
   merge_static(p)
   meta['sections'].append({'name':name,'pivot':[0,0,idx*10.6],'hitchFront':[0,.9,-5.3],'hitchRear':[0,.9,5.3],'doors':[{'name':f'{name}_door_{side}_{di}','position':[x,0,-y]} for side,x in [('left',-1.335),('right',1.335)] for di,y in enumerate([-1.6,1.2])]})
@@ -215,6 +300,6 @@ if __name__=='__main__':
  (OUT/'asset-manifest.json').write_text(json.dumps(manifest,indent=2))
  for sid in ['A1','A3','A4','A5','A6','A7']:
   manifest['stations'].append(station(sid));(OUT/'asset-manifest.json').write_text(json.dumps(manifest,indent=2))
- assert manifest['vehicle']['triangles']<60000
+ assert manifest['vehicle']['triangles']<100000
  # Measured runtime permits the full A2 detail (40,478 triangles); preserve reference detail.
  assert all(s['triangles']<42000 for s in manifest['stations'])

@@ -133,3 +133,9 @@ for(const curve of [terminalCurve,depotCurve,l35BendCurve,l35TrafficCurve])for(l
 console.log('Express, crossover and shared branch route checks passed.');
 
 assert.equal(ribbon(0,0,-1,1).attributes.position.count,0,'Clipped empty ribbons have no invalid vertices');
+
+// Cab eye anchors and controls must be exported with the vehicle, not drawn on the camera.
+const artBuffer=readFileSync('public/assets/art.glb');
+const artJSON=JSON.parse(artBuffer.subarray(20,20+artBuffer.readUInt32LE(12)).toString());
+for(const [prefix,count] of [['driver_eye',2],['cockpit_section_',2],['passenger_interior_',3],['cab_display',10]])assert.equal(artJSON.nodes.filter(n=>n.name?.startsWith(prefix)&&(prefix==='cab_display'||n.mesh===undefined)).length,count,prefix+' Blender nodes');
+assert(manifest.vehicle.triangles<100000,'Detailed vehicle stays within the geometry budget');
