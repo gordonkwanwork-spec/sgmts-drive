@@ -154,7 +154,7 @@ export async function announce(key){
  announcementActive=true;const generation=announcementGeneration;
  try{
   // Decode and schedule all three clips on the same clock: no autoplay gap between languages.
-  const clips=await Promise.all(announcementManifest[key].map(async clip=>{if(!announcementBuffers.has(clip.file))announcementBuffers.set(clip.file,fetch(import.meta.env.BASE_URL+'audio/announcements/'+clip.file).then(r=>{if(!r.ok)throw Error('Announcement unavailable');return r.arrayBuffer();}).then(b=>ctx.decodeAudioData(b)));return {clip,buffer:await announcementBuffers.get(clip.file)};}));
+  const clips=await Promise.all(announcementManifest[key].map(async clip=>{if(!announcementBuffers.has(clip.file))announcementBuffers.set(clip.file,fetch(import.meta.env.BASE_URL+'audio/announcements/'+clip.file+'?v=audible-2').then(r=>{if(!r.ok)throw Error('Announcement unavailable');return r.arrayBuffer();}).then(b=>ctx.decodeAudioData(b)));return {clip,buffer:await announcementBuffers.get(clip.file)};}));
   if(generation!==announcementGeneration)return false;if(ctx.state!=='running'){announcementActive=false;return false;}
   let time=ctx.currentTime+.06;announcementActive=true;const sources=[];
   for(const {clip,buffer} of clips){const source=ctx.createBufferSource(),gain=ctx.createGain();gain.gain.value=.95;source.buffer=buffer;source.connect(gain);gain.connect(master);source.start(time);sources.push(source);announcementLog.push({key,language:clip.language,start:time,duration:buffer.duration});time+=buffer.duration+.22;}

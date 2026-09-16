@@ -1,6 +1,6 @@
 """Cut the supplied recordings at inter-phrase silences, retaining the original voices."""
 from pathlib import Path
-import subprocess,json,re
+import subprocess,json,re,array,math
 ROOT=Path(__file__).resolve().parents[1]
 keys=[f'next-A{i}' for i in range(1,8)]+['doors','handrail','lean','alight','gap','next-A7-terminus','next-A1-terminus','arrived-A7','arrived-A1']
 # Boundaries reviewed against time-aligned transcripts; silence snapping preserves final syllables.
@@ -12,7 +12,11 @@ for lang,pattern,bounds in sources:
  starts=[float(x) for x in re.findall(r'silence_start: ([\d.]+)',result.stderr)];ends=[float(x) for x in re.findall(r'silence_end: ([\d.]+)',result.stderr)];mids=[(a+b)/2 for a,b in zip(starts,ends)]
  snapped=[0]+[min(mids,key=lambda x:abs(x-t)) if min(abs(x-t) for x in mids)<.4 else t for t in bounds[1:-1]]+[bounds[-1]]
  for key,start,end in zip(keys,snapped,snapped[1:]):
-  name=f'{key}-{lang}.mp3';subprocess.run(['ffmpeg','-v','error','-y','-i',str(source),'-ss',str(start),'-t',str(end-start),'-af','afade=t=in:d=0.008,afade=t=out:st='+str(max(0,end-start-.015))+':d=0.015','-ar','44100','-codec:a','libmp3lame','-b:a','96k',str(out/name)],check=True)
+  name=f'{key}-{lang}.mp3';subprocess.run(['ffmpeg','-v','error','-y','-i',str(source),'-af',f'atrim=start={start}:end={end},asetpts=PTS-STARTPTS,afade=t=in:d=0.008,afade=t=out:st='+str(max(0,end-start-.015))+':d=0.015','-ar','44100','-codec:a','libmp3lame','-b:a','96k',str(out/name)],check=True)
+  # Verify decoded signal energy, not merely that the MP3 container is playable.
+  decoded=subprocess.run(['ffmpeg','-v','error','-i',str(out/name),'-f','f32le','-ac','1','-'],capture_output=True,check=True).stdout
+  samples=array.array('f',decoded);rms=math.sqrt(sum(v*v for v in samples)/len(samples))
+  assert rms>.001,f'{name} is silent or inaudible: RMS {rms}'
   manifest.setdefault(key,[]).append({'language':lang,'file':name,'duration':round(end-start,3),'source':source.name,'start':round(start,3),'end':round(end,3)})
 (out/'manifest.json').write_text(json.dumps(manifest,indent=2,ensure_ascii=False)+'\n')
 assert len(manifest)==16 and all([c['language'] for c in v]==['yue','zh','en'] for v in manifest.values())
