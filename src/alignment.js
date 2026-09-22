@@ -115,8 +115,8 @@ export function l35Offset(s){const d=Math.abs(s-STOPS[5].s),u=clamp((150-d)/65,0
 export function l35Width(s){return s>=L35.start&&s<=L35.end?L35.width:0;}
 // L35 climbs onto the level Road D3 pad over 25 m, so its give-way mouth meets D3 flush.
 export function l35Ground(s){const d3=UNDERPASSES.find(j=>j.c===3395),u=clamp((45-d3.s+s)/25,0,1),g=sample(s).groundY;return g+(sample(d3.s).groundY-g)*u*u*(3-2*u);}
-// Junction-local x (= -lateral) of each side road's pedestrian crossing; D6 side 1 clears the L35 mouth.
-export function sideCrossing(j,side){return j.c===2650&&side===1?L35.offset+L35.width/2+6:roadSection(j.s).right+10;}
+// Junction-local x (= -lateral) of each side road's pedestrian crossing; D6 side 1 clears the L35 mouth and its R6 kerb return.
+export function sideCrossing(j,side){return j.c===2650&&side===1?L35.offset+L35.width/2+8:roadSection(j.s).right+10;}
 export function cycleCrossing(s){return [...JUNCTIONS,...UNDERPASSES].some(j=>Math.abs(s-j.s)<j.halfWidth+.7);}
 export function cycleHeight(s){return .02+.28*clamp(Math.min(...[...JUNCTIONS,...UNDERPASSES].map(j=>(Math.abs(s-j.s)-j.halfWidth-1)/6)),0,1);}
 export const DEPOT={s:fromChainage(3565),opening:30,lateral:95,width:140,length:160};
