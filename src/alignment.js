@@ -122,7 +122,7 @@ export function cycleHeight(s){return .02+.28*clamp(Math.min(...[...JUNCTIONS,..
 export const DEPOT={s:fromChainage(3565),opening:30,lateral:95,width:140,length:160};
 export const RAILWAY={start:fromChainage(80),end:fromChainage(1100),station:fromChainage(820)};
 // Heavy-rail viaduct: tangents joined by R200/R240 circular curves. One long straight passes Ch.450 at 28 m
-// and carries the 230 m Hung Shui Kiu station box; its PI sits at the Ch.160 corridor crossing.
+// and carries the 230 m Hung Shui Kiu station box; the R200 curve takes the viaduct across the corridor near Ch.135.
 // ponytail: circular curves without clothoid transitions; add Euler spirals if cant is ever modelled.
 const railPoint=(c,o)=>{const r=sample(fromChainage(c));return {x:r.x+r.lx*o,z:r.z+r.lz*o};},hsk=railPoint(820,-95),aim=railPoint(450,-28),railAxis=Math.hypot(hsk.x-aim.x,hsk.z-aim.z),onAxis=d=>({x:hsk.x+(hsk.x-aim.x)/railAxis*d,z:hsk.z+(hsk.z-aim.z)/railAxis*d});
 const RAIL=[];{const pi=[[railPoint(80,50)],[onAxis(-660),200],[onAxis(280),240],[railPoint(1115,-125)]],unit=(a,b)=>{const n=Math.hypot(b.x-a.x,b.z-a.z);return {x:(b.x-a.x)/n,z:(b.z-a.z)/n,n};};let p=pi[0][0],u=0;const line=b=>{const d=unit(p,b);RAIL.push({u,length:d.n,a:p,tx:d.x,tz:d.z});u+=d.n;};
