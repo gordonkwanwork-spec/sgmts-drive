@@ -35,3 +35,14 @@ for(const v of [1,2]){
  console.log(`Guided ${v.toFixed(2)} m/s: corridor completed in ${run.t.toFixed(0)} s, min step ${(run.minStep*1000).toFixed(2)} mm, max lane deviation ${run.maxLane.toFixed(2)} m.`);
 }
 console.log(`Driving checks passed: projectFrame round-trip (worst ${(worst*1000).toFixed(3)} mm) and no low-speed corner stall.`);
+
+// 停 STOP boards and painted stop marks: makeStopMarkers() puts them on the nose line of a correctly docked vehicle.
+const NOSE=5.65,BOARD_LAT=7.75,HALF_WIDTH=1.27; // keep in step with experience.js makeStopMarkers()
+for(const st of STOPS)for(const dir of [1,-1]){
+ const centre=st.s+(st.platforms.find(p=>p.side===dir)?.centerOffset||0),target=centre+dir*10.6,s=target+dir*NOSE,lane=laneOffset(s,dir);
+ assert(Math.abs(s-centre)<st.length/2-4,`${st.id} ${dir===1?'north':'south'} stop board must stay inside the platform (${(s-centre).toFixed(1)} m from its centre)`);
+ assert(Math.sign(lane)===dir,`${st.id} ${dir===1?'north':'south'} docking lane must be on that direction's platform side (offset ${lane.toFixed(2)})`);
+ assert(BOARD_LAT>Math.abs(lane)+HALF_WIDTH+.3,`${st.id} ${dir===1?'north':'south'} stop board must clear the docked vehicle (lane ${Math.abs(lane).toFixed(2)} m)`);
+ assert(Math.abs(lane)<roadSection(s).right,`${st.id} ${dir===1?'north':'south'} docking lane must stay on the carriageway`);
+}
+console.log(`Stop-mark geometry passed: ${STOPS.length*2} boards on the nose line, clear of the vehicle and inside every platform.`);
