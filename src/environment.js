@@ -46,7 +46,7 @@ export function channelDepth(x,z){return Math.max(0,...CHANNELS.map(c=>{const r=
 // Scenery must clear every nearby bend and crossing road, not just its placement sample.
 export function sceneryClear(x,z,radius){
  const ps=project(x,z),r=sample(ps),lat=(x-r.x)*r.lx+(z-r.z)*r.lz;if((r.c>680&&r.c<980&&lat< -12+radius&&lat> -145-radius)||Math.abs(ps-DEPOT.s)<DEPOT.length/2+radius&&lat>10-radius&&lat<DEPOT.lateral+DEPOT.width/2+radius||ps>=L35.start-30&&ps<=L35.end+40&&lat<0&&lat> -35-radius||channelDepth(x,z)>0)return false;
- if(ps>=RAILWAY.start&&ps<=RAILWAY.end){const rail=railSample(ps);if(Math.hypot(x-rail.x,z-rail.z)<9+radius)return false;}
+ if(RAILWAY.distance(x,z)<9+radius)return false;
  const dp=sample(DEPOT.s),dl=(x-dp.x)*dp.lx+(z-dp.z)*dp.lz,ds=(x-dp.x)*dp.tx+(z-dp.z)*dp.tz;if(dl>10-radius&&dl<170+radius&&Math.abs(ds)<85+radius)return false;
  if(D1ROAD.some(p=>Math.hypot(x-p.x,z-p.z)<14+radius))return false;
  if(Math.hypot(x-r.x,z-r.z)<24+radius)return false;
@@ -256,17 +256,26 @@ export function buildEnvironment(scene){
  // Broad paved interchange plaza between A2 and the elevated railway station.
  const a2=STOPS[1],plaza=new T.Mesh(ribbon(a2.s-115,a2.s+125,-84,-17,.31,true),mats.walk);plaza.name='Hung Shui Kiu regional plaza';plaza.receiveShadow=true;scene.add(plaza);
  function landmarkBoard(text,p,heading,width=12){const c=document.createElement('canvas');c.width=1024;c.height=160;const x=c.getContext('2d');x.fillStyle='#173d35';x.fillRect(0,0,1024,160);x.fillStyle='#fff3d0';x.textAlign='center';x.font='bold 56px sans-serif';x.fillText(text,512,101);const m=new T.Mesh(new T.PlaneGeometry(width,width/6.4),new T.MeshBasicMaterial({map:new T.CanvasTexture(c),side:T.DoubleSide}));m.position.copy(p);m.rotation.y=heading;scene.add(m);return m;}
- for(let s=RAILWAY.start;s<RAILWAY.end;s+=8){const a=railSample(s),b=railSample(Math.min(s+8,RAILWAY.end)),dx=b.x-a.x,dz=b.z-a.z,n=Math.hypot(dx,dz),heading=Math.atan2(-dx,-dz),x=(a.x+b.x)/2,z=(a.z+b.z)/2,ch=Math.floor(s/240);
-  box('MTR-viaduct',mats.concrete,x,a.y-.65,z,11,1.3,n+.08,heading,ch);
-  for(const lat of [-5.2,5.2])box('MTR-parapet',mats.concrete,x+dz/n*lat,a.y+.55,z-dx/n*lat,.3,1.1,n+.08,heading,ch);
-  for(const lat of [-2.85,-1.42,1.42,2.85])box('MTR-rail',mats.metal,x+dz/n*lat,a.y+.12,z-dx/n*lat,.075,.15,n+.08,heading,ch);
- }
- for(let s=RAILWAY.start+15;s<RAILWAY.end;s+=32){const p=railSample(s),r=sample(s),ch=Math.floor(s/240),h=p.y-1.3-r.groundY;if(channelDepth(p.x,p.z)>0||Math.abs(s-fromChainage(160))<18||Math.abs(s-UNDERPASSES[0].s)<22)continue;box('MTR-pier',mats.concrete,p.x,r.groundY+h/2,p.z,2.4,h,2.4,0,ch);}
- const rp=railSample(a2.s),ra=railSample(a2.s-2),rb=railSample(a2.s+2),rh=Math.atan2(ra.x-rb.x,ra.z-rb.z),stationGroup=new T.Group();stationGroup.name='Hung Shui Kiu Station';stationGroup.position.set(rp.x,sample(a2.s).groundY,rp.z);stationGroup.rotation.y=rh;scene.add(stationGroup);
+ // HSWRL viaduct: continuous box-girder deck, parapets and rails swept every 2 m along the smooth rail curve.
+ const railRings=Array.from({length:Math.ceil(RAILWAY.length/2)+1},(_,i)=>RAILWAY.at(i*2)),bar=(c,w,y0,y1)=>[[c+w/2,y1],[c-w/2,y1],[c-w/2,y0],[c+w/2,y0]];
+ function railSweep(name,mat,sections){const p=[],idx=[];for(const sec of sections){for(let f=0;f<sec.length;f++){const k=p.length/3;for(const r of railRings)for(const [lat,y] of [sec[f],sec[(f+1)%sec.length]])p.push(r.x+r.lx*lat,r.y+y,r.z+r.lz*lat);for(let i=0;i<railRings.length-1;i++){const j=k+i*2;idx.push(j,j+1,j+2,j+1,j+3,j+2);}}
+  for(const [r,start] of [[railRings[0],true],[railRings.at(-1),false]]){const k=p.length/3;for(const [lat,y] of sec)p.push(r.x+r.lx*lat,r.y+y,r.z+r.lz*lat);for(let t of T.ShapeUtils.triangulateShape(sec.map(([x,y])=>new T.Vector2(x,y)),[])){const [a,b,c]=t.map(i=>sec[i]);if(((b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0])>0)===start)t=[t[0],t[2],t[1]];idx.push(...t.map(i=>i+k));}}}
+  const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(p,3));g.setIndex(idx);g.computeVertexNormals();const m=new T.Mesh(g,mat);m.name=name;m.castShadow=m.receiveShadow=true;scene.add(m);}
+ railSweep('MTR-viaduct',mats.concrete,[[[5.5,0],[-5.5,0],[-5.5,-.35],[-3.3,-.55],[-2.5,-1.3],[2.5,-1.3],[3.3,-.55],[5.5,-.35]],bar(-5.2,.3,0,1.1),bar(5.2,.3,0,1.1)]);
+ railSweep('MTR-rail',mats.metal,[-2.85,-1.42,1.42,2.85].map(c=>bar(c,.075,0,.15)));
+ // Piers clear the channels, the corridor carriageway/footpath/cycle track and Road D8; far piers reach the backdrop.
+ const d8=sample(UNDERPASSES[0].s);for(let u=12;u<RAILWAY.length;u+=32){const p=RAILWAY.at(u),q=project(p.x,p.z),r=sample(q),lat=(p.x-r.x)*r.lx+(p.z-r.z)*r.lz,ch=Math.floor(q/240),base=Math.hypot(p.x-r.x,p.z-r.z)>99?-5:r.groundY-.3,h=p.y-1.3-base;
+  if(channelDepth(p.x,p.z)>0||lat>cycleOffset(q)-4&&lat<roadSection(q).right+6||Math.abs((p.x-d8.x)*d8.tx+(p.z-d8.z)*d8.tz)<UNDERPASSES[0].halfWidth+7)continue;box('MTR-pier',mats.concrete,p.x,base+h/2,p.z,2.4,h,2.4,p.heading,ch);box('MTR-pier-head',mats.concrete,p.x,p.y-1.6,p.z,4.6,.6,3,p.heading,ch);}
+ // Night lighting for the railway station and its entrances: merged fixtures, night-only LED lines and additive light spill.
+ const nightParts={fixture:[],led:[],glow:[]},litSigns=[],nightOnly=[],world=new T.Object3D(),litBox=(list,object,w,h,d,x,y,z,tilt=0)=>{object.updateMatrixWorld();list.push(new T.BoxGeometry(w,h,d).applyMatrix4(new T.Matrix4().makeRotationX(tilt).setPosition(x,y,z)).applyMatrix4(object.matrixWorld));},glowAt=(object,w,d,x,y,z,upright=false)=>{object.updateMatrixWorld();const g=new T.PlaneGeometry(w,d);if(!upright)g.rotateX(-Math.PI/2);nightParts.glow.push(g.translate(x,y,z).applyMatrix4(object.matrixWorld));},lampAt=(object,x,y,z)=>{object.updateMatrixWorld();const p=object.localToWorld(new T.Vector3(x,y,z));lampPositions.push({s:project(p.x,p.z),x:p.x,y:p.y,z:p.z});};
+ const rp=railSample(a2.s),rh=rp.heading,stationGroup=new T.Group();stationGroup.name='Hung Shui Kiu Station';stationGroup.position.set(rp.x,sample(a2.s).groundY,rp.z);stationGroup.rotation.y=rh;scene.add(stationGroup);
  const glass=new T.MeshStandardMaterial({color:0x608590,metalness:.35,roughness:.3,transparent:true,opacity:.65}),h=rp.y-stationGroup.position.y;
- for(const [w,hh,d,x,y,z,mat] of [[33,1,220,0,h-.5,0,mats.concrete],[36,.7,224,0,h+7,0,mats.metal],[.3,6,218,-16,h+3,0,glass],[.3,6,218,16,h+3,0,glass],[25,5,42,-22,2.5,0,glass]]){const m=new T.Mesh(new T.BoxGeometry(w,hh,d),mat);m.position.set(x,y,z);m.castShadow=true;stationGroup.add(m);}
+ for(const [w,hh,d,x,y,z,mat] of [[12.4,2.15,220,-10.3,h+.075,0,mats.concrete],[12.4,2.15,220,10.3,h+.075,0,mats.concrete],[36,.7,224,0,h+7,0,mats.metal],[.3,6,218,-16,h+3,0,glass],[.3,6,218,16,h+3,0,glass],[25,5,42,-22,2.5,0,glass]]){const m=new T.Mesh(new T.BoxGeometry(w,hh,d),mat);m.position.set(x,y,z);m.castShadow=true;stationGroup.add(m);}
  for(let z=-100;z<=100;z+=20)for(const x of [-14,14]){const post=new T.Mesh(new T.BoxGeometry(.8,h+7,.8),mats.concrete);post.position.set(x,(h+7)/2,z);stationGroup.add(post);}
  const sign=landmarkBoard('洪水橋站  HUNG SHUI KIU',new T.Vector3(rp.x,rp.y+4,rp.z),rh-Math.PI/2,27);sign.position.add(new T.Vector3(-18,0,0).applyAxisAngle(new T.Vector3(0,1,0),rh));
+ // Side platforms flank the viaduct tracks: soffit strips above both, edge LEDs, lit roof fascia and concourse, backlit name sign.
+ for(const x of [-13,-7.5,7.5,13])litBox(nightParts.fixture,stationGroup,.3,.06,212,x,h+6.62,0);for(const x of [-4.2,4.2])litBox(nightParts.led,stationGroup,.1,.02,216,x,h+1.16,0);for(const x of [-18.05,18.05])litBox(nightParts.led,stationGroup,.1,.2,224,x,h+7,0);litBox(nightParts.led,stationGroup,24,.1,41,-22,4.85,0);
+ for(let z=-102;z<=102;z+=12)for(const x of [-10.3,10.3])glowAt(stationGroup,11,14,x,h+1.18,z);for(const z of [-14,0,14])lampAt(stationGroup,-22,4.6,z);lampAt(stationGroup,-38,4,0);glowAt(sign,33,6.5,0,0,-.15,true);litSigns.push(sign);
  for(const ds of [-80,0,80]){const p=at(a2.s+ds,-42),ch=Math.floor((a2.s+ds)/240);box('plaza-bench',mats.metal,p.x,p.y+.75,p.z,3,.15,.8,sample(a2.s).heading,ch);lampPositions.push({s:a2.s+ds,x:p.x,y:p.y+6,z:p.z});box('plaza-lamp',mats.metal,p.x,p.y+3,p.z,.1,6,.1,0,ch);box('plaza-light',mats.lamp,p.x,p.y+6,p.z,.6,.2,.6,0,ch);}
  // A 30 m access opening leads into the one-storey depot and apron on the left.
  const dr=sample(DEPOT.s),depotGroup=new T.Group();depotGroup.name='SGMTS depot';depotGroup.position.set(dr.x,dr.y,dr.z);depotGroup.rotation.y=dr.heading;scene.add(depotGroup);

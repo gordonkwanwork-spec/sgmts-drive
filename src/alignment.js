@@ -115,7 +115,19 @@ export function cycleCrossing(s){return [...JUNCTIONS,...UNDERPASSES].some(j=>Ma
 export function cycleHeight(s){return .02+.28*clamp(Math.min(...[...JUNCTIONS,...UNDERPASSES].map(j=>(Math.abs(s-j.s)-j.halfWidth-1)/6)),0,1);}
 export const DEPOT={s:fromChainage(3565),opening:30,lateral:95,width:140,length:160};
 export const RAILWAY={start:fromChainage(80),end:fromChainage(1100),station:fromChainage(820)};
-export function railSample(s){const r=sample(s),offset=interp([[80,35],[160,0],[230,-22],[450,-25],[650,-55],[820,-95],[1100,-110]],r.c);return {x:r.x+r.lx*offset,y:13.3,z:r.z+r.lz*offset};}
+// Heavy-rail viaduct: tangents joined by R200/R240 circular curves. One long straight passes Ch.450 at 28 m
+// and carries the 230 m Hung Shui Kiu station box; its PI sits at the Ch.160 corridor crossing.
+// ponytail: circular curves without clothoid transitions; add Euler spirals if cant is ever modelled.
+const railPoint=(c,o)=>{const r=sample(fromChainage(c));return {x:r.x+r.lx*o,z:r.z+r.lz*o};},hsk=railPoint(820,-95),aim=railPoint(450,-28),railAxis=Math.hypot(hsk.x-aim.x,hsk.z-aim.z),onAxis=d=>({x:hsk.x+(hsk.x-aim.x)/railAxis*d,z:hsk.z+(hsk.z-aim.z)/railAxis*d});
+const RAIL=[];{const pi=[[railPoint(80,50)],[onAxis(-660),200],[onAxis(280),240],[railPoint(1115,-125)]],unit=(a,b)=>{const n=Math.hypot(b.x-a.x,b.z-a.z);return {x:(b.x-a.x)/n,z:(b.z-a.z)/n,n};};let p=pi[0][0],u=0;const line=b=>{const d=unit(p,b);RAIL.push({u,length:d.n,a:p,tx:d.x,tz:d.z});u+=d.n;};
+ for(let i=1;i<pi.length-1;i++){const [b,R]=pi[i],d1=unit(pi[i-1][0],b),d2=unit(b,pi[i+1][0]),turn=Math.atan2(d1.x*d2.z-d1.z*d2.x,d1.x*d2.x+d1.z*d2.z),T=R*Math.tan(Math.abs(turn)/2),side=Math.sign(turn),tc={x:b.x-d1.x*T,z:b.z-d1.z*T},centre={x:tc.x-d1.z*side*R,z:tc.z+d1.x*side*R};line(tc);RAIL.push({u,length:Math.abs(turn)*R,R,side,centre,start:Math.atan2(tc.z-centre.z,tc.x-centre.x)});u+=Math.abs(turn)*R;p={x:b.x+d2.x*T,z:b.z+d2.z*T};}
+ line(pi.at(-1)[0]);RAILWAY.length=u;RAILWAY.stationU=RAIL[2].u+(hsk.x-RAIL[2].a.x)*RAIL[2].tx+(hsk.z-RAIL[2].a.z)*RAIL[2].tz;}
+// Rail position by distance u along the viaduct; railSample(s) keeps the corridor-s API and pins the station centre.
+RAILWAY.at=function(u){u=clamp(u,0,this.length);const e=RAIL.find(e=>u<=e.u+e.length)||RAIL.at(-1),t=u-e.u,a=e.R?e.start+e.side*t/e.R:0,tx=e.R?-Math.sin(a)*e.side:e.tx,tz=e.R?Math.cos(a)*e.side:e.tz;return {x:e.R?e.centre.x+Math.cos(a)*e.R:e.a.x+tx*t,y:13.3,z:e.R?e.centre.z+Math.sin(a)*e.R:e.a.z+tz*t,tx,tz,lx:tz,lz:-tx,heading:Math.atan2(-tx,-tz),u};};
+const railU=[[RAILWAY.start,0],[RAILWAY.station,RAILWAY.stationU],[RAILWAY.end,RAILWAY.length]],railLine=Array.from({length:Math.ceil(RAILWAY.length/4)+1},(_,i)=>RAILWAY.at(i*4));
+export function railSample(s){return RAILWAY.at(interp(railU,s));}
+// True plan distance to the rail centreline, for scenery clearance.
+RAILWAY.distance=(x,z)=>{let d=Infinity;for(let i=1;i<railLine.length;i++){const a=railLine[i-1],b=railLine[i],dx=b.x-a.x,dz=b.z-a.z,t=clamp(((x-a.x)*dx+(z-a.z)*dz)/(dx*dx+dz*dz||1),0,1);d=Math.min(d,Math.hypot(x-a.x-t*dx,z-a.z-t*dz));}return d;};
 
 // Road D1 turns within the inside of the corridor's north-eastern bend.
 const d1a=sample(JUNCTIONS.find(j=>j.name==='Road D1').s),d1b=sample(UNDERPASSES.find(j=>j.name==='Road D1').s);
