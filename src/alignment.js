@@ -40,6 +40,8 @@ export function project(x,z,sGuess) {
  }
  return best;
 }
+// Polyline projection snaps to a vertex on the outside of a bend, losing sub-centimetre steps; refine in sample()'s frame (the one point() uses).
+export function projectFrame(x,z,sGuess){let s=project(x,z,sGuess);for(let i=0;i<3;i++){const r=sample(s);s=clamp(s+(x-r.x)*r.tx+(z-r.z)*r.tz,0,LENGTH);}return s;}
 const anchors=[[40,847,1145],[820,854,981],[1470,861,863],[1870,878,772],[2310,922,686],[2890,927,572],[3840,784,482]];
 // Densify long trace segments before applying the station straight sections.
 const dense=[];for(let i=1;i<PATH.length;i++){const a=PATH[i-1],b=PATH[i],n=Math.ceil((b.s-a.s)/2);for(let j=0;j<n;j++){const t=j/n;dense.push({x:a.x+(b.x-a.x)*t,z:a.z+(b.z-a.z)*t,s:a.s+(b.s-a.s)*t});}}dense.push({...PATH.at(-1)});PATH.splice(0,PATH.length,...dense);
