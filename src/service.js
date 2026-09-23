@@ -1,3 +1,6 @@
+// Front-section centre to nose; leave five metres before the platform's departure end.
+export const NOSE=5.65;
+export const stationStopTarget=(st,dir=1)=>st.s+(st.platforms?.find(p=>p.side===dir)?.centerOffset||0)+dir*(st.length/2-5-NOSE);
 // One ordered station list, used by both service directions.
 export const journeyTerminus=(stations,direction)=>direction===1?stations.length-1:0;
 export const nextStationIndex=(index,direction,count)=>{const next=index+direction;return next>=0&&next<count?next:null;};

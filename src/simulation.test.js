@@ -81,7 +81,7 @@ for(const b of BRIDGES){assert.equal(sample(fromChainage((b.start+b.deckStart)/2
 for(const j of UNDERPASSES){const r=sample(j.s),b=BRIDGES.find(b=>b.id===r.bridge);assert(r.y-r.groundY-b.depth>5.1,'Underpass clearance '+b.id);assert(!b.piers.some(c=>Math.abs(fromChainage(c)-j.s)<j.halfWidth+1.5),'Piers must clear the busy road');}
 assert(CROSSINGS.length>=12);for(const c of CROSSINGS){assert(!sample(c.s).elevated);assert.equal(footpathHeight(c.s),.02);}
 assert(Math.abs(footpathHeight(STOPS[1].s)-.30)<1e-12);
-assert.equal(CYCLE_WIDTH,4);for(const st of STOPS.filter(st=>st.id!=='A6'))assert(Math.abs(-cycleOffset(st.s)-CYCLE_WIDTH/2-7.05-st.width-.6)<1e-9,'Cycle track verge clears '+st.id+' back edge');
+assert.equal(CYCLE_WIDTH,4);for(const st of STOPS.filter(st=>st.id!=='A6'))assert(-cycleOffset(st.s)-CYCLE_WIDTH/2-7.05-st.width>=.6-1e-9,'Cycle track verge clears '+st.id+' back edge');
 const terminal=sample(STOPS[0].s),dx=LOOP.center.x-terminal.x,dz=LOOP.center.z-terminal.z;assert(Math.abs(dx*terminal.lx+dz*terminal.lz)<1e-8,'Loop and station share an axis');assert(Math.abs(Math.hypot(dx,dz)-61.55)<1e-8);
 assert.equal(toChainage(LENGTH),4526);
 console.log(`Drawing corrections passed: minimum centreline radius ${minimum.toFixed(1)} m; 15 m steering, bridge FRLs/clearances, crossings, cycle adjacency and terminal registration.`);
@@ -101,7 +101,7 @@ assert(CHANNELS[0].s<STOPS[1].s&&CHANNELS[1].s>STOPS[1].s&&CHANNELS[1].s<STOPS[2
 assert(JUNCTIONS.find(j=>j.name==='Road D1').s>STOPS[6].s+80);
 assert.equal(DEPOT.opening,30);assert.equal(BRIDGES[1].end,3524.2);
 assert(-cycleOffset((L35.start+L35.end)/2)-2>L35.offset+L35.width/2);
-for(const j of JUNCTIONS)assert(cycleCrossing(j.s));
+for(const j of JUNCTIONS)assert.equal(cycleCrossing(j.s),j.halfWidth<=7,'Only at-grade cycle crossings interrupt the surface');
 for(const c of CROSSINGS)for(const st of STOPS)assert(Math.abs(c.s-st.s)>st.length/2+20,'Crossing outside platform and bus bay');
 for(const dir of [-1,1]){const leader={s:dir*100,dir,active:true},follower={s:0,v:10,dir,active:true};for(let i=0;i<1200;i++){const m=approachStep(follower.s,follower.v,dir,10,followingStop(follower.s,dir,[leader,follower],follower),1/60);follower.s=m.position;follower.v=m.speed;}assert(Math.abs((leader.s-follower.s)*dir-40)<.001);assert.equal(follower.v,0);leader.s+=dir*20;const m=approachStep(follower.s,follower.v,dir,10,followingStop(follower.s,dir,[leader]),1);assert(m.speed>0);}
 console.log('Latest layout and queue regressions passed: channels, D1, depot opening, L35, crossing positions and both-direction following.');
@@ -168,3 +168,14 @@ for(const clips of Object.values(recordings)){assert.deepEqual(clips.map(c=>c.la
 const {depotExitCurve}=await import('./routes.js');
 for(const route of [depotCurve,depotExitCurve(depotCurve.getPointAt(1),1),depotExitCurve(depotCurve.getPointAt(1),-1)])for(let i=1;i<route.curves.length;i++)assert(route.curves[i-1].getTangent(1).dot(route.curves[i].getTangent(0))>.999,'Depot joins have continuous headings');
 console.log('Both service directions, fleet counts, parking marks, trilingual recordings and depot headings passed.');
+
+// Both complete three-section ART vehicles fit behind the shared departure-end STOP mark.
+const {stationStopTarget,NOSE}=await import('./service.js');
+for(const st of STOPS)for(const dir of [-1,1]){
+ const centre=st.s+st.platforms.find(p=>p.side===dir).centerOffset,lead=stationStopTarget(st,dir),rear=followingStop(lead-dir*80,dir,[{s:lead,dir,active:true}]);
+ assert(Math.abs((lead-centre)*dir+NOSE-(st.length/2-5))<1e-8,'STOP mark is five metres from departure end');
+ for(const front of [lead,rear])for(const extent of [NOSE,-21.2-NOSE])assert(Math.abs(front+dir*extent-centre)<st.length/2,'Full convoy lies within platform ends');
+ for(const front of [lead,rear])for(const section of [0,10.6,21.2])assert(Math.abs(laneOffset(front-dir*section,dir)-dir*5.4)<1e-8,'All sections stay docked alongside platform');
+ assert(Math.abs((lead-rear)*dir-40)<1e-8,'Existing safe following separation retained');
+}
+console.log('All fourteen station berths accommodate two complete vehicles at the shared STOP target');

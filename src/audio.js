@@ -162,3 +162,25 @@ export async function announce(key){
   sources.at(-1).onended=()=>{if(generation===announcementGeneration){announcementSource=null;announcementActive=false;const next=announcementQueue.shift();if(next)announce(next);}};return true;
  }catch(error){for(const clip of announcementManifest[key])announcementBuffers.delete(clip.file);console.warn('Announcement playback failed',key,error);if(generation===announcementGeneration)announcementActive=false;return false;}
 }
+
+// Dedicated heavy-rail mixer: rolling roar, rail-joint pulses and electric traction.
+// Synthesised sound design, not a recording of an actual Tuen Ma Line train.
+const railVoices=[];
+export function railwaySoundMix(distance,side,radialSpeed=0){return {gain:distance>=280?0:.30/(1+(distance/34)**2),pan:Math.max(-1,Math.min(1,side)),doppler:343/(343+Math.max(-40,Math.min(40,radialSpeed)))};}
+export function updateRailwaySound(trains,camera,running,dt){
+ if(!ctx)return;
+ while(railVoices.length<trains.length){
+  const gain=ctx.createGain(),pan=ctx.createStereoPanner(),rumble=ctx.createBiquadFilter(),tone=ctx.createOscillator(),toneGain=ctx.createGain(),noise=ctx.createBufferSource();
+  gain.gain.value=0;gain.connect(pan);pan.connect(master);rumble.type='lowpass';rumble.frequency.value=950;rumble.Q.value=.65;noise.buffer=rollSrc.buffer;noise.loop=true;noise.playbackRate.value=.75;noise.connect(rumble);rumble.connect(gain);tone.type='triangle';tone.frequency.value=186;toneGain.gain.value=.12;tone.connect(toneGain);toneGain.connect(gain);noise.start();tone.start();railVoices.push({gain,pan,rumble,tone,noise,distance:null,target:0});
+ }
+ const right={x:camera.matrixWorld.elements[0],z:camera.matrixWorld.elements[2]},now=ctx.currentTime;
+ for(let i=0;i<railVoices.length;i++){
+  const v=railVoices[i],emitters=trains[i]?.emitters||[];let nearest=null,distance=Infinity;
+  for(const p of emitters){const d=p.distanceTo(camera.position);if(d<distance){distance=d;nearest=p;}}
+  const side=nearest?((nearest.x-camera.position.x)*right.x+(nearest.z-camera.position.z)*right.z)/Math.max(1,distance):0;
+  const radial=Number.isFinite(distance)&&Number.isFinite(v.distance)&&dt>0?(distance-v.distance)/dt:0,mix=railwaySoundMix(distance,side,radial);
+  // A paired wheel pulse rides the low roar; total gain fades smoothly on pause and mute.
+  v.target=running?mix.gain:0;v.gain.gain.setTargetAtTime(v.target*(.83+.12*Math.sin(now*27)+.05*Math.sin(now*53)),now,.12);v.pan.pan.setTargetAtTime(mix.pan,now,.12);v.noise.playbackRate.setTargetAtTime(.75*mix.doppler,now,.18);v.tone.frequency.setTargetAtTime((186+i*11)*mix.doppler,now,.18);v.distance=Number.isFinite(distance)?distance:null;
+ }
+}
+export function railwaySoundStatus(){return railVoices.map(v=>({target:v.target,gain:v.gain.gain.value,pan:v.pan.pan.value,distance:v.distance,muted,context:ctx?.state}));}

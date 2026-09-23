@@ -19,7 +19,9 @@ def materials():
  M={n:mat(n,*v) for n,v in {'pearl':((.83,.86,.83),.35,.27),'orange':((.97,.29,.055),.45,.26),'glass':((.022,.064,.083),.5,.17),'rubber':((.018,.022,.023),0,.8),'steel':((.38,.47,.51),.8,.26),'dark':((.047,.063,.071),.35,.35),'light':((.8,.94,1),.2,.2,4),'red':((.9,.025,.025),.2,.2,3),'teal':((.04,.55,.6),.2,.36),'blue':((.17,.4,.62),.2,.36),'yellow':((.98,.69,.23),.1,.5),'sand':((.74,.65,.49),0,.8),'concrete':((.57,.61,.6),0,.92),'tile':((.71,.73,.71),0,.85),'tile_dark':((.25,.34,.39),0,.8),'roof':((.61,.59,.53),.25,.55),'cladding':((.79,.77,.69),.15,.55),'panel':((.29,.29,.27),.1,.6),'accent':((.95,.09,.015),.2,.4)}.items()}
 
 def reset():
- bpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False);materials()
+ bpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False)
+ for m in list(bpy.data.materials):bpy.data.materials.remove(m)
+ materials()
 def mesh(n,vs,fs,m,parent=None,smooth=False):
  d=bpy.data.meshes.new(n);d.from_pydata(vs,[],fs);d.update();o=bpy.data.objects.new(n,d);bpy.context.collection.objects.link(o);o.data.materials.append(M[m]);o.parent=parent
  for p in d.polygons:p.use_smooth=smooth
@@ -124,6 +126,10 @@ def cockpit(parent,sign):
 
 def passenger_interior(parent,idx):
  interior=empty('passenger_interior_'+str(idx),parent=parent)
+ for side in [-1,1]:
+  box('Recessed LED diffuser',(side*.64,0,2.975),(.075,8.8,.035),'cabin_led',interior,.012)
+  for y in [-3,0,3]:
+   for dx in [-.09,0,.09]:box('Ceiling ventilation slot',(side*.94+dx,y,2.997),(.028,1.2,.015),'dark',interior)
  box('Ivory ceiling',(0,0,3.06),(2.36,9.6,.10),'pearl',interior,.05)
  for y in [-3,0,3]:
   box('Ceiling service panel',(0,y,2.99),(.85,1.5,.055),'concrete',interior,.1)
@@ -159,7 +165,7 @@ def passenger_interior(parent,idx):
  merge_static(interior)
 
 def vehicle():
- reset();M.update({'seat_orange':mat('seat_orange',(.95,.28,.025),0,.4),'mint':mat('mint',(.52,.76,.30),0,.42),'burgundy':mat('burgundy',(.22,.035,.07),0,.5)});meta={'forward':'-Z','width':2.65,'height':3.5,'length':32.4,'sections':[]}
+ reset();M.update({'seat_orange':mat('seat_orange',(.95,.28,.025),0,.4),'mint':mat('mint',(.52,.76,.30),0,.42),'burgundy':mat('burgundy',(.22,.035,.07),0,.5),'cabin_led':mat('cabin_led',(1,.89,.70),0,.3,2)});meta={'forward':'-Z','width':2.65,'height':3.5,'length':32.4,'sections':[]}
  for idx,label in enumerate(['front','mid','rear']):
   name='section_'+label;p=empty(name,(0,-idx*10.6,0));p['sectionIndex']=idx
   ys=[-5,-4.8,3.5,4.6,5.25,5.6] if idx==0 else ([-5.6,-5.25,-4.6,-3.5,4.8,5] if idx==2 else [-5,-4.8,4.8,5])
@@ -181,7 +187,8 @@ def vehicle():
      theta=a*math.pi/3;box('Hub spoke',(side*1.21,y+.15*math.cos(theta),.49+.15*math.sin(theta)),(.015,.055,.055),'dark',p,.012)
    for di,y in enumerate([-1.6,1.2]):
     dn=f'{name}_door_{"left" if side<0 else "right"}_{di}';d=empty(dn,(side*1.335,y,0),p);d['door']=True
-    box('Door frame',(0,0,1.59),(.042,1.12,2.46),'steel',d,.035)
+    for edge in [-1,1]:box('Door jamb',(0,edge*.535,1.59),(.042,.05,2.46),'steel',d)
+    for z in [.385,2.795]:box('Door header',(0,0,z),(.042,1.12,.05),'steel',d)
     box('Door glazing',(side*.024,0,1.93),(.022,1.02,1.7),'glass',d,.025)
     box('Door lower',(side*.026,0,.68),(.023,1.02,.57),'pearl',d,.02)
     box('Door split',(side*.043,0,1.6),(.025,.025,2.36),'dark',d)
@@ -200,6 +207,15 @@ def vehicle():
    for side in [-1,1]:box('Mirror pod',(side*1.52,sign*3.86,2.38),(.24,.32,.55),'dark',p,.09)
   if idx<2:
    for k in range(7):shell('Articulation bellows',[-5.01-k*.08,-5.045-k*.08],[1.23+(k%2)*.055]*2,.37,3.33,'rubber',p)
+  for y in [-2.8,2.8]:
+   box('Roof HVAC housing',(0,y,3.49),(1.35,1.65,.19),'pearl',p,.07)
+   for x in [-.5,-.3,-.1,.1,.3,.5]:box('HVAC louvre',(x,y,3.592),(.055,1.3,.018),'dark',p)
+  for side in [-1,1]:
+   tube('Roof rain gutter',[(side*1.24,-4.6,3.18),(side*1.24,3.4,3.18)],.022,'steel',p)
+   for y in [-3.9,-.2,3.5]:
+    box('Maintenance panel',(side*1.323,y,.74),(.02,.62,.36),'pearl',p)
+    for dy in [-.24,.24]:box('Panel latch',(side*1.338,y+dy,.76),(.015,.035,.065),'steel',p)
+   for y in [-4.5,4.5]:box('Amber side marker',(side*1.33,y,1.04),(.03,.16,.045),'yellow',p,.015)
   passenger_interior(p,idx)
   if idx in [0,2]:cockpit(p,1 if idx==0 else -1)
   empty(name+'_hitch_front',(0,5.3,.9),p);empty(name+'_hitch_rear',(0,-5.3,.9),p)
@@ -239,7 +255,10 @@ def platform(id,side,width,offset,length=89.6,bent=False):
    curve.append((back-.6+.6*math.cos(a),2.45+.6*math.sin(a)))
   curve.extend([(edge+.5,3.47),(edge-.12,3.5)])
   for k,((x0,z0),(x1,z1)) in enumerate(zip(curve,curve[1:])):
-   mesh('Curved wall and canopy',[pt(x0,y-2.49,z0),pt(x1,y-2.49,z1),pt(x1,y+2.49,z1),pt(x0,y+2.49,z0)],[(0,1,2,3),(3,2,1,0)],'panel' if k==0 else 'roof',p)
+   # Closed 120 mm shell with visible soffit and bay end faces.
+   dx=x1-x0;dz=z1-z0;n=math.hypot(dx,dz);ox=-dz/n*.12;oz=dx/n*.12
+   vs=[pt(x,y0,z) for x,z in [(x0,z0),(x1,z1),(x1+ox,z1+oz),(x0+ox,z0+oz)] for y0 in [y-2.49,y+2.49]]
+   mesh('Curved wall and canopy',vs,[(0,2,3,1),(4,6,7,5),(0,1,5,4),(2,6,7,3),(0,4,6,2),(1,3,7,5)],'panel' if k==0 else 'roof',p)
   b('Lower aluminium cladding',back-.025,y,.77,.12,4.96,.9,'cladding')
   b('Wall panel seam',back-.09,y-2.48,1.65,.035,.025,2.65,'dark')
   # Red ribs wrap from the back wall to the front fascia, as in the source view.
@@ -275,7 +294,10 @@ def platform(id,side,width,offset,length=89.6,bent=False):
  for y in [-30,0,30]:
   b('Suspended station sign',edge+1.5,y,2.82,.12,2.5,.46,'dark',.025)
   # Text faces inward, readable from platform and passing vehicle.
-  o=text('Station name',STATION_NAMES[id]['zh']+' / '+STATION_NAMES[id]['name'],pt(edge+1.43,y,2.7),.14,'light',p,rot=(math.pi/2,0,-side*math.pi/2))
+  for label,z,size in [(STATION_NAMES[id]['zh'],2.85,.18),(STATION_NAMES[id]['name'],2.66,.115)]:
+   o=text('Station name',label,pt(edge+1.43,y,z),size,'sign_text',p,rot=(math.pi/2,0,-side*math.pi/2));bpy.context.view_layer.update()
+   if o.dimensions.y>2.28:o.scale*=2.28/o.dimensions.y
+
  for y in [-36,36]:
   for dx in [.9,1.8,2.7]:
    b('Fare gate',edge+dx,y,.82,.22,.7,1,'steel',.08)
@@ -285,6 +307,9 @@ def platform(id,side,width,offset,length=89.6,bent=False):
 
 def station(id):
  reset();width=6 if id=='A2' else (5 if id=='A1' else 4)
+ colors=[(.08,.38,.31),(.07,.27,.61),(.57,.17,.24),(.45,.22,.57),(.68,.38,.06),(.10,.47,.53),(.45,.55,.17)]
+ c=colors[int(id[1:])-1];M['accent'].diffuse_color=(*c,1);M['accent'].node_tree.nodes.get('Principled BSDF').inputs['Base Color'].default_value=(*c,1);M['sign_text']=mat('sign_text',(.92,.98,1),0,.5,1)
+
  # A2 platform starts differ by ~18.5m from scaled GA; retain stagger explicitly.
  plats=[platform(id,-1,width,-9.25 if id=='A2' else 0,bent=id=='A1'),platform(id,1,width,9.25 if id=='A2' else 0,bent=id=='A1')]
  d={'id':id,'platforms':plats,'roadGap':14.1,'source':'ST-110'+str(int(id[1:])),'appearance':'ACABAS Issue 3 station render and ST-5301–5307 curved cladding','inferred':'Poster artwork, furniture positions and A1 wing interpolation; platform dimensions from GA. Bench backs are outboard of seats, facing the carriageway.'};d.update(save('station-'+id));return d
@@ -304,5 +329,5 @@ if __name__=='__main__':
  for sid in ['A1','A3','A4','A5','A6','A7']:
   manifest['stations'].append(station(sid));(OUT/'asset-manifest.json').write_text(json.dumps(manifest,indent=2))
  assert manifest['vehicle']['triangles']<100000
- # Measured runtime permits the full A2 detail (40,478 triangles); preserve reference detail.
- assert all(s['triangles']<42000 for s in manifest['stations'])
+ # Closed canopy shells and bilingual sign lettering remain below 60k triangles per station.
+ assert all(s['triangles']<60000 for s in manifest['stations'])

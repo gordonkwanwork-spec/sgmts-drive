@@ -2,6 +2,7 @@
 // Run: node src/checks/driving-hud.test.js
 import assert from 'node:assert/strict';
 import {sample,project,projectFrame,laneOffset,LENGTH,END_STOP,STOPS,roadSection} from '../alignment.js';
+import {stationStopTarget,NOSE} from '../service.js';
 import {driveStep,angleDelta} from '../operating.js';
 
 const point=(s,lat=0)=>{const p=sample(s);return {x:p.x+p.lx*lat,z:p.z+p.lz*lat};};
@@ -13,7 +14,7 @@ assert(worst<2e-3,`projectFrame(point(s,lat)) must return s (worst ${worst})`);
 
 // Same guided pure-pursuit kinematics as experience.js update(): driveStep + guided wheel + re-projection.
 function guidedRun(v,proj,dt=1/60){
- let s=STOPS[0].s+10.6,lat=laneOffset(s,1),yaw=0,t=0,minStep=Infinity,maxLane=0,frozen=0;
+ let s=stationStopTarget(STOPS[0]),lat=laneOffset(s,1),yaw=0,t=0,minStep=Infinity,maxLane=0,frozen=0;
  while(s<END_STOP-1&&t<LENGTH/v*1.4){
   t+=dt;const p=sample(s),heading=p.heading+yaw,ahead=Math.min(8,Math.max(5,5+v*.25)),dest=s+ahead,aim=point(dest,laneOffset(dest,1)),here=point(s,lat);
   const alpha=angleDelta(Math.atan2(-(aim.x-here.x),-(aim.z-here.z)),heading),wheel=Math.max(-.65,Math.min(.65,Math.atan2(2*6.2*Math.sin(alpha),ahead)));
@@ -37,9 +38,9 @@ for(const v of [1,2]){
 console.log(`Driving checks passed: projectFrame round-trip (worst ${(worst*1000).toFixed(3)} mm) and no low-speed corner stall.`);
 
 // 停 STOP boards and painted stop marks: makeStopMarkers() puts them on the nose line of a correctly docked vehicle.
-const NOSE=5.65,BOARD_LAT=7.75,HALF_WIDTH=1.27; // keep in step with experience.js makeStopMarkers()
+const BOARD_LAT=7.75,HALF_WIDTH=1.27; // keep in step with experience.js makeStopMarkers()
 for(const st of STOPS)for(const dir of [1,-1]){
- const centre=st.s+(st.platforms.find(p=>p.side===dir)?.centerOffset||0),target=centre+dir*10.6,s=target+dir*NOSE,lane=laneOffset(s,dir);
+ const centre=st.s+(st.platforms.find(p=>p.side===dir)?.centerOffset||0),target=stationStopTarget(st,dir),s=target+dir*NOSE,lane=laneOffset(s,dir);
  assert(Math.abs(s-centre)<st.length/2-4,`${st.id} ${dir===1?'north':'south'} stop board must stay inside the platform (${(s-centre).toFixed(1)} m from its centre)`);
  assert(Math.sign(lane)===dir,`${st.id} ${dir===1?'north':'south'} docking lane must be on that direction's platform side (offset ${lane.toFixed(2)})`);
  assert(BOARD_LAT>Math.abs(lane)+HALF_WIDTH+.3,`${st.id} ${dir===1?'north':'south'} stop board must clear the docked vehicle (lane ${Math.abs(lane).toFixed(2)} m)`);

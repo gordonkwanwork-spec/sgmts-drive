@@ -104,7 +104,7 @@ export const END_STOP=LENGTH-14;
 export const CROSSINGS=STOPS.flatMap(st=>[-1,1].map(side=>({s:clamp(st.s+side*(st.footprintLength/2+st.stagger/2+TAPER+6),0,LENGTH),station:st.id}))).filter(c=>c.s>8&&!sample(c.s).elevated);
 export function footpathHeight(s){const distance=Math.min(...CROSSINGS.map(c=>Math.abs(c.s-s)),...JUNCTIONS.flatMap(j=>[-1,1].map(d=>Math.abs(s-j.s-d*(j.halfWidth+10)))));return .02+.28*clamp((distance-1.5)/6,0,1);}
 export const CYCLE_WIDTH=4;
-export function cycleOffset(s){let offset=roadSection(s).right+3.75+CYCLE_WIDTH/2;for(const st of STOPS){const d=Math.abs(s-st.s)-st.footprintLength/2-st.stagger/2,u=clamp(1-Math.max(0,d)/45,0,1),w=u*u*(3-2*u),flare=st.id==='A1'?Math.max(0,st.s-s-25)*.42:0;offset=Math.max(offset,offset+(7.05+st.width+flare+CYCLE_WIDTH/2-offset)*w);}const u=clamp(Math.min((s-L35.start+45)/45,(L35.end+50-s)/50),0,1),blend=u*u*(3-2*u);const normal=offset+(Math.max(offset,l35Offset(s)+L35.width/2+3.75+CYCLE_WIDTH/2)-offset)*blend;const d=Math.abs(toChainage(s)-3395),u3=clamp((200-d)/100,0,1);return -Math.max(normal+.6,normal+(52-normal)*u3*u3*(3-2*u3));}
+function baseCycleOffset(s){let offset=roadSection(s).right+3.75+CYCLE_WIDTH/2;for(const st of STOPS){const d=Math.abs(s-st.s)-st.footprintLength/2-st.stagger/2,u=clamp(1-Math.max(0,d)/45,0,1),w=u*u*(3-2*u),flare=st.id==='A1'?Math.max(0,st.s-s-25)*.42:0;offset=Math.max(offset,offset+(7.05+st.width+flare+CYCLE_WIDTH/2-offset)*w);}const u=clamp(Math.min((s-L35.start+45)/45,(L35.end+50-s)/50),0,1),blend=u*u*(3-2*u);const normal=offset+(Math.max(offset,l35Offset(s)+L35.width/2+3.75+CYCLE_WIDTH/2)-offset)*blend;const d=Math.abs(toChainage(s)-3395),u3=clamp((200-d)/100,0,1);return -Math.max(normal+.6,normal+(52-normal)*u3*u3*(3-2*u3));}
 
 // Volume 1 GA-1103/1105/1110/1113/1115. Unsigned chainages remain scaled game placements.
 export const CHANNELS=[{name:'A2 approach culvert',c:660,width:18,extent:160},{name:'Tin Sam Channel',c:1195,width:24,extent:190}].map(c=>({...c,s:fromChainage(c.c)}));
@@ -117,15 +117,15 @@ export function l35Width(s){return s>=L35.start&&s<=L35.end?L35.width:0;}
 export function l35Ground(s){const d3=UNDERPASSES.find(j=>j.c===3395),u=clamp((45-d3.s+s)/25,0,1),g=sample(s).groundY;return g+(sample(d3.s).groundY-g)*u*u*(3-2*u);}
 // Junction-local x (= -lateral) of each side road's pedestrian crossing; D6 side 1 clears the L35 mouth and its R6 kerb return.
 export function sideCrossing(j,side){return j.c===2650&&side===1?L35.offset+L35.width/2+8:roadSection(j.s).right+10;}
-export function cycleCrossing(s){return [...JUNCTIONS,...UNDERPASSES].some(j=>Math.abs(s-j.s)<j.halfWidth+.7);}
+export function cycleCrossing(s){return JUNCTIONS.filter(j=>j.halfWidth<=7).some(j=>Math.abs(s-j.s)<j.halfWidth+.7);}
 export function cycleHeight(s){return .02+.28*clamp(Math.min(...[...JUNCTIONS,...UNDERPASSES].map(j=>(Math.abs(s-j.s)-j.halfWidth-1)/6)),0,1);}
 export const DEPOT={s:fromChainage(3565),opening:30,lateral:95,width:140,length:160};
 export const RAILWAY={start:fromChainage(80),end:fromChainage(1100),station:fromChainage(820)};
-// Heavy-rail viaduct: tangents joined by R200/R240 circular curves. One long straight passes Ch.450 at 28 m
+// Heavy-rail viaduct: an R200 approach curve joins the station tangent. One long straight passes Ch.450 at 28 m
 // and carries the 230 m Hung Shui Kiu station box; the R200 curve takes the viaduct across the corridor near Ch.135.
 // ponytail: circular curves without clothoid transitions; add Euler spirals if cant is ever modelled.
 const railPoint=(c,o)=>{const r=sample(fromChainage(c));return {x:r.x+r.lx*o,z:r.z+r.lz*o};},hsk=railPoint(820,-95),aim=railPoint(450,-28),railAxis=Math.hypot(hsk.x-aim.x,hsk.z-aim.z),onAxis=d=>({x:hsk.x+(hsk.x-aim.x)/railAxis*d,z:hsk.z+(hsk.z-aim.z)/railAxis*d});
-const RAIL=[];{const pi=[[railPoint(80,50)],[onAxis(-660),200],[onAxis(280),240],[railPoint(1115,-125)]],unit=(a,b)=>{const n=Math.hypot(b.x-a.x,b.z-a.z);return {x:(b.x-a.x)/n,z:(b.z-a.z)/n,n};};let p=pi[0][0],u=0;const line=b=>{const d=unit(p,b);RAIL.push({u,length:d.n,a:p,tx:d.x,tz:d.z});u+=d.n;};
+const RAIL=[];{const pi=[[railPoint(80,50)],[onAxis(-660),200],[onAxis(480)]],unit=(a,b)=>{const n=Math.hypot(b.x-a.x,b.z-a.z);return {x:(b.x-a.x)/n,z:(b.z-a.z)/n,n};};let p=pi[0][0],u=0;const line=b=>{const d=unit(p,b);RAIL.push({u,length:d.n,a:p,tx:d.x,tz:d.z});u+=d.n;};
  for(let i=1;i<pi.length-1;i++){const [b,R]=pi[i],d1=unit(pi[i-1][0],b),d2=unit(b,pi[i+1][0]),turn=Math.atan2(d1.x*d2.z-d1.z*d2.x,d1.x*d2.x+d1.z*d2.z),T=R*Math.tan(Math.abs(turn)/2),side=Math.sign(turn),tc={x:b.x-d1.x*T,z:b.z-d1.z*T},centre={x:tc.x-d1.z*side*R,z:tc.z+d1.x*side*R};line(tc);RAIL.push({u,length:Math.abs(turn)*R,R,side,centre,start:Math.atan2(tc.z-centre.z,tc.x-centre.x)});u+=Math.abs(turn)*R;p={x:b.x+d2.x*T,z:b.z+d2.z*T};}
  line(pi.at(-1)[0]);RAILWAY.length=u;RAILWAY.stationU=RAIL[2].u+(hsk.x-RAIL[2].a.x)*RAIL[2].tx+(hsk.z-RAIL[2].a.z)*RAIL[2].tz;}
 // Rail position by distance u along the viaduct; railSample(s) keeps the corridor-s API and pins the station centre.
@@ -141,7 +141,7 @@ const da={x:d1a.x-d1a.lx*80,z:d1a.z-d1a.lz*80,y:d1a.y},db={x:d1b.x-d1b.lx*80,z:d
 export const D1ROAD=Array.from({length:41},(_,i)=>{const t=i/40,u=1-t;return {x:u**3*da.x+3*u*u*t*(da.x-d1a.lx*120)+3*u*t*t*(db.x-d1b.lx*120)+t**3*db.x,z:u**3*da.z+3*u*u*t*(da.z-d1a.lz*120)+3*u*t*t*(db.z-d1b.lz*120)+t**3*db.z,y:da.y+(db.y-da.y)*(3*t*t-2*t*t*t)};});
 
 // Bay alignment is spatial: stationary vehicles never drift sideways.
-export function laneOffset(s,dir=1,skip=[]){let lane=1.9;for(const st of STOPS){if(skip.includes(st.id))continue;const platform=st.platforms.find(p=>p.side===dir),d=Math.abs(s-st.s-platform.centerOffset),u=clamp((st.footprintLength/2+40-d)/65,0,1);lane=Math.max(lane,1.9+3.5*u*u*u*(10-15*u+6*u*u));}return dir*lane;}
+export function laneOffset(s,dir=1,skip=[]){let lane=1.9;for(const st of STOPS){if(skip.includes(st.id))continue;const platform=st.platforms.find(p=>p.side===dir),d=Math.abs(s-st.s-platform.centerOffset),u=clamp((st.footprintLength/2+40-d)/50,0,1);lane=Math.max(lane,1.9+3.5*u*u*u*(10-15*u+6*u*u));}return dir*Math.min(lane,roadSection(s).right-1.6);}
 export function curveRadius(s){const a=sample(s-4),b=sample(s+4),turn=Math.abs(Math.atan2(Math.sin(b.heading-a.heading),Math.cos(b.heading-a.heading)));return turn>1e-6?8/turn:Infinity;}
 
 // The opposite cab starts in the same lane; the crossover is travelled, never teleported.
@@ -149,4 +149,15 @@ export const CROSSOVER_START=END_STOP-25.2;
 export function returnOffset(s){const u=clamp((CROSSOVER_START-s)/70,0,1);return s>CROSSOVER_START-70?1.9-3.8*u*u*u*(10-15*u+6*u*u):laneOffset(s,-1);}
 
 export const CYCLE_BRIDGES=[...UNDERPASSES,...JUNCTIONS.filter(j=>j.halfWidth>7)];
-export function cycleBridgeHeight(s){return CYCLE_BRIDGES.some(j=>Math.abs(s-j.s)<j.halfWidth+8)?6.4:cycleHeight(s);}
+export const CYCLE_RAMP=140;
+export function cycleBridgeAt(s){return CYCLE_BRIDGES.find(j=>Math.abs(s-j.s)<j.halfWidth+8+CYCLE_RAMP);}
+export function cycleOffset(s){const j=cycleBridgeAt(s);if(!j)return baseCycleOffset(s);const u=clamp((j.halfWidth+8+CYCLE_RAMP-Math.abs(s-j.s))/CYCLE_RAMP,0,1);return baseCycleOffset(s)-12*u*u*(3-2*u);}
+// The route, paint and riders share the same straight bridge deck and eased approaches.
+function cyclePlan(s){
+ const r=sample(s),offset=cycleOffset(s);let x=r.x+r.lx*offset,z=r.z+r.lz*offset;
+ const j=cycleBridgeAt(s);
+ if(j){const d=s-j.s,u=clamp((j.halfWidth+8+55-Math.abs(d))/55,0,1),w=u*u*(3-2*u),c=sample(j.s),lat=cycleOffset(j.s);x+=(c.x+c.lx*lat+c.tx*d-x)*w;z+=(c.z+c.lz*lat+c.tz*d-z)*w;}
+ return {...r,x,z};
+}
+export function cycleSample(s){const r=cyclePlan(s),a=cyclePlan(Math.max(0,s-.3)),b=cyclePlan(Math.min(LENGTH,s+.3)),n=Math.hypot(b.x-a.x,b.z-a.z),tx=(b.x-a.x)/n,tz=(b.z-a.z)/n;return {...r,tx,tz,lx:tz,lz:-tx,heading:Math.atan2(-tx,-tz)};}
+export function cycleBridgeHeight(s){const j=cycleBridgeAt(s);if(!j)return cycleHeight(s);const d=Math.abs(s-j.s),u=clamp((j.halfWidth+8+CYCLE_RAMP-d)/CYCLE_RAMP,0,1),w=u*u*(3-2*u),ground=sample(s).groundY;return cycleHeight(s)+(sample(j.s).groundY+6.4-ground-cycleHeight(s))*w;}

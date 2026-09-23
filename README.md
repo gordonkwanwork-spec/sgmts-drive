@@ -215,3 +215,42 @@ The depot has an open central bay. Stop with doors closed, then choose the left 
 Keyboard buttons: F go, T stop, E doors, C camera, P pause, O options, I map, U hide/show interface, N day/night, J depot, K change cab, L skip station, [ / ] depot exits, Y recover. Tab and Enter also operate the buttons. Click the scene to capture mouse-look; Esc releases it without moving the view while using the interface.
 
 The editable vehicle model now includes front and rear Blender cockpits, curved consoles, live instruments, driver seats, orange/green passenger seats, stainless rails, hanging straps and open gangways. Cockpit view uses a driver-eye marker inside the active vehicle section: looking around leaves the controls fixed to the cab. Source: `assets/blender/art.blend`; reproducible builder: `scripts/build_assets.py --vehicle`.
+
+### Blender streetscape kit
+
+`assets/blender/street-kit.blend` contains four building templates (residential, office, village and logistics), five road vehicles, ten pedestrians (men, women, children, older adults and two wheelchair users), a seated cyclist, and five vegetation templates (grass, meadow grass, ferns, shrubs and flowering shrubs). Each named root is a reusable model at the origin; hide the other roots when editing one. `public/assets/street-kit.glb` is loaded by the game, with shared geometry and instanced buildings. The cyclist's legs follow the pedals and the wheels rotate with travel; pedestrians retain their walking/boarding animation.
+
+Rebuild the kit with:
+
+```sh
+/Applications/Blender.app/Contents/MacOS/Blender --background --python scripts/build_street_assets.py
+```
+
+The orange tram includes rooftop HVAC, service panels, open glazed door frames and recessed cabin LEDs. Night mode illuminates all passenger interiors; three local lights add illumination to the player's tram. AI interiors use emissive materials to keep the light count bounded. `npm test` checks the exported templates, limb pivots, complete pedal cycle and cabin LEDs. These are stylised game models, with physical-phone performance still unmeasured.
+
+Verge planting uses shared Blender geometry in spatially culled instances. A height-weighted wind shader keeps plant bases fixed and varies gust phase by location. Connecting-road lamps cover the crossing roads, D1 link, L35 bend, depot approach and A1 loop, with fixed road-oriented pavement illumination. Other vehicles and bicycles have emissive lamps and a pool of four nearby headlights that illuminate surfaces; distant vehicles retain visible lamps. Wheelchair users remain seated and roll their wheels during movement.
+
+### Tuen Ma Line viaduct trains
+
+Two independently moving eight-car trains now use the opening railway viaduct, with each car and bogie following its curvature. The editable Blender formation includes cab masks and wipers, bilingual destination boards, five door pairs per side, transparent saloon windows, seats, handrails, gangways, wheelsets, brake discs, underfloor equipment, roof HVAC and two raised pantographs per train. Contact and messenger wires, droppers, gantries, track sleepers and illuminated viaduct fixtures complete the railway. Night mode enables passenger lighting, directional headlights/tail lights and viaduct downlights. Spatial synthesized rail roar, wheel pulses and traction tone respond to distance, stereo position, pause and the existing Sound control.
+
+- Native source: `assets/blender/tuen-ma-train.blend`; browser asset: `public/assets/tuen-ma-train.glb`.
+- Rebuild: `/Applications/Blender.app/Contents/MacOS/Blender -b -P scripts/build_tuen_ma.py`.
+- Check: `node src/checks/railway.test.js` (also included in `npm test`).
+- Visual reference: [MTR's Tuen Ma C-Train model](https://estore.mtr.com.hk/en/products/mtr-train-model-tml-ctrain); [MTR network endpoints](https://www.mtr.com.hk/en/corporate/operations/detail_network.html).
+- This is a detailed game interpretation, not a dimensionally certified rolling-stock model. Trains run continuously at 57.6 km/h; scenic tunnels conceal recycling beyond the map. Railway sound is synthesized, not a field recording. Station stops and passenger exchange on these background trains are not simulated.
+
+### Station advertising
+
+The existing 364 platform poster frames carry seven photographic campaigns created
+with the built-in GPT image tool: A1 Northern Metropolis, A2 new technology,
+A3 university town, A4 green living, A5 arts and culture, A6 logistics cluster,
+and A7 artificial intelligence. These are fictional promotional artworks.
+Full-resolution textures are in `public/assets/adverts/A1.png` through `A7.png`;
+the exact generation prompts are in `docs/station-advert-prompts.json`.
+The runtime overlay follows the baked poster frames, A1 flare, A2 stagger and route
+grade, with one shared texture and one additional draw call per station. The
+backlit artwork remains legible at night. Regression checks run with `npm test`;
+day and opposite-platform night captures are in `output/playwright/station-adverts/`.
+
+Station canopies now use closed 120 mm Blender shells and seven distinct accent colours, with separately emissive bilingual signs. Cycling approaches use 420 mm closed decks and regular piers. Sixteen nearby street lights illuminate people and foliage at night; tree planting mixes four canopy forms/colours with shrub bases. Check structures with `node src/checks/viaduct-lighting.test.js`; station asset checks are included in `npm test`.
