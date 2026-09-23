@@ -12,7 +12,7 @@ import {buildEnvironment,JUNCTIONS,UNDERPASSES} from './environment.js';
 import {energyFlow,boxesOverlap,SCENARIOS} from './simulation.js';
 import * as audio from './audio.js';
 import './experience.css';
-const asset=f=>import.meta.env.BASE_URL+'assets/'+f+(['art.glb','street-kit.glb'].includes(f)?'?v=streets-20260923':f.startsWith('station-')?'?v=stations-20260923b':'');
+const asset=f=>import.meta.env.BASE_URL+'assets/'+f+(['art.glb','street-kit.glb'].includes(f)?'?v=streets-lod-20260923':f.startsWith('station-')?'?v=stations-20260923b':'');
 import {tractionLocked,verticalOverlap,doorsFit,driveStep,angleDelta,freeStep,MAX_WHEEL_ANGLE,approachStep,followingStop} from './operating.js';
 const $=s=>document.querySelector(s),clamp=(x,a,b)=>Math.max(a,Math.min(b,x)),smooth=(a,b,t)=>a+(b-a)*clamp(t,0,1);
 const point=(s,lat=0)=>{let p=sample(s);return new T.Vector3(p.x+p.lx*lat,p.y,p.z+p.lz*lat);};
@@ -269,7 +269,7 @@ function lightRoadUsers(night){
 const streetLights=Array.from({length:16},()=>{const light=new T.PointLight(0xffe4bb,0,30,2);light.name='Local street illumination';scene.add(light);return light;});
 function lightStreetObjects(night){const near=night?environment.lampPositions.map(p=>({p,d:(p.x-camera.position.x)**2+(p.y-camera.position.y)**2+(p.z-camera.position.z)**2})).filter(q=>q.d<140**2).sort((a,b)=>a.d-b.d).slice(0,streetLights.length):[];
  streetLights.forEach((light,i)=>{const p=near[i]?.p;if(!p){light.intensity=0;return;}const h=Math.max(1,p.y-sample(project(p.x,p.z)).groundY);light.position.set(p.x,p.y-.15,p.z);light.distance=Math.min(36,Math.max(12,h*2.8));light.intensity=Math.min(160,8*h);});}
-function lightScene(){const night=state.condition==='night';lightRoadUsers(night);lightStreetObjects(night);for(const l of headlights){l.intensity=night&&state.mode!=='free'?120:0;if(vehicle){l.position.copy(vehicle.sections[0].localToWorld(new T.Vector3(l.userData.side*.85,1,-5.4)));l.target.position.copy(vehicle.sections[0].localToWorld(new T.Vector3(l.userData.side*1.5,.1,-45)));}}}
+function lightScene(){const night=state.condition==='night';if(night){lightRoadUsers(true);lightStreetObjects(true);}for(const l of headlights){l.intensity=night&&state.mode!=='free'?120:0;if(vehicle){l.position.copy(vehicle.sections[0].localToWorld(new T.Vector3(l.userData.side*.85,1,-5.4)));l.target.position.copy(vehicle.sections[0].localToWorld(new T.Vector3(l.userData.side*1.5,.1,-45)));}}scene.traverse(n=>{if(n.isLight&&n!==sun&&n!==ambient)n.visible=night&&n.intensity>0;});}
 $('#night').onclick=()=>{state.condition=state.condition==='night'?'morning':'night';$('#condition').value=state.condition;weather();};
 $('#headway').onchange=()=>{state.headway=Number($('#headway').value)===210?210:300;resetStreetLife();const p=fleetPlan(state.headway);toast(`${p.count} running services${p.convoy===2?' · two-vehicle convoys':''}`);};
 

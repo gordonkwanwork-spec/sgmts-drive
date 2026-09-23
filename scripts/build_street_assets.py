@@ -244,6 +244,8 @@ b.M['flower']=b.mat('flower',(.76,.19,.42))
 for kind,color in {'grass':(.24,.38,.085),'meadow':(.43,.49,.16),'fern':(.09,.30,.14),'shrub':(.15,.32,.07),'flowering':(.22,.38,.10)}.items():b.M['leaf_'+kind]=b.mat('leaf_'+kind,color,0,.95)
 for i in range(10):person(i)
 vegetation()
+from build_vegetation_lod import add_vegetation_lods
+add_vegetation_lods()
 cyclist()
 for args in [('car',1.8,4.2,1.6),('taxi',1.8,4.7,1.65),('van',2,5.5,2.5),('truck',2.4,8.5,3.2),('bus',2.5,11,3.5)]:traffic(*args)
 for args in [('residential',10),('tech',6),('village',2),('logistics',1)]:building(*args)
