@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PREVIEW_REF: game-2026-09-23
+  PREVIEW_REF: game-2026-09-23-optimized
 
 jobs:
   deploy:
