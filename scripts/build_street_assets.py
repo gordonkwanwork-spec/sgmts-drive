@@ -19,7 +19,7 @@ b.box=box
 
 
 def ellipsoid(name, pos, size, material, parent):
- bpy.ops.mesh.primitive_uv_sphere_add(segments=12, ring_count=8, radius=1, location=pos)
+ bpy.ops.mesh.primitive_uv_sphere_add(segments=6 if material=='flower' else 12, ring_count=4 if material=='flower' else 8, radius=1, location=pos)
  o=bpy.context.object;o.name=name;o.scale=size;o.parent=parent;o.data.materials.append(b.M[material])
  for f in o.data.polygons:f.use_smooth=True
  return o

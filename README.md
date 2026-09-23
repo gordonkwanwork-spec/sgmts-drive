@@ -255,4 +255,6 @@ grade, with one shared texture and one additional draw call per station. The
 backlit artwork remains legible at night. Regression checks run with `npm test`;
 day and opposite-platform night captures are in `output/playwright/station-adverts/`.
 
-Station canopies now use closed 120 mm Blender shells and seven distinct accent colours, with separately emissive bilingual signs. Cycling approaches use 420 mm closed decks and regular piers. Sixteen nearby street lights illuminate people and foliage at night; tree planting mixes four canopy forms/colours with shrub bases. Check structures with `node src/checks/viaduct-lighting.test.js`; station asset checks are included in `npm test`.
+Station canopies now use closed 120 mm Blender shells and seven distinct accent colours, with separately emissive bilingual signs. Cycling approaches use 420 mm closed decks and regular piers. Six nearby street lights illuminate people and foliage at night; tree planting mixes four canopy forms/colours with shrub bases. Check structures with `node src/checks/viaduct-lighting.test.js`; station asset checks are included in `npm test`.
+
+Performance: inactive local lights are removed from daylight shaders; night light counts stay fixed to avoid shader recompilation while moving. Vegetation uses full detail within 65 m, simplified Blender geometry beyond that, and culling beyond 550 m. The 3D canvas uses at most one render pixel per CSS pixel on Retina displays; HTML controls remain native-resolution.

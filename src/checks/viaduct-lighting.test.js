@@ -72,3 +72,12 @@ assert(!meshes.some(m=>m.name.startsWith('planter-')),'No concrete tree boxes');
 assert(meshes.some(m=>m.name.startsWith('tree-shrub-')),'Trees have shrub underplanting');
 assert.equal(new Set(env.trees.map(t=>t.kind)).size,4,'Four tree forms');
 console.log('Solid cycle decks and piers, four tree forms and shrub bases passed');
+
+const plantsWithLOD=meshes.filter(m=>m.userData.full&&m.userData.low);
+assert(plantsWithLOD.length>100,'Planting is divided into small distance-selectable cells');
+for(const mesh of plantsWithLOD){const full=mesh.userData.full,low=mesh.userData.low;assert((low.index?.count||low.attributes.position.count)<(full.index?.count||full.attributes.position.count)*.35,'Distant geometry is substantially smaller');}
+const plant=plantsWithLOD.find(m=>m.userData.s>700&&m.userData.s<2000),s=plant.userData.s;
+env.update(s,0);assert(plant.visible&&plant.geometry===plant.userData.full,'Nearby detail retained');
+env.update(s+150,0);assert(plant.visible&&plant.geometry===plant.userData.low,'Distant plant simplified');
+env.update(s+700,0);assert(!plant.visible,'Far planting culled');
+console.log('Near/full, distant/simplified and far/culled vegetation checks passed');
