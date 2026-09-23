@@ -4,6 +4,8 @@
 
 ▶️ **[Play it now — no download needed](https://gordonkwanwork-spec.github.io/sgmts-drive/)**
 
+▶️ **[Play the saved recent version — 23 September 2026](https://gordonkwanwork-spec.github.io/sgmts-drive/versions/2026-09-23/)**
+
 ![Title screen](screenshots/title.jpg)
 
 ---
