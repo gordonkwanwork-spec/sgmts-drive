@@ -14,6 +14,9 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
+env:
+  PREVIEW_REF: game-2026-09-23
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -28,9 +31,19 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - name: Add saved recent version
+        run: |
+          mkdir -p site/versions/2026-09-23
+          cp -R dist/. site/
+          git fetch --no-tags origin "refs/tags/${PREVIEW_REF}:refs/tags/${PREVIEW_REF}"
+          git worktree add --detach "$RUNNER_TEMP/preview" "$PREVIEW_REF"
+          cd "$RUNNER_TEMP/preview"
+          npm ci
+          npm run build
+          cp -R dist/. "$GITHUB_WORKSPACE/site/versions/2026-09-23/"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: site
       - id: deploy
         uses: actions/deploy-pages@v4
