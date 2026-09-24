@@ -21,11 +21,6 @@ for(const campaign of TRAM_CAMPAIGNS){
  const root=model.scene.clone(true),original=new Map();
  root.traverse(n=>{if(n.isMesh)original.set(n,{material:n.material,geometry:n.geometry});});
  const sections=['section_front','section_mid','section_rear'].map(name=>root.getObjectByName(name));
- // Match the game's additional wheel fairings.
- for(const section of sections)for(const side of [-1,1]){
-  const fairing=new T.Mesh(new T.BoxGeometry(.08,.85,8.5),new T.MeshStandardMaterial());
-  fairing.name='Wheel fairing';fairing.position.set(side*1.29,.59,0);section.add(fairing);
- }
  const tram={sections};applyTramAdvert(tram,{...campaign,map:new T.Texture()});
  assert.equal(tram.advert,campaign.id);
  let glazing=0,doors=0,painted=0;
@@ -39,12 +34,11 @@ for(const campaign of TRAM_CAMPAIGNS){
    painted++;assert.notEqual(mesh.material,before.material,'Unwrapped fleet shares no modified material');
    assert(!mesh.material.transparent,'Only opaque body panels receive ads');
    if(/_door_(left|right)_[01]$/.test(mesh.parent.name)){
-    doors++;assert.equal(before.material.name,'pearl','Door glass, frames and handles stay clear');
+    if(before.material.name==='body_white')doors++;else assert.match(before.material.name,/^livery_/,'Door glass, frames and handles stay clear');
    }
   }
  }
  assert(glazing>=15);assert.equal(doors,12);assert(painted>18);
- for(const section of sections)assert(section.children.filter(n=>n.name==='Wheel fairing').every(n=>n.userData.tramAdvert===campaign.id));
  const plain=model.scene.clone(true),plainTram={sections:[plain]};applyTramAdvert(plainTram,null);
  assert(!plainTram.advert);plain.traverse(n=>assert(!n.userData.tramAdvert));
 }

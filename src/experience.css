@@ -107,3 +107,22 @@ body.map-expanded #hud-stack{z-index:17}@media(max-height:500px){body.map-expand
 #drive-options h3{margin:12px 0 0;padding-top:10px;border-top:1px solid #526f5f;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#e6c27f}#drive-options h2+h3{border-top:0;padding-top:0}
 #drive-options #telemetry,#drive-options #score-panel{border-top:0}#drive-options #score-panel small{display:inline!important;font-size:11px;letter-spacing:0;color:#c9d9ce;margin-right:4px}#drive-options #telemetry span{font-size:11px;letter-spacing:0;color:#c9d9ce}#drive-options #telemetry b{font-size:16px}
 #drive-options kbd{display:inline-block;margin-left:7px;padding:1px 6px;border:1px solid #9fbcae;border-bottom-width:2px;border-radius:4px;background:#0c241c;color:#e5f1e8;font:11px/1.35 ui-monospace,Menlo,Consolas,monospace}html.mobile kbd{display:none}
+/* Key hints on every button; touch pad replaces them on phones. */
+#route-choices kbd,.modal kbd,#begin kbd{display:inline-block;margin-left:5px;padding:0 5px;border:1px solid #9fbcae;border-bottom-width:2px;border-radius:4px;font:10px/1.4 ui-monospace,monospace;opacity:.85}
+html.mobile kbd{display:none!important}
+#touch-pad{display:none}html.mobile #touch-pad{display:contents}
+#joystick,#touch-pad button{display:none;position:fixed;pointer-events:auto;touch-action:none;z-index:9;user-select:none;-webkit-user-select:none}
+#joystick{left:max(22px,env(safe-area-inset-left));bottom:max(22px,env(safe-area-inset-bottom));width:124px;height:124px;border-radius:50%;background:#17382fb8;border:2px solid #9ebaae;box-shadow:0 2px 8px #0006}
+#joystick i{position:absolute;left:36px;top:36px;width:52px;height:52px;border-radius:50%;background:#e6b579;box-shadow:0 2px 6px #0007}
+#touch-pad button{width:58px;height:58px;min-height:58px;padding:4px;border-radius:50%;border:2px solid #b9cac1;background:#263b3bed;color:#edf4ed;box-shadow:0 2px 8px #0005}
+#touch-pad b{font-size:20px;display:block;line-height:22px}#touch-pad small{display:block;font-size:10px}
+/* Driving: Walk sits beside Doors. On foot / bike / riding / free roam the driving controls give way to the pad. */
+html.mobile body[data-avatar=drive]:not([data-mode=free]) #pad-enter{display:block;left:84px;bottom:max(14px,env(safe-area-inset-bottom))}
+html.mobile body:is([data-mode=free],[data-avatar=foot],[data-avatar=bike]) #joystick{display:block}
+html.mobile body:not([data-mode=free]):not([data-avatar=drive]) #pad-enter{display:block;right:max(12px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom))}
+html.mobile body:not([data-mode=free]):is([data-avatar=foot],[data-avatar=ride]) #pad-talk{display:block;right:82px;bottom:max(14px,env(safe-area-inset-bottom))}
+html.mobile body:not([data-mode=free])[data-avatar=foot] #pad-up{display:block;right:152px;bottom:max(14px,env(safe-area-inset-bottom))}
+html.mobile body[data-mode=free] #pad-up{display:block;right:82px;bottom:max(14px,env(safe-area-inset-bottom))}
+html.mobile body[data-mode=free] #pad-down{display:block;right:max(12px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom))}
+html.mobile body:not([data-avatar=drive]) :is(#mobile-buttons button,#speed-dial,#route-choices,#cluster,#dwell){display:none!important}
+@media(max-width:480px){html.mobile body[data-avatar=drive]:not([data-mode=free]) #pad-enter{left:70px;width:52px;height:52px;min-height:52px}html.mobile #hud #cluster{left:176px}}

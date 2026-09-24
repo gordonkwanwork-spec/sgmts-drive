@@ -1,5 +1,5 @@
 """Reproducible Blender 5.2 source. Metres; Blender +Y forward -> glTF -Z."""
-import bpy, math, json, random, sys
+import bpy, bmesh, math, json, random, sys
 from pathlib import Path
 from mathutils import Vector
 ROOT=Path(__file__).resolve().parents[1]
@@ -63,21 +63,108 @@ def save(name):
  print('ASSET',name,'triangles',tris,'bytes',(OUT/(name+'.glb')).stat().st_size,flush=True)
  return {'triangles':tris,'bytes':(OUT/(name+'.glb')).stat().st_size}
 
-def shell(n,ys,widths,zbottom,ztop,m,parent):
- # Rounded rectangular extrusion with separately curved longitudinal end profile.
- vs=[];N=20
- for y,w in zip(ys,widths):
-  for i in range(N):
-   a=2*math.pi*i/N;x=w*math.copysign(abs(math.cos(a))**.32,math.cos(a));z=(ztop+zbottom)/2+(ztop-zbottom)/2*math.copysign(abs(math.sin(a))**.32,math.sin(a));yy=y
-   if n in ('Glazed cabin','Orange sculpted roof') and parent.name!='section_mid' and ((parent.name=='section_front' and y>3.5) or (parent.name=='section_rear' and y< -3.5)):
-    yy=y-math.copysign(max(0,z-1.0)/2.5*1.3*max(0,abs(y)-3.5)/2.1,y)
-   vs.append((x,yy,z))
- fs=[(j*N+i,j*N+(i+1)%N,(j+1)*N+(i+1)%N,(j+1)*N+i) for j in range(len(ys)-1) for i in range(N)]
- if n=='Lower pearl bodyshell':fs=[f for f in fs if sum(vs[i][2] for i in f)/len(f)<1.02]
- if n!='Articulation bellows':
-  if n!='Glazed cabin' or parent.name=='section_rear':fs.append(tuple(range(N-1,-1,-1)))
-  if n!='Glazed cabin' or parent.name=='section_front':fs.append(tuple((len(ys)-1)*N+i for i in range(N)))
- return mesh(n,vs,fs,m,parent,True)
+# Aerodynamic bodyshell after the 2026 livery sheet: one smooth loft per section.
+# Half cross-section, sill centre -> roof centre. Segment bands: 0-5 white skirt,
+# 6-8 glazing line, 9 black header, 10+ orange roof.
+PROFILE=[(0,.30),(.9,.30),(1.2,.32),(1.3,.38),(1.33,.5),(1.335,.8),(1.335,1.12),(1.33,1.5),(1.32,2.0),(1.31,2.62),(1.30,2.95),(1.27,3.14),(1.19,3.32),(1.02,3.44),(.7,3.49),(.35,3.505),(0,3.51)]
+RING=PROFILE+[(-x,z) for x,z in reversed(PROFILE[1:-1])];NR=len(RING)
+NOSE_Y=4.9;NOSE_R=.7;NOSE_L=NOSE_Y+NOSE_R;RAKE=.2;RAKE_Z=1.15
+DOORS=[-1.6,1.2]
+LIVERY=['livery_teal','livery_orange','livery_yellow','livery_pink','livery_sky','livery_green','livery_red']
+def seg(i):return i if i<len(PROFILE)-1 else NR-1-i
+def ring(y,hw=1.335,theta=0,roof=1):
+ # theta: nose rounding angle (0 straight body, pi/2 flat front); the roof rolls down into the header.
+ out=[]
+ for x,z in RING:
+  if z>2.95:z=2.95+(z-2.95)*roof
+  out.append((x*hw/1.335,y-RAKE*max(0,z-RAKE_Z)*math.sin(theta),z))
+ return out
+def nose_surface(x,z,off=0):
+ # Point on the build-frame nose (towards +y) at half-width x and height z, pushed out by off.
+ ax=min(abs(x),1.32);th=math.pi/2 if ax<=.62 else math.acos((ax-.62)/NOSE_R)
+ n=Vector((math.copysign(math.cos(th),x),math.sin(th),RAKE*math.sin(th)*(z>RAKE_Z)));n.normalize()
+ return Vector((x if ax<=.62 else math.copysign(.62+NOSE_R*math.cos(th),x),NOSE_Y+NOSE_R*math.sin(th)-RAKE*max(0,z-RAKE_Z)*math.sin(th),z))+off*n
+
+def body(p,idx):
+ nose=idx!=1;sign=-1 if idx==2 else 1
+ windows=[(-4.75,-2.35),(-.85,.45),(1.95,3.75),(3.95,4.85)] if nose else [(-4.75,-2.35),(-.85,.45),(1.95,4.75)]
+ # Rear cab is the front cab mirrored in y; built in the front frame, faces tested in real coordinates.
+ end=NOSE_Y if nose else 5.0
+ rings=[(y,ring(y),'body') for y in sorted({-5.0,end,*[e for w in windows for e in w],*[d*sign+s*.535 for d in DOORS for s in (-1,1)]})]
+ if nose:
+  for k in range(1,11):
+   th=k*math.pi/20;y=NOSE_Y+NOSE_R*math.sin(th);rings.append((y,ring(y,.62+NOSE_R*math.cos(th),th,.35+.65*math.cos(th)),'corner' if k<10 else 'front'))
+  for k in range(1,7):rings.append((NOSE_L,ring(NOSE_L,.62*(1-k/6),math.pi/2,.35),'front'))
+ vs=[(x,y*sign,z) for _,r,_ in rings for x,y,z in r];fs=[];mats=[]
+ for j in range(len(rings)-1):
+  y,_,kind=rings[j+1];yb=(rings[j][0]+y)/2
+  for i in range(NR):
+   s=seg(i);f=(j*NR+i,j*NR+(i+1)%NR,(j+1)*NR+(i+1)%NR,(j+1)*NR+i)
+   if kind=='body' and 3<=s<=8 and any(abs(yb-d*sign)<.535 for d in DOORS):continue # door openings
+   if s<=5:m='body_white'
+   elif s>=10:m='body_orange'
+   elif s==9:m='body_black'
+   elif kind=='front' or kind=='corner' and y>NOSE_Y+.4 or kind=='body' and any(a<yb<b for a,b in windows):m='glass'
+   else:m='body_black'
+   fs.append(f if sign>0 else f[::-1]);mats.append(m)
+ names=['body_white','body_orange','body_black','glass'];o=mesh('Aerodynamic bodyshell',vs,fs,'body_white',p,True)
+ for n in names[1:]:o.data.materials.append(M[n])
+ for poly,m in zip(o.data.polygons,mats):poly.material_index=names.index(m)
+ bm=bmesh.new();bm.from_mesh(o.data);bmesh.ops.remove_doubles(bm,verts=bm.verts,dist=1e-5);bm.to_mesh(o.data);bm.free()
+ for poly in o.data.polygons:poly.use_smooth=True
+ # One material per object so glazing and advert wraps can address panels by material.
+ bpy.ops.object.select_all(action='DESELECT');o.select_set(True);bpy.context.view_layer.objects.active=o
+ bpy.ops.object.mode_set(mode='EDIT');bpy.ops.mesh.separate(type='MATERIAL');bpy.ops.object.mode_set(mode='OBJECT')
+ for q in bpy.context.selected_objects:
+  m=q.data.materials[q.data.polygons[0].material_index];q.data.materials.clear();q.data.materials.append(m)
+  for poly in q.data.polygons:poly.material_index=0
+
+def livery(p,y0,y1,side,rnd):
+ # Overlapping pastel and signal-colour spikes rising from the sill, clear of the doors.
+ y=y0;k=0
+ while y<y1-.1:
+  w=rnd.uniform(.1,.22);h=rnd.uniform(.22,.66)*(1 if rnd.random()>.2 else .5);x=side*(1.3365+.0004*(k%6))
+  if not any(abs(y+w/2-d)<.6 for d in DOORS):mesh('Spike livery',[(x,y,.42),(x,y+w,.42),(x,y+w*rnd.uniform(.3,.7),.42+h)],[(0,1,2)],rnd.choice(LIVERY),p)
+  y+=w*rnd.uniform(.35,.7);k+=1
+
+def exterior(p,idx):
+ rnd=random.Random(40+idx);nose=idx!=1;sign=-1 if idx==2 else 1
+ body(p,idx)
+ for side in [-1,1]:
+  livery(p,-4.8 if idx==2 else -4.95,4.8 if idx==0 else 4.95,side,rnd)
+  for y in [-4.5,4.5]:box('Amber side marker',(side*1.34,y,1.02),(.03,.16,.045),'yellow',p,.015)
+ # Low orange equipment pods with fan grilles, as in the roof plan.
+ for y,fan in [(-2.8,idx!=1),(2.8,idx==1)]:
+  box('Roof equipment pod',(0,y,3.55),(1.5,1.9,.14),'body_orange',p,.06)
+  if fan:
+   bpy.ops.mesh.primitive_cylinder_add(vertices=32,radius=.27,depth=.03,location=(0,y,3.63));o=bpy.context.object;o.name='Roof fan grille';o.data.materials.append(M['dark']);o.parent=p
+   tube('Roof fan rim',[(.29*math.cos(a*math.pi/16),y+.29*math.sin(a*math.pi/16),3.635) for a in range(33)],.018,'steel',p)
+ if not nose:return
+ # Rear cab = front cab rotated 180 degrees about the vertical axis.
+ def S(x,z,off=0):v=nose_surface(x,z,off);return (v.x*sign,v.y*sign,v.z)
+ for side in [-1,1]:
+  # Orange frame runs from the roof, down the windscreen edges and turns in over the bumper.
+  tube('Orange nose frame',[S(side*x,z,.03) for x,z in [(1.08,2.97),(1.12,2.6),(1.13,2.1),(1.12,1.6),(1.08,1.22),(.98,.92),(.8,.66),(.58,.48),(.38,.38)]],.065,'body_orange',p,12)
+  tube('Headlamp cluster',[S(side*x,.78,.01) for x in [.74,.86,.98,1.1,1.2]],.075,'body_black',p,12)
+  tube('Headlamp LED',[S(side*x,.78,.07) for x in [.78,.9,1.02,1.14]],.03,'light' if sign>0 else 'red',p,10)
+  # Mirror stalk grows out of the front roof corner; the pod hangs clear of the windscreen.
+  top=S(side*1.16,2.98,.02);pod=Vector(S(side*1.2,2.5))+Vector((side*sign*.42,-sign*.18,0))
+  tube('Mirror stalk',[top,(top[0]+side*sign*.22,top[1]-sign*.05,top[2]+.08),(pod.x,pod.y,3.02),(pod.x,pod.y,pod.z+.25)],.028,'body_black',p,8)
+  box('Mirror pod',tuple(pod),(.13,.24,.52),'body_black',p,.05)
+ tube('LED signature',[S(x,.99,.012) for x in [-.95,-.7,-.4,-.15,.15,.4,.7,.95]],.022,'light' if sign>0 else 'red',p,8)
+ for k in range(26):
+  xc=-1.2+k*.096+rnd.uniform(-.03,.03);w=rnd.uniform(.08,.16);h=rnd.uniform(.12,.55);off=.006+.0004*(k%5)
+  mesh('Spike livery',[S(xc-w/2,.38,off),S(xc+w/2,.38,off),S(xc+rnd.uniform(-.04,.04),.38+h,off)],[(0,1,2)],rnd.choice(LIVERY),p)
+ # Destination display sits flush in the black header on the raked glazing line.
+ tilt=math.atan(RAKE)
+ box('Destination display',S(0,2.785,.004),(1.05,.012,.27),'dark',p).rotation_euler.x=tilt*sign
+ d=text('Route destination','泥圍' if sign>0 else '產業園',S(0,2.785,.012),.2,'led_orange',p,rot=(math.pi/2-tilt,0,math.pi if sign>0 else 0));d.data.align_y='CENTER';d['animated']=True
+ # Wiper parks below the glazing line, out of the driver's view, and sweeps up the glass in rain.
+ w=empty('wiper_pivot_'+('front' if sign>0 else 'rear'),S(.55,1.07,.035),p);w.rotation_euler=(tilt-math.pi/2,0,0 if sign>0 else math.pi);w['wiper']=True
+ tube('Wiper arm',[(0,0,0),(-.5,0,.012),(-1.08,0,.012)],.016,'body_black',w,8)
+ box('Wiper blade',(-.6,0,0),(.98,.022,.028),'rubber',w,.008)
+ bpy.ops.mesh.primitive_cylinder_add(vertices=16,radius=.045,depth=.05,location=(0,0,0));c=bpy.context.object;c.name='Wiper spindle cap';c.data.materials.append(M['body_black']);c.parent=w
+ merge_static(w)
 
 def cockpit(parent,sign):
  cab=empty('cockpit_'+parent.name,parent=parent);cab.rotation_euler.z=0 if sign>0 else math.pi
@@ -165,62 +252,43 @@ def passenger_interior(parent,idx):
  merge_static(interior)
 
 def vehicle():
- reset();M.update({'seat_orange':mat('seat_orange',(.95,.28,.025),0,.4),'mint':mat('mint',(.52,.76,.30),0,.42),'burgundy':mat('burgundy',(.22,.035,.07),0,.5),'cabin_led':mat('cabin_led',(1,.89,.70),0,.3,2)});meta={'forward':'-Z','width':2.65,'height':3.5,'length':32.4,'sections':[]}
+ reset();M.update({'seat_orange':mat('seat_orange',(.95,.28,.025),0,.4),'mint':mat('mint',(.52,.76,.30),0,.42),'burgundy':mat('burgundy',(.22,.035,.07),0,.5),'cabin_led':mat('cabin_led',(1,.89,.70),0,.3,2)})
+ # Exterior-only paint: reflective metallic body colours, tinted glazing and LED destination text.
+ M.update({'body_white':mat('body_white',(.86,.87,.86),.55,.18),'body_orange':mat('body_orange',(.80,.25,.06),.6,.2),'body_black':mat('body_black',(.012,.014,.016),.7,.14),'led_orange':mat('led_orange',(1,.42,.04),0,.4,4)})
+ for n,c in zip(LIVERY,[(.02,.55,.68),(.95,.25,.03),(.98,.75,.2),(.95,.62,.6),(.5,.78,.9),(.25,.6,.3),(.85,.1,.04)]):M[n]=mat(n,c,.1,.35)
+ g=M['glass'].node_tree.nodes.get('Principled BSDF');M['glass'].diffuse_color=(.008,.016,.02,1);g.inputs['Base Color'].default_value=(.008,.016,.02,1);g.inputs['Metallic'].default_value=.4;g.inputs['Roughness'].default_value=.04
+ meta={'forward':'-Z','width':2.65,'height':3.5,'length':32.4,'sections':[]}
  for idx,label in enumerate(['front','mid','rear']):
   name='section_'+label;p=empty(name,(0,-idx*10.6,0));p['sectionIndex']=idx
-  ys=[-5,-4.8,3.5,4.6,5.25,5.6] if idx==0 else ([-5.6,-5.25,-4.6,-3.5,4.8,5] if idx==2 else [-5,-4.8,4.8,5])
-  widths=[1.2,1.32,1.32,1.24,1.06,.88] if idx==0 else ([.88,1.06,1.24,1.32,1.32,1.2] if idx==2 else [1.2,1.32,1.32,1.2])
-  shell('Lower pearl bodyshell',ys,widths,.26,1.15,'pearl',p)
-  shell('Glazed cabin',ys,[w*.99 for w in widths],1.02,3.21,'glass',p)
-  shell('Orange sculpted roof',ys,[w*.99 for w in widths],3.13,3.49,'orange',p)
+  exterior(p,idx)
   box('Interior floor',(0,0,.56),(2.4,9.6,.14),'dark',p,.035)
   for side in [-1,1]:
-   for y in [-3.8,-2.5,-1.2,.1,1.4,2.7]:
-    box('Window mullion',(side*1.31,y,2.1),(.035,.045,1.98),'dark',p)
-   for k in range(34):
-    y=-4.65+k*.265;h=random.uniform(.14,.87);x=side*1.327
-    mesh('Skyline livery',[(x,y,.35),(x,y+.23,.35),(x,y+.23,.35+h*.8),(x,y+.1,.35+h),(x,y,.35+h*.8)],[(0,1,2,3,4)],['teal','orange','blue','yellow','sand'][k%5],p)
    for wi,y in enumerate([-3.0,3.0]):
     bpy.ops.mesh.primitive_cylinder_add(vertices=24,radius=.48,depth=.22,location=(side*1.23,y,.49),rotation=(0,math.pi/2,0));w=bpy.context.object;w.name=f'{name}_wheel_{"left" if side<0 else "right"}_{wi}';w.parent=p;w.data.materials.append(M['rubber']);w['animated']=True
     bpy.ops.mesh.primitive_cylinder_add(vertices=20,radius=.31,depth=.025,location=(side*1.20,y,.49),rotation=(0,math.pi/2,0));hub=bpy.context.object;hub.data.materials.append(M['steel']);hub.parent=p
     for a in range(6):
-     theta=a*math.pi/3;box('Hub spoke',(side*1.21,y+.15*math.cos(theta),.49+.15*math.sin(theta)),(.015,.055,.055),'dark',p,.012)
-   for di,y in enumerate([-1.6,1.2]):
+     theta=a*math.pi/3;box('Hub spoke',(side*1.21,y+.15*math.cos(theta),.49+.15*math.sin(theta)),(.015,.055,.055),'dark',p) # ponytail: unbevelled, spokes sit mostly behind the skirt
+   for di,y in enumerate(DOORS):
     dn=f'{name}_door_{"left" if side<0 else "right"}_{di}';d=empty(dn,(side*1.335,y,0),p);d['door']=True
-    for edge in [-1,1]:box('Door jamb',(0,edge*.535,1.59),(.042,.05,2.46),'steel',d)
-    for z in [.385,2.795]:box('Door header',(0,0,z),(.042,1.12,.05),'steel',d)
+    for edge in [-1,1]:box('Door jamb',(0,edge*.535,1.59),(.042,.05,2.46),'body_black',d)
+    for z in [.385,2.795]:box('Door header',(0,0,z),(.042,1.12,.05),'body_black',d)
     box('Door glazing',(side*.024,0,1.93),(.022,1.02,1.7),'glass',d,.025)
-    box('Door lower',(side*.026,0,.68),(.023,1.02,.57),'pearl',d,.02)
+    box('Door lower',(side*.026,0,.68),(.023,1.02,.57),'body_white',d,.02)
     box('Door split',(side*.043,0,1.6),(.025,.025,2.36),'dark',d)
     tube('Door grab',[(side*.054,.15,1.16),(side*.054,.15,1.65)],.013,'steel',d)
+    rnd=random.Random(idx*10+di*2+side);yy=-.5
+    while yy<.42:
+     ww=rnd.uniform(.1,.2);mesh('Door spike livery',[(side*.04,yy,.42),(side*.04,yy+ww,.42),(side*.04,yy+ww*.5,.42+rnd.uniform(.12,.5))],[(0,1,2)],rnd.choice(LIVERY),d);yy+=ww*.7
     merge_static(d)
-  if idx in [0,2]:
-   sign=1 if idx==0 else -1
-   # Swept nose glass, orange rails and continuous illuminated eyebrow.
-   for side in [-1,1]:
-    tube('Orange nose surround',[(side*1.25,sign*4.05,3.27),(side*1.19,sign*4.62,2.87),(side*1.02,sign*5.19,1.6),(side*.91,sign*5.58,.39)],.065,'orange',p,12)
-   tube('Headlamp backing',[(x,sign*(5.59-.37*(abs(x)/.94)**2),1.05+.12*(abs(x)/.94)**2) for x in [-.94,-.7,-.4,0,.4,.7,.94]],.06,'dark',p,10)
-   tube('LED signature',[(x,sign*(5.66-.37*(abs(x)/.94)**2),1.05+.12*(abs(x)/.94)**2) for x in [-.94,-.7,-.4,0,.4,.7,.94]],.033,'light' if idx==0 else 'red',p,10)
-   tube('Windscreen wiper',[(.55,sign*5.61,1.18),(.12,sign*5.5,1.82),(-.35,sign*5.18,2.29)],.022,'dark',p)
-   destination=text('Route destination','SGMTS',(0,sign*5.35,2.88),.16,'light',p,rot=(math.pi/2 if sign<0 else math.pi/2,0,math.pi if sign>0 else 0))
-   destination['animated']=True
-   for side in [-1,1]:box('Mirror pod',(side*1.52,sign*3.86,2.38),(.24,.32,.55),'dark',p,.09)
   if idx<2:
-   for k in range(7):shell('Articulation bellows',[-5.01-k*.08,-5.045-k*.08],[1.23+(k%2)*.055]*2,.37,3.33,'rubber',p)
-  for y in [-2.8,2.8]:
-   box('Roof HVAC housing',(0,y,3.49),(1.35,1.65,.19),'pearl',p,.07)
-   for x in [-.5,-.3,-.1,.1,.3,.5]:box('HVAC louvre',(x,y,3.592),(.055,1.3,.018),'dark',p)
-  for side in [-1,1]:
-   tube('Roof rain gutter',[(side*1.24,-4.6,3.18),(side*1.24,3.4,3.18)],.022,'steel',p)
-   for y in [-3.9,-.2,3.5]:
-    box('Maintenance panel',(side*1.323,y,.74),(.02,.62,.36),'pearl',p)
-    for dy in [-.24,.24]:box('Panel latch',(side*1.338,y+dy,.76),(.015,.035,.065),'steel',p)
-   for y in [-4.5,4.5]:box('Amber side marker',(side*1.33,y,1.04),(.03,.16,.045),'yellow',p,.015)
+   # Black pleated accordion bellows: one closed-sided loft spanning the 0.6 m articulation gap.
+   rs=[(x*(.93+(k%2)*.04),-5.0-k*.04,.40+(z-.30)*.92) for k in range(16) for x,_,z in ring(0)]
+   mesh('Articulation bellows',rs,[((k+1)*NR+i,(k+1)*NR+(i+1)%NR,k*NR+(i+1)%NR,k*NR+i) for k in range(15) for i in range(NR)],'rubber',p,True)
   passenger_interior(p,idx)
   if idx in [0,2]:cockpit(p,1 if idx==0 else -1)
   empty(name+'_hitch_front',(0,5.3,.9),p);empty(name+'_hitch_rear',(0,-5.3,.9),p)
   merge_static(p)
-  meta['sections'].append({'name':name,'pivot':[0,0,idx*10.6],'hitchFront':[0,.9,-5.3],'hitchRear':[0,.9,5.3],'doors':[{'name':f'{name}_door_{side}_{di}','position':[x,0,-y]} for side,x in [('left',-1.335),('right',1.335)] for di,y in enumerate([-1.6,1.2])]})
+  meta['sections'].append({'name':name,'pivot':[0,0,idx*10.6],'hitchFront':[0,.9,-5.3],'hitchRear':[0,.9,5.3],'doors':[{'name':f'{name}_door_{side}_{di}','position':[x,0,-y]} for side,x in [('left',-1.335),('right',1.335)] for di,y in enumerate(DOORS)]})
  meta.update(save('art'));return meta
 
 

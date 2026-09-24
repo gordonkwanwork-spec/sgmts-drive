@@ -26,7 +26,7 @@ export function applyTramAdvert(tram,campaign){
     section.traverse(mesh=>{
       // Only exterior painted meshes and lower door panels; never glazing, cabins, lights or running gear.
       if(!mesh.isMesh||!(mesh.parent===section||/_door_(left|right)_[01]$/.test(mesh.parent.name)))return;
-      if(mesh.name!=='Wheel fairing'&&!['pearl','orange','teal','blue','yellow','sand'].includes(mesh.material?.name))return;
+      if(!/^(body_white|body_orange|livery_)/.test(mesh.material?.name))return;
       const material=mesh.material.clone(),transform=inverse.clone().multiply(mesh.matrixWorld);
       mesh.material=material;mesh.userData.tramAdvert=campaign.id;
       material.onBeforeCompile=shader=>{
