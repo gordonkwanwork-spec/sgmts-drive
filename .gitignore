@@ -25,3 +25,4 @@ Music/
 
 # Original user recordings; published phrase clips are in public/audio/announcements.
 /Announcements/
+__pycache__/
