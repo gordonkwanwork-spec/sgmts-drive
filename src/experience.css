@@ -24,6 +24,8 @@ html.mobile .facts{gap:12px;margin:14px 0}.mobile .intro{font-size:12px}
 @media(max-height:500px){html.mobile #identity{display:none}html.mobile #top-actions{top:8px}html.mobile #next-panel{top:8px;max-width:37vw}html.mobile #instruction{bottom:80px;max-width:42vw}html.mobile #route-strip{display:none}html.mobile .sheet{padding-top:20px}html.mobile .sheet .facts,html.mobile .sheet .intro{display:none}}
 #clean-view{position:fixed;right:8px;top:8px;width:30px;height:30px;padding:0;z-index:50;border-radius:50%;background:#16362ba8;color:#fff;font-size:18px}
 body.clean-view>:not(#viewport):not(#clean-view){visibility:hidden!important}
+/* Mobile hide keeps the driving controls: Go, Stop, speed dial, Skip station, Cruise, Doors. */
+html.mobile body.clean-view :is([data-action=go],[data-action=stop],[data-action=doors],[data-action=express],[data-action=cruise],#speed-dial){visibility:visible!important}
 body.clean-view #clean-view{opacity:.45}body.clean-view #clean-view:hover,body.clean-view #clean-view:focus-visible{opacity:1}
 html.mobile #clean-view{width:40px;height:40px;top:3px;right:8px}
 

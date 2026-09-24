@@ -244,6 +244,17 @@ Two independently moving eight-car trains now use the opening railway viaduct, w
 
 ### Station advertising
 
+Rooftop billboards at 洪水橋 (A2), 洪水橋北 (A3), and 物流圈 (A6) advertise
+洪水橋大學城, 連接中國, and 物流空間出租 in Traditional Chinese. Each platform
+has a framed 15 × 5 m board with separate readable faces and roof supports.
+Two warm floodlight fixtures on projecting arms sit over each face; at night the
+print glows from its own emissive map (no realtime lights, which cost every pixel).
+Placement respects the station stagger and route grade. The three graphics were
+created with the built-in GPT image tool and saved as
+`public/assets/adverts/billboard-A2.png`, `billboard-A3.png`, and `billboard-A6.png`.
+Exact prompts and the government source for the university-town name are in
+`docs/rooftop-advert-prompts.json`. These are fictional game advertisements.
+
 The existing 364 platform poster frames carry seven photographic campaigns created
 with the built-in GPT image tool: A1 Northern Metropolis, A2 new technology,
 A3 university town, A4 green living, A5 arts and culture, A6 logistics cluster,
@@ -258,3 +269,14 @@ day and opposite-platform night captures are in `output/playwright/station-adver
 Station canopies now use closed 120 mm Blender shells and seven distinct accent colours, with separately emissive bilingual signs. Cycling approaches use 420 mm closed decks and regular piers. Six nearby street lights illuminate people and foliage at night; tree planting mixes four canopy forms/colours with shrub bases. Check structures with `node src/checks/viaduct-lighting.test.js`; station asset checks are included in `npm test`.
 
 Performance: inactive local lights are removed from daylight shaders; night light counts stay fixed to avoid shader recompilation while moving. Vegetation uses full detail within 65 m, simplified Blender geometry beyond that, and culling beyond 550 m. The 3D canvas uses at most one render pixel per CSS pixel on Retina displays; HTML controls remain native-resolution.
+
+### Running tram wraps
+
+Every third AI tram (3rd, 6th, 9th, …) carries a reference-inspired Traditional
+Chinese campaign: yellow football, orange finance, red/orange travel, or blue
+rewards. The four fictional GPT-generated designs are stored in
+`public/assets/tram-adverts/`; prompts are in `docs/tram-advert-prompts.json`.
+Wraps recolour existing opaque exterior panels, roofs, skirts and lower sliding
+doors. Windows, windshields, lights, wheels and passenger interiors retain their
+original materials. Normal service has 2 wrapped trams out of 6; the larger fleet
+has 5 out of 17. Player and parked depot vehicles keep their original livery.

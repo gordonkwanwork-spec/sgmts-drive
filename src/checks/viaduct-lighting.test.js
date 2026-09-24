@@ -55,12 +55,32 @@ console.log(`Night lighting checks passed: 4 merged station lighting meshes, day
 for(const p of env.plots)assert(sceneryClear(p.x,p.z,p.radius),'Every building clears the full cycleway and bridge approaches');
 assert(env.plantings.length>5000,'Dense planted verges');
 assert.equal(new Set(env.plantings.map(p=>p.kind)).size,5);
-for(const p of env.plantings){const s=project(p.x,p.z),r=sample(s);assert(Math.hypot(p.x-r.x,p.z-r.z)>=roadSection(s).right+4.2&&cycleClearance(p.x,p.z)>=2.7&&env.plots.every(q=>Math.hypot(q.x-p.x,q.z-p.z)>=q.radius+.5),'Adjacent planting stays outside paths and buildings');assert(p.heightScale>=1.3,'Taller verge planting');}
+for(const p of env.plantings){const s=project(p.x,p.z),r=sample(s);const low=p.verge&&['grass','meadow'].includes(p.kind);assert(Math.hypot(p.x-r.x,p.z-r.z)>=roadSection(s).right+(p.strip?3.95:low?4:4.2)&&cycleClearance(p.x,p.z)>=(p.strip?2.2:low?2.35:2.7)&&env.plots.every(q=>Math.hypot(q.x-p.x,q.z-p.z)>=q.radius+.5),'Adjacent planting stays outside paths and buildings');assert(p.heightScale>=1.3,'Taller verge planting');}
 for(const kind of ['D1','L35 bend','Depot approach','Terminal loop','underbridge'])assert(env.lampPositions.some(l=>l.kind===kind),kind+' is lit');
 for(const l of env.lampPositions)assert(Number.isFinite(l.x+l.y+l.z),'Finite lamp position');
 for(const m of meshes.filter(m=>m.name==='Road D1 connecting alignment'&&m.material===env.materials.road))assert(m.userData.nightOverlay,'D1 surface receives lighting');
 env.update(800,2);assert.equal(env.windTime.value,2);env.setNight(true);
 assert(meshes.filter(m=>m.name==='Fixed night illumination').every(m=>m.visible));
+// Verges between the left footpath and cycle track are planted wherever at least 0.9 m of open grass exists.
+{const {pavementLight}=await import('../environment.js'),{cycleOffset,cycleSample,cycleCrossing,cycleBridgeAt,cycleBridgeHeight,JUNCTIONS}=await import('../alignment.js');
+ const cells=new Map(),key=(x,z)=>Math.floor(x/2)+','+Math.floor(z/2);for(const p of env.plantings){const k=key(p.x,p.z);if(!cells.has(k))cells.set(k,[]);cells.get(k).push(p);}
+ const near=(x,z,d)=>{for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(const p of cells.get((Math.floor(x/2)+i)+','+(Math.floor(z/2)+j))||[])if(Math.hypot(p.x-x,p.z-z)<d)return true;return false;};
+ let open=0,planted=0;
+ for(let s=10;s<LENGTH-10;s+=5){const inner=-(roadSection(s).right+3.75),outer=cycleOffset(s)+2;if(inner-outer<.45)continue;const lat=(inner+outer)/2,r=sample(s),x=r.x+r.lx*lat,z=r.z+r.lz*lat;
+  if(!sceneryClear(x,z,0,true)||STOPS.some(st=>Math.abs(s-st.s)<st.footprintLength/2+14))continue;open++;if(near(x,z,1.6))planted++;}
+ assert(planted/open>.9,`verge planted ${planted}/${open}`);
+ // Nothing planted between the A2 plaza and the cycle track.
+ const a2=STOPS[1];assert(!env.plantings.some(p=>{const s=project(p.x,p.z),r=sample(s),lat=(p.x-r.x)*r.lx+(p.z-r.z)*r.lz;return s>a2.s-110&&s<a2.s+120&&lat<cycleOffset(s)-2&&lat>-84;}),'No vegetation between the A2 plaza and the cycle track');
+ // The whole cycle track (ground and bridges) sits in lamp light, except under station roofs and at road crossings.
+ const lamps=env.lampPositions.map(l=>({...l,axis:l.axis||sample(l.s)}));let dark=[];
+ for(let s=10;s<LENGTH-10;s+=2){if(cycleCrossing(s)||STOPS.some(st=>Math.abs(s-st.s)<st.footprintLength/2+2)||!cycleBridgeAt(s)&&JUNCTIONS.some(j=>Math.abs(j.s-s)<j.halfWidth+4))continue;const c=cycleSample(s),v=new T.Vector3(c.x,c.groundY+cycleBridgeHeight(s),c.z);if(pavementLight(v,lamps.filter(l=>Math.abs(l.x-v.x)<30&&Math.abs(l.z-v.z)<30))<.3)dark.push(s);}
+ assert(dark.length<8,'Cycle track dark at '+dark.slice(0,10).join(','));
+ // Planting carries the baked lamp light used at night.
+ const glow=meshes.filter(m=>m.isInstancedMesh&&/^vegetation-/.test(m.name)).flatMap(m=>[...m.geometry.attributes.nightGlow.array]);assert(glow.filter(g=>g>.3).length>glow.length*.2,'Verge planting lit at night');
+ // Trees (canopy and trunk) use the wind/night-light shader and most catch lamp spill.
+ const trees=meshes.filter(m=>m.isInstancedMesh&&/^(foliage|trunk)-/.test(m.name));assert(trees.every(m=>m.material.customProgramCacheKey()==='verge-wind-v3'),'Tree materials keep the night-light shader');
+ const treeGlow=trees.flatMap(m=>[...m.geometry.attributes.nightGlow.array]);assert(treeGlow.filter(g=>g>.2).length>treeGlow.length*.6,'Trees lit at night');
+ console.log(`Verge fill ${planted}/${open}, clear A2 plaza strip, lit cycle track (${dark.length} dark samples) and lit planting passed`);}
 console.log(`${env.plantings.length} clear verge plantings, wind updates, connecting road lamps and lit D1 surfaces passed`);
 
 const cycleRamps=meshes.filter(m=>m.name==='Cycle bridge approach ramp');

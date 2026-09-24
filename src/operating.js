@@ -32,3 +32,10 @@ export function followingStop(s,dir,services,self=null){
  for(const a of services)if(a!==self&&a.active&&a.dir===dir&&(a.s-s)*dir>=0){const line=a.s-dir*40;if((line-stop)*dir<0)stop=line;}
  return stop;
 }
+
+// A tram yields only while a crossing pedestrian is inside, or within one stride of, its own swept lane
+// (1.35 m half-width + 1 m margin); once they have passed the lane it may proceed.
+export function crosserInPath(lat,walkDir,lane,half=2.35,stride=2.2){
+ const lo=lane-half,hi=lane+half;if(lat>=lo&&lat<=hi)return true;
+ const ahead=walkDir===1?lo-lat:lat-hi;return ahead>=0&&ahead<=stride;
+}

@@ -42,45 +42,69 @@ def wheel(name, y, radius, width, parent, x=0):
  return p
 
 
+def loft(name,pts,radii,material,parent,sides=12):
+ """Smooth limb/torso section: elliptical rings (rx side, ry front-back) along pts, capped at both ends."""
+ vs=[];fs=[]
+ for i,p in enumerate(pts):
+  t=Vector(pts[min(i+1,len(pts)-1)])-Vector(pts[max(0,i-1)]);t.normalize();u=t.cross(Vector((0,0,1)))
+  if u.length<.01:u=Vector((1,0,0))
+  u.normalize();v=t.cross(u);rx,ry=radii[i] if isinstance(radii[i],tuple) else (radii[i],radii[i])
+  vs.extend([tuple(Vector(p)+u*rx*math.cos(a*math.tau/sides)+v*ry*math.sin(a*math.tau/sides)) for a in range(sides)])
+ n=len(pts);fs=[(i*sides+j,i*sides+(j+1)%sides,(i+1)*sides+(j+1)%sides,(i+1)*sides+j) for i in range(n-1) for j in range(sides)]
+ vs.extend([tuple(pts[0]),tuple(pts[-1])]);first,last=len(vs)-2,len(vs)-1
+ fs+=[(first,(j+1)%sides,j) for j in range(sides)]+[(last,(n-1)*sides+j,(n-1)*sides+(j+1)%sides) for j in range(sides)]
+ return b.mesh(name,vs,fs,material,parent,True)
+
+
 def person(index):
+ """Jointed pedestrian: pelvis (body) → chest → shoulders/elbows, hips → knees → ankles. JS drives the gait."""
  p=b.empty('pedestrian_'+str(index));shirt=['teal','burgundy','blue','sand'][index%4]
  female=index%2==1;elder=index in (4,5);child=index in (6,7);seated=index>=8
  p['gender']='female' if female else 'male';p['age']='child' if child else 'older' if elder else 'adult';p['wheelchair']=seated
- hair='silver' if elder else 'hair'
+ hair='silver' if elder else 'hair';skin='skin'+str(index%3);legwear=['trouser_charcoal','trouser_navy','trouser_khaki'][index%3]
  if child:p.scale=(.72,.72,.72)
  elif elder:p.scale=(.94,.96,.94)
- ellipsoid('Tailored shirt',(0,0,1.19),(.235,.14,.31),shirt,p)
- b.box('Trouser waist',(0,0,.88),(.35,.24,.19),'navy',p,.07)
- ellipsoid('Neck',(0,0,1.49),(.07,.07,.11),'skin'+str(index%3),p)
- ellipsoid('Face',(0,0,1.65),(.125,.115,.17),'skin'+str(index%3),p)
- ellipsoid('Hair',(0,-.025,1.745),(.13,.108,.09),hair,p)
- ellipsoid('Nose',(0,.115,1.65),(.029,.035,.038),'skin'+str(index%3),p)
- if female:
-  ellipsoid('Long hair',(0,-.075,1.62),(.145,.12,.22),hair,p)
-  if not seated:b.box('Tunic hem',(0,0,1.00),(.44,.30,.25),shirt,p,.07)
- if elder:
-  for side in [-1,1]:b.tube('Spectacle rim',[(side*.06+.044*math.cos(a*math.tau/12),.112,1.68+.036*math.sin(a*math.tau/12)) for a in range(13)],.007,'steel',p,4)
+ body=b.empty(p.name+'_body',(0,0,-.37 if seated else 0),p)
+ # Pelvis and optional tunic stay with the hips; everything above the waist twists with the chest.
+ ellipsoid('Hips',(0,-.005,.94),(.155,.105,.12),legwear,body)
+ chest=b.empty(p.name+'_chest',(0,0,.98),body)
+ w=.9 if female else 1
+ loft('Torso',[(0,-.005,0),(0,0,.12),(0,.005,.3),(0,-.005,.43),(0,-.01,.51)],[(.14*w,.1),(.15*w,.105),(.17*w,.12),(.18*w,.105),(.08,.07)],shirt,chest,14)
+ if female and not seated:loft('Tunic hem',[(0,0,.12),(0,0,-.02),(0,0,-.2)],[(.155,.11),(.17,.125),(.2,.15)],shirt,chest,14)
+ loft('Neck',[(0,0,.48),(0,.005,.6)],[.052,.047],skin,chest)
+ ellipsoid('Face',(0,.012,.655),(.093,.108,.118),skin,chest)
+ ellipsoid('Jaw',(0,.035,.6),(.074,.078,.055),skin,chest)
+ ellipsoid('Hair',(0,-.012,.705),(.1,.117,.082),hair,chest)
+ ellipsoid('Nose',(0,.112,.648),(.014,.022,.024),skin,chest)
  for s in [-1,1]:
-  ellipsoid('Ear',(s*.126,0,1.65),(.026,.026,.043),'skin'+str(index%3),p)
-  limb=b.empty(p.name+'_arm_'+str(s),(s*.25,0,1.4),p)
-  b.tube('Sleeve',[(0,0,0),(s*.035,0,-.22)],.085,shirt,limb)
-  b.tube('Forearm',[(s*.035,0,-.22),(s*.015,.02,-.45)],.057,'skin'+str(index%3),limb)
-  ellipsoid('Hand',(s*.015,.02,-.49),(.058,.045,.075),'skin'+str(index%3),limb);b.merge_static(limb)
-  leg=b.empty(p.name+'_leg_'+str(s),(s*.105,0,.88),p)
-  b.tube('Trousers',[(0,0,0),(0,0,-.35),(0,.015,-.70)],.085,'navy',leg)
-  b.box('Sneaker',(0,.055,-.80),(.18,.32,.15),'pearl',leg,.045)
-  b.box('Shoe sole',(0,.055,-.866),(.185,.325,.026),'rubber',leg,.008);b.merge_static(leg)
- b.box('Backpack',(0,-.18,1.18),(.31,.16,.38),'dark',p,.06)
- for s in [-1,1]:b.tube('Bag strap',[(s*.14,-.13,1.43),(s*.16,.12,1.35),(s*.15,.13,1.02)],.018,'dark',p)
+  ellipsoid('Eye',(s*.036,.1,.668),(.013,.008,.009),'dark',chest)
+  ellipsoid('Ear',(s*.094,0,.655),(.018,.026,.038),skin,chest)
+ if female:ellipsoid('Long hair',(0,-.07,.6),(.12,.1,.17),hair,chest)
+ if elder:
+  for side in [-1,1]:b.tube('Spectacle rim',[(side*.037+.03*math.cos(a*math.tau/12),.108,.67+.024*math.sin(a*math.tau/12)) for a in range(13)],.005,'steel',chest,4)
+ b.box('Backpack',(0,-.17,.24),(.28,.14,.36),'dark',chest,.05)
+ for s in [-1,1]:b.tube('Bag strap',[(s*.12,-.11,.45),(s*.14,.1,.36),(s*.13,.11,.06)],.016,'dark',chest)
+ for s in [-1,1]:
+  arm=b.empty(p.name+'_arm_'+str(s),(s*.2*w,-.01,.42),chest);arm.rotation_euler.y=-s*.07
+  loft('Shoulder',[(0,0,.035),(0,0,-.02)],[(.058,.06),(.057,.058)],shirt,arm)
+  loft('Upper arm',[(0,0,.02),(0,0,-.14),(0,0,-.28)],[.056,.05,.043],shirt if not elder else shirt,arm)
+  elbow=b.empty(p.name+'_elbow_'+str(s),(0,0,-.285),arm)
+  ellipsoid('Elbow',(0,0,0),(.043,.043,.045),skin,elbow)
+  loft('Forearm',[(0,0,.015),(0,.004,-.12),(0,.005,-.245)],[.041,.037,.029],skin,elbow)
+  ellipsoid('Hand',(0,.008,-.31),(.027,.043,.072),skin,elbow)
+  if elder and s==1:b.tube('Walking cane',[(0,.03,-.3),(0,.06,-.35),(0,.08,-1.1)],.013,'dark',elbow)
+  hip=b.empty(p.name+'_leg_'+str(s),(s*.092,0,.92),body)
+  ellipsoid('Hip joint',(0,0,0),(.1,.1,.1),legwear,hip)
+  loft('Thigh',[(0,0,.07),(0,.012,-.12),(0,.006,-.3),(0,0,-.43)],[.1,.092,.076,.064],legwear,hip)
+  knee=b.empty(p.name+'_knee_'+str(s),(0,0,-.43),hip)
+  ellipsoid('Knee',(0,0,0),(.061,.063,.07),legwear,knee)
+  loft('Shin',[(0,0,.03),(0,-.012,-.1),(0,0,-.3),(0,0,-.41)],[.062,.064,.049,.042],legwear,knee)
+  ankle=b.empty(p.name+'_ankle_'+str(s),(0,0,-.41),knee)
+  loft('Shoe',[(0,-.06,-.03),(0,-.02,-.045),(0,.08,-.05),(0,.19,-.055)],[(.048,.045),(.055,.05),(.052,.04),(.04,.028)],'pearl',ankle,10)
+  b.box('Shoe sole',(0,.065,-.087),(.1,.28,.022),'rubber',ankle,.008)
+  if seated:hip.rotation_euler.x=math.radians(88);knee.rotation_euler.x=-math.radians(88)
  if seated:
-  # Lower torso to the seat; bent legs stay fixed while the wheels and arms animate.
-  for o in list(p.children):o.location.z-=.34
   for side in [-1,1]:
-   leg=bpy.data.objects[p.name+'_leg_'+str(side)]
-   for o in list(leg.children):bpy.data.objects.remove(o,do_unlink=True)
-   b.tube('Seated trousers',[(0,0,0),(0,.35,-.03),(0,.40,-.36)],.085,'navy',leg)
-   b.box('Seated shoe',(0,.47,-.41),(.18,.29,.13),'pearl',leg,.025);b.merge_static(leg)
-   arm=bpy.data.objects[p.name+'_arm_'+str(side)];arm.rotation_euler.x=-.25
    wheel('chair_wheel_'+str(side),-.12,.31,.09,p,side*.36)
    wheel('chair_caster_'+str(side),.46,.09,.06,p,side*.29)
    b.tube('Chair frame',[(side*.30,.46,.12),(side*.30,-.25,.20),(side*.30,-.27,1.05)],.025,'steel',p)
@@ -89,9 +113,7 @@ def person(index):
   b.box('Wheelchair seat',(0,-.02,.50),(.56,.48,.09),'dark',p,.025)
   b.box('Wheelchair back',(0,-.24,.76),(.55,.07,.46),'blue',p,.03)
   b.box('Footrest',(0,.46,.14),(.55,.26,.045),'steel',p)
- elif elder:
-  b.tube('Walking cane',[(.30,.04,.94),(.34,.13,.88),(.34,.13,.02)],.019,'dark',p)
- b.merge_static(p)
+ for o in [o for o in [p,*p.children_recursive] if o.type=='EMPTY']:b.merge_static(o)
 
 
 def vegetation():
@@ -234,7 +256,13 @@ def building(kind,floors):
   for y in [-4,-3.5,-3,-2.5,-2]:b.box('HVAC grille',(x,y,h+1.17),(2.3,.08,.035),'dark',p)
  b.merge_static(p)
 
-b.reset()
+if '--people' in sys.argv:
+ # Fast path: rebuild only the pedestrians inside the existing kit.
+ bpy.ops.wm.open_mainfile(filepath=str(b.BLEND/'street-kit.blend'));b.M.update({m.name:m for m in bpy.data.materials})
+ _mat=b.mat;b.mat=lambda n,*a,**k:bpy.data.materials.get(n) or _mat(n,*a,**k)
+ for root in [o for o in bpy.data.objects if o.name.startswith('pedestrian_') and o.parent is None]:
+  for o in [root,*root.children_recursive]:bpy.data.objects.remove(o,do_unlink=True)
+b.reset() if '--people' not in sys.argv else None
 b.M.update({n:b.mat(n,c,0,.65) for n,c in {'navy':(.045,.075,.11),'hair':(.035,.022,.016),'skin0':(.67,.40,.25),'skin1':(.86,.61,.43),'skin2':(.43,.25,.16),'burgundy':(.35,.045,.10)}.items()})
 b.M['window_lit']=b.mat('window_lit',(.82,.69,.44),0,.35)
 for name,c in {'car':(.16,.35,.42),'taxi':(.65,.035,.025),'van':(.76,.77,.70),'truck':(.19,.36,.29),'bus':(.82,.48,.12)}.items():b.M['paint_'+name]=b.mat('paint_'+name,c,.45,.28)
@@ -242,7 +270,9 @@ b.M['silver']=b.mat('silver',(.55,.56,.52))
 b.M['branch']=b.mat('branch',(.18,.12,.06))
 b.M['flower']=b.mat('flower',(.76,.19,.42))
 for kind,color in {'grass':(.24,.38,.085),'meadow':(.43,.49,.16),'fern':(.09,.30,.14),'shrub':(.15,.32,.07),'flowering':(.22,.38,.10)}.items():b.M['leaf_'+kind]=b.mat('leaf_'+kind,color,0,.95)
+for name,c in {'trouser_charcoal':(.05,.055,.06),'trouser_navy':(.035,.05,.09),'trouser_khaki':(.36,.3,.2)}.items():b.M[name]=b.M.get(name) or b.mat(name,c,0,.88)
 for i in range(10):person(i)
+if '--people' in sys.argv:b.save('street-kit');sys.exit(0)
 vegetation()
 from build_vegetation_lod import add_vegetation_lods
 add_vegetation_lods()

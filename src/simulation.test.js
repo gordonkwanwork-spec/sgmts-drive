@@ -179,3 +179,9 @@ for(const st of STOPS)for(const dir of [-1,1]){
  assert(Math.abs((lead-rear)*dir-40)<1e-8,'Existing safe following separation retained');
 }
 console.log('All fourteen station berths accommodate two complete vehicles at the shared STOP target');
+
+const {crosserInPath}=await import('./operating.js');
+// Lane at +1.9 m: yield while in or just about to enter it; ignore the far kerb and a pedestrian already past.
+assert(crosserInPath(1.9,1,1.9)&&crosserInPath(-1.5,1,1.9)&&!crosserInPath(-4,1,1.9));
+assert(!crosserInPath(5,1,1.9)&&crosserInPath(5,-1,1.9)&&!crosserInPath(-1,-1,1.9));
+console.log('Pedestrian yield is limited to the tram lane.');

@@ -144,10 +144,21 @@ export function playCrash() {
   beep(90, 0.5, 'sawtooth', 0.3);
 }
 
+// Thunder: low-passed noise with a crack then a long roll, arriving `delay` seconds after the flash.
+export function thunder(delay=2) {
+  if (!ctx || muted) return;
+  const len = ctx.sampleRate * 5, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0, b = 0; i < len; i++) { b = b * .96 + (Math.random() * 2 - 1) * .04; const t = i / ctx.sampleRate; d[i] = b * 6 * (Math.exp(-t * 1.1) + .6 * Math.exp(-((t - .9) ** 2) * 3)); }
+  const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+  s.buffer = buf; f.type = 'lowpass'; f.frequency.value = 260; g.gain.value = .9;
+  s.connect(f); f.connect(g); g.connect(master); s.start(ctx.currentTime + delay);
+}
+
 export function setMuted(value) { muted=value;if(master) master.gain.setTargetAtTime(muted?0:.55,ctx.currentTime,.15); }
 
 export function cancelAnnouncement(){announcementQueue.length=0;announcementGeneration++;announcementSource?.stop();announcementSource=null;announcementActive=false;}
 export function announcementStatus(){return {active:announcementActive,queued:[...announcementQueue],log:announcementLog.slice(-30)};}
+function finishAnnouncement(generation){if(generation!==announcementGeneration||!announcementActive)return;announcementSource=null;announcementActive=false;const next=announcementQueue.shift();if(next)announce(next);}
 export async function announce(key){
  if(!ensure()||!announcementManifest[key])return false;
  if(announcementActive){if(!announcementQueue.includes(key))announcementQueue.push(key);return true;}
@@ -156,10 +167,10 @@ export async function announce(key){
   // Decode and schedule all three clips on the same clock: no autoplay gap between languages.
   const clips=await Promise.all(announcementManifest[key].map(async clip=>{if(!announcementBuffers.has(clip.file))announcementBuffers.set(clip.file,fetch(import.meta.env.BASE_URL+'audio/announcements/'+clip.file+'?v=audible-2').then(r=>{if(!r.ok)throw Error('Announcement unavailable');return r.arrayBuffer();}).then(b=>ctx.decodeAudioData(b)));return {clip,buffer:await announcementBuffers.get(clip.file)};}));
   if(generation!==announcementGeneration)return false;if(ctx.state!=='running'){announcementActive=false;return false;}
-  let time=ctx.currentTime+.06;announcementActive=true;const sources=[];
+  let time=ctx.currentTime+.06;const sources=[];
   for(const {clip,buffer} of clips){const source=ctx.createBufferSource(),gain=ctx.createGain();gain.gain.value=.95;source.buffer=buffer;source.connect(gain);gain.connect(master);source.start(time);sources.push(source);announcementLog.push({key,language:clip.language,start:time,duration:buffer.duration});time+=buffer.duration+.22;}
   announcementSource={stop(){for(const source of sources)try{source.stop();}catch{}}};
-  sources.at(-1).onended=()=>{if(generation===announcementGeneration){announcementSource=null;announcementActive=false;const next=announcementQueue.shift();if(next)announce(next);}};return true;
+  sources.at(-1).onended=()=>finishAnnouncement(generation);return true;
  }catch(error){for(const clip of announcementManifest[key])announcementBuffers.delete(clip.file);console.warn('Announcement playback failed',key,error);if(generation===announcementGeneration)announcementActive=false;return false;}
 }
 

@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 import {STOPS,sample} from '../alignment.js';
-import {stationAdvertGeometry} from '../station-adverts.js';
+import * as T from 'three';
+import {stationAdvertGeometry,stationBillboards,ROOFTOP_ADVERTS,setBillboardLighting} from '../station-adverts.js';
 
 const manifest=JSON.parse(fs.readFileSync('public/assets/asset-manifest.json'));
 const hashes=new Set();
@@ -29,4 +30,32 @@ for(const st of STOPS){
   g.dispose();
 }
 assert.equal(hashes.size,7,'Every station has different artwork');
+assert.deepEqual(Object.keys(ROOFTOP_ADVERTS),['A2','A3','A6']);
+for(const st of STOPS){
+  const platforms=manifest.stations.find(m=>m.id===st.id).platforms;
+  const boards=stationBillboards(st,platforms,new T.MeshLambertMaterial(),s=>sample(s).y);
+  if(!ROOFTOP_ADVERTS[st.id]){assert.equal(boards.children.length,0);continue;}
+  const image=fs.readFileSync(`public/assets/adverts/billboard-${st.id}.png`);
+  assert.equal(image.subarray(1,4).toString(),'PNG');
+  assert.equal(image.readUInt32BE(16)/image.readUInt32BE(20),3,'Artwork fits boards without stretching');
+  const faces=boards.children.filter(n=>n.name.startsWith('Billboard artwork'));
+  assert.equal(faces.length,4,'Both platforms have two readable faces');
+  for(let i=0;i<faces.length;i++){
+    const face=faces[i],p=platforms[Math.floor(i/2)];
+    assert.equal(face.position.z,p.offsetZ,'A2 boards follow staggered roofs');
+    const normal=new T.Vector3(0,0,1).applyEuler(face.rotation);
+    assert(Math.abs(normal.x-(i%2?1:-1))<1e-9,'Opposite front faces prevent mirrored lettering');
+    for(let z=-7.5;z<=7.5;z+=.5)assert(face.position.y-2.62>3.6+sample(st.s-p.offsetZ-z).y-sample(st.s).y,'Frame clears graded canopy');
+  }
+  assert.equal(boards.children.filter(n=>n.name==='Billboard roof support').length,6);
+  // No real lights: fixtures only, the floodlit wash is the print's own emissive map at night.
+  assert.equal(boards.children.filter(n=>n.isLight).length,0,'Billboards add no realtime lights');
+  assert.equal(boards.children.filter(n=>n.name==='Billboard lamp housing').length,8,'Two floodlight fixtures per billboard face');
+  for(const night of [true,false,true]){
+    setBillboardLighting(boards,night);
+    for(const face of faces){assert(face.material.isMeshLambertMaterial);assert.equal(face.material.emissiveMap,face.material.map);assert.equal(face.material.emissiveIntensity,night?.55:0,'Print floodlit only at night');}
+  }
+
+}
 console.log('Seven unique campaigns; 364 upright platform adverts with inward faces, stagger and flare passed');
+console.log('Three rooftop campaigns: six framed boards, twelve readable faces, canopy clearance and stagger passed');
