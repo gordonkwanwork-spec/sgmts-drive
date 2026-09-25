@@ -4,6 +4,10 @@
 
 ▶️ **[Play it now — no download needed](https://gordonkwanwork-spec.github.io/sgmts-drive/)**
 
+▶️ **[Play the latest version — 25 September 2026](https://gordonkwanwork-spec.github.io/sgmts-drive/versions/2026-09-25/)** · depot, logistics cluster, new opening screen, lot editor
+
+▶️ **[Play the saved version — 24 September 2026](https://gordonkwanwork-spec.github.io/sgmts-drive/versions/2026-09-24/)**
+
 ▶️ **[Play the saved recent version — 23 September 2026](https://gordonkwanwork-spec.github.io/sgmts-drive/versions/2026-09-23/)**
 
 ![Title screen](screenshots/title.jpg)
