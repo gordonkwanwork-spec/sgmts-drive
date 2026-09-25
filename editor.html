@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SGMTS Lot Editor</title>
+<style>
+:root{--bg:#f4f3ef;--panel:#ffffffee;--ink:#1f2626;--muted:#66706f;--line:#d9dcd8;--accent:#e08a2c;--sel:#1d6fd6}
+@media (prefers-color-scheme:dark){:root{--bg:#161a1b;--panel:#1f2425ee;--ink:#e7eae8;--muted:#9aa4a2;--line:#343b3c}}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden}
+canvas{display:block}
+header{position:fixed;top:0;left:0;right:0;height:46px;display:flex;align-items:center;gap:6px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--line);z-index:5;backdrop-filter:blur(8px)}
+header h1{font-size:14px;margin:0 10px 0 0;white-space:nowrap}header .sp{flex:1}
+button,select,input{font:inherit;color:inherit}
+button{border:1px solid var(--line);background:transparent;border-radius:6px;padding:5px 10px;cursor:pointer}button:hover{border-color:var(--muted)}
+button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.seg{display:flex}.seg button{border-radius:0}.seg button:first-child{border-radius:6px 0 0 6px}.seg button:last-child{border-radius:0 6px 6px 0}.seg button+button{border-left:0}
+label.chk{display:flex;gap:4px;align-items:center;white-space:nowrap;color:var(--muted)}
+aside{position:fixed;top:46px;bottom:0;width:270px;background:var(--panel);border-right:1px solid var(--line);overflow:auto;z-index:4;backdrop-filter:blur(8px)}
+#list{left:0}#inspector{right:0;left:auto;border-right:0;border-left:1px solid var(--line);width:300px;padding:12px}
+#list .filters{position:sticky;top:0;background:var(--panel);padding:10px;border-bottom:1px solid var(--line);display:grid;gap:6px}
+#list input,#list select,#inspector input,#inspector select,#inspector textarea{width:100%;padding:5px 7px;border:1px solid var(--line);border-radius:6px;background:transparent}
+.lot{display:grid;grid-template-columns:10px 1fr auto;gap:8px;align-items:center;padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--line)}
+.lot:hover{background:#8881}.lot.sel{background:#1d6fd622}.lot i{width:10px;height:10px;border-radius:2px}.lot small{color:var(--muted)}
+#inspector h2{font-size:15px;margin:0 0 2px}#inspector .sub{color:var(--muted);margin-bottom:10px}
+.row{display:grid;grid-template-columns:96px 1fr;gap:8px;align-items:center;margin:6px 0}.row>span{color:var(--muted)}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:10px 0;padding:8px;border:1px solid var(--line);border-radius:8px}.stats b{display:block;font-size:15px}.stats span{color:var(--muted);font-size:11px}
+.warn{color:#c0392b}.btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+hr{border:0;border-top:1px solid var(--line);margin:12px 0}
+#hint{position:fixed;bottom:10px;left:280px;right:310px;text-align:center;color:var(--muted);pointer-events:none;z-index:3}
+#hint span{background:var(--panel);padding:4px 10px;border-radius:12px;border:1px solid var(--line)}
+#status{color:var(--muted);white-space:nowrap}
+#drop{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:#e08a2c33;border:3px dashed var(--accent);font-size:18px;z-index:9}
+.legend{padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:11px;color:var(--muted)}.legend div{display:flex;gap:5px;align-items:center}.legend i{width:9px;height:9px;border-radius:2px}
+@media (max-width:900px){#list{display:none}#hint{left:10px}}
+</style>
+</head>
+<body>
+<header>
+ <h1>SGMTS Lot Editor</h1>
+ <div class="seg" id="modes"><button data-mode="select" class="on" title="S">Select</button><button data-mode="wand" title="W">Wand</button><button data-mode="draw" title="D">Draw</button></div>
+ <button id="view3d" title="T: top-down / 3D">3D view</button>
+ <label class="chk"><input type="checkbox" id="showPlan" checked>OZP plan</label>
+ <input type="range" id="planOpacity" min="0" max="1" step=".05" value=".55" style="width:70px" title="Plan opacity">
+ <label class="chk"><input type="checkbox" id="showFill" checked>Lot fills</label>
+ <label class="chk"><input type="checkbox" id="showScenery" checked>Game scenery</label>
+ <label class="chk"><input type="checkbox" id="night">Night</label>
+ <span class="sp"></span><span id="status">Loading…</span>
+ <button id="undo" title="Ctrl/Cmd+Z">Undo</button>
+ <button id="save" class="primary" title="Ctrl/Cmd+S">Save</button>
+</header>
+<aside id="list"><div class="filters"><input id="search" placeholder="Search site, zone or note"><select id="useFilter"><option value="">All uses</option></select></div><div id="lots"></div><div class="legend" id="legend"></div></aside>
+<aside id="inspector"></aside>
+<div id="hint"><span id="hintText"></span></div>
+<div id="drop">Drop .glb models here to add them to the library</div>
+<script type="module" src="/src/editor.js"></script>
+</body>
+</html>

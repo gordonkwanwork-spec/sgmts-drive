@@ -280,3 +280,15 @@ Wraps recolour existing opaque exterior panels, roofs, skirts and lower sliding
 doors. Windows, windshields, lights, wheels and passenger interiors retain their
 original materials. Normal service has 2 wrapped trams out of 6; the larger fleet
 has 5 out of 17. Player and parked depot vehicles keep their original livery.
+
+---
+
+## Lot editor (developers)
+
+`npm run dev`, then open **http://localhost:5199/editor.html**. It edits the development lots around the corridor, one lot at a time, over the S/HSK/2A Outline Zoning Plan.
+
+- **Data:** `public/lots/lots.json`. There are 74 lots seeded from the OZP, each with a planning area, zone, height limit and plot ratio from the Notes. **Save** (Ctrl/Cmd+S) writes to this file.
+- **Models:** drop `.glb` files onto the editor. They are copied to `public/lots/models/` and assigned to the selected lot. Author models in metres, Y up, with the origin at the centre of the ground floor. Use Rotation, Scale, Offset, **Fit to lot** and **Align to longest edge** to place them.
+- **Tools:** Select (drag corners to reshape), **Wand** (click inside an OZP lot to trace it) and **Draw** (click corners).
+- **In the game:** lots set to *Placeholder massing* or a GLB replace the game's filler buildings inside their boundary. Lots set to *None* keep the existing scenery. Stations, roads and the depot are never altered, and buildings are skipped wherever they would intrude on game scenery.
+- **Plan underlay:** `python3 scripts/build_ozp_underlay.py "Annex II_S_HSK_2A.pdf"`. The underlay is aligned to the corridor at 1:7500, with A1 as the anchor. `scripts/seed-lots.mjs` re-seeds from `scripts/ozp-lot-labels.json` without overwriting lots you have edited.

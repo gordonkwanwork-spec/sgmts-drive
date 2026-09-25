@@ -25,7 +25,7 @@ html.mobile .facts{gap:12px;margin:14px 0}.mobile .intro{font-size:12px}
 #clean-view{position:fixed;right:8px;top:8px;width:30px;height:30px;padding:0;z-index:50;border-radius:50%;background:#16362ba8;color:#fff;font-size:18px}
 body.clean-view>:not(#viewport):not(#clean-view){visibility:hidden!important}
 /* Mobile hide keeps the driving controls: Go, Stop, speed dial, Skip station, Cruise, Doors. */
-html.mobile body.clean-view :is([data-action=go],[data-action=stop],[data-action=doors],[data-action=express],[data-action=cruise],#speed-dial){visibility:visible!important}
+html.mobile body.clean-view :is([data-action=go],[data-action=stop],[data-action=doors],[data-action=express],[data-action=cruise],#speed-dial,#camera){visibility:visible!important}
 body.clean-view #clean-view{opacity:.45}body.clean-view #clean-view:hover,body.clean-view #clean-view:focus-visible{opacity:1}
 html.mobile #clean-view{width:40px;height:40px;top:3px;right:8px}
 
@@ -126,3 +126,98 @@ html.mobile body[data-mode=free] #pad-up{display:block;right:82px;bottom:max(14p
 html.mobile body[data-mode=free] #pad-down{display:block;right:max(12px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom))}
 html.mobile body:not([data-avatar=drive]) :is(#mobile-buttons button,#speed-dial,#route-choices,#cluster,#dwell){display:none!important}
 @media(max-width:480px){html.mobile body[data-avatar=drive]:not([data-mode=free]) #pad-enter{left:70px;width:52px;height:52px;min-height:52px}html.mobile #hud #cluster{left:176px}}
+
+/* Keyboard shortcut badge on every button (data-hotkey); hidden on touch layouts, which use the pad instead. */
+button[data-hotkey]::after{content:attr(data-hotkey);position:absolute;right:-6px;top:-8px;min-width:12px;padding:0 4px;border:1px solid #9fbcae;border-bottom-width:2px;border-radius:4px;background:#0c241c;color:#e5f1e8;font:600 10px/1.35 ui-monospace,Menlo,Consolas,monospace;text-align:center;white-space:nowrap;pointer-events:none;z-index:1}
+html.mobile button[data-hotkey]::after{display:none}
+#map-button[data-hotkey]::after{right:16%;top:10%}
+
+/* ---------- Opening: cinematic title over live attract mode, then a button chooser (25 Sep 2026) ---------- */
+#menu{background:linear-gradient(180deg,#07090bd9 0%,#07090b40 22%,transparent 45%,transparent 62%,#07090be6 100%);padding:0;display:flex;flex-direction:column;align-items:center;pointer-events:auto;overflow:hidden}
+#menu::after{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 38%,#ffb35a22,transparent 55%),radial-gradient(ellipse at center,transparent 55%,#000a 100%)}
+body[data-screen=menu] #identity{display:none}
+#menu select[hidden]{display:none!important}.option-row button{position:relative}
+#title-screen,#choose-screen{position:relative;z-index:1;display:none;flex-direction:column;align-items:center;width:100%;height:100%}
+#menu[data-stage=title] #title-screen,#menu[data-stage=choose] #choose-screen{display:flex}
+#title-screen{justify-content:space-between;padding:6vh 20px 9vh;cursor:pointer}
+.emblem{--steel:linear-gradient(180deg,#f4f6f7 0%,#b9c1c6 38%,#6d767d 52%,#d8dde0 70%,#8b949a 100%);position:relative;display:flex;flex-direction:column;align-items:center;padding:18px 54px 22px;border-radius:26px;
+ background:linear-gradient(180deg,#39414a,#1d2329 60%,#141a1f);border:3px solid #8e979e;box-shadow:0 0 0 3px #1a1f24,0 0 0 6px #6b747b,0 18px 50px #000c,0 0 90px #ff9d3a55,inset 0 2px 0 #ffffff40,inset 0 -6px 12px #0008;
+ font-family:Rockwell,'Rockwell Extra Bold','Roboto Slab','Arial Black',Georgia,serif;animation:emblem-in 1.1s cubic-bezier(.2,.8,.2,1) both}
+.emblem::before,.emblem::after{content:'';position:absolute;top:50%;width:12px;height:12px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#f0f3f4,#5d666c);box-shadow:0 1px 2px #000}
+.emblem::before{left:16px}.emblem::after{right:16px}
+.emblem-top{font:700 clamp(11px,1.3vw,15px)/1 Arial,sans-serif;letter-spacing:.45em;color:#e2b36c;text-shadow:0 1px 0 #000}
+.emblem-word{font-size:clamp(64px,11vw,150px);line-height:1.18;padding:0 .04em;font-weight:900;letter-spacing:.04em;margin:6px 0 2px;background:var(--steel);-webkit-background-clip:text;background-clip:text;color:transparent;
+ -webkit-text-stroke:2px #20262b;filter:drop-shadow(0 3px 0 #0b0e10) drop-shadow(0 6px 10px #000a)}
+.emblem-bar{position:relative;width:100%;display:flex;justify-content:center;border-top:2px solid #8e979e;border-bottom:2px solid #8e979e;background:linear-gradient(90deg,transparent,#0b0f12 15%,#0b0f12 85%,transparent);padding:4px 0}
+.emblem-bar span{font-size:clamp(22px,3vw,38px);font-weight:900;letter-spacing:.5em;padding-left:.5em;background:linear-gradient(180deg,#ffd9a0,#e0892e 60%,#9c4f12);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 10px #ff9a3b88)}
+.emblem-sub{margin-top:10px;font:600 clamp(10px,1.1vw,13px)/1.3 Arial,'PingFang HK',sans-serif;letter-spacing:.18em;color:#c9d1d4}
+@keyframes emblem-in{from{opacity:0;transform:translateY(-30px) scale(.94)}to{opacity:1;transform:none}}
+.press{margin:0;font:700 clamp(15px,1.8vw,22px)/1 Arial,sans-serif;letter-spacing:.32em;text-transform:uppercase;color:#f3e6cf;text-shadow:0 0 14px #ff9d3a,0 2px 3px #000;animation:press 1.8s ease-in-out infinite}
+.press-tap,html.mobile .press-key{display:none}html.mobile .press-tap{display:inline}
+@keyframes press{0%,100%{opacity:.35}50%{opacity:1}}
+#choose-screen{justify-content:space-between;padding:3vh 20px 3vh;overflow:auto}
+.emblem-small{padding:8px 30px 10px;border-radius:16px;animation:none}.emblem-small .emblem-word{font-size:clamp(40px,5vw,62px)}.emblem-small .emblem-bar span{font-size:clamp(14px,1.6vw,20px)}.emblem-small::before{left:9px}.emblem-small::after{right:9px}
+#choose-screen .panel{width:min(980px,100%);padding:18px 22px 16px;border-radius:14px;background:linear-gradient(180deg,#161b20e6,#0d1114f2);border:2px solid #5d666d;box-shadow:0 0 0 1px #000,0 20px 60px #000b,inset 0 1px 0 #ffffff1c;animation:emblem-in .6s both}
+#choose-screen h2{margin:4px 0 10px;font:900 15px/1 Rockwell,'Roboto Slab',Georgia,serif;letter-spacing:.3em;text-transform:uppercase;color:#e2b36c}#choose-screen h2 small{font:600 12px Arial,'PingFang HK',sans-serif;letter-spacing:.1em;color:#9aa4a8;margin-left:8px}
+.option-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}.option-row.two{grid-template-columns:1fr 1fr}
+.option-row button{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:12px;align-items:center;text-align:left;padding:14px 16px;min-height:74px;border-radius:10px;
+ background:linear-gradient(180deg,#2a3239,#1a2026);border:2px solid #4c555c;box-shadow:inset 0 1px 0 #ffffff22,0 3px 0 #0a0d10;transition:transform .12s,border-color .12s,box-shadow .12s}
+.option-row button i{grid-row:1/3;font-style:normal;font-size:26px;width:40px;height:40px;display:grid;place-items:center;border-radius:50%;background:#0e1215;border:1px solid #5d666d;color:#d9dfe2}
+.option-row button b{font:900 17px/1.15 Rockwell,'Roboto Slab',Georgia,serif;color:#eef1f2}.option-row button small{font-size:12px;line-height:1.3;color:#a9b3b7}
+.option-row button:hover{transform:translateY(-2px);border-color:#8e979e}
+.option-row button[aria-pressed=true]{border-color:#f0a347;background:linear-gradient(180deg,#4a3420,#241911);box-shadow:inset 0 1px 0 #ffffff26,0 0 0 1px #000,0 0 22px #ff9d3a66}
+.option-row button[aria-pressed=true] i{background:#f0a347;color:#1b1209;border-color:#ffd49a}
+#choose-screen .launch{display:flex;gap:12px;justify-content:flex-end;align-items:center;margin-top:4px}
+#choose-screen #begin{margin:0;padding:15px 30px;font:900 19px Rockwell,'Roboto Slab',Georgia,serif;letter-spacing:.06em;color:#1b1209;border:2px solid #ffd49a;border-radius:10px;background:linear-gradient(180deg,#ffc978,#e0892e);box-shadow:0 0 26px #ff9d3a88,inset 0 1px 0 #fff8}
+#choose-screen #begin span{font-size:14px;margin-left:8px}
+#choose-screen .note{margin:10px 0 0;font-size:12px;color:#9aa4a8;text-align:center}#choose-screen details{margin-top:8px;font-size:12px;color:#aab3b6}#choose-screen summary{cursor:pointer;text-align:center}
+html.mobile #menu{overflow:auto}html.mobile .option-row{grid-template-columns:1fr 1fr}html.mobile .option-row.two{grid-template-columns:1fr}html.mobile #choose-screen{justify-content:flex-start;gap:12px}
+@media(max-height:560px){#choose-screen .emblem-small{display:none}.option-row button{min-height:56px;padding:8px 12px}#choose-screen .note,#choose-screen details{display:none}.option-row{margin-bottom:10px}}
+@media(max-width:700px){.option-row{grid-template-columns:1fr 1fr}.option-row.two{grid-template-columns:1fr}}
+
+/* ---------- Interface theme: every panel and control in the emblem's gunmetal, steel and amber (25 Sep 2026) ---------- */
+:root{--gun:linear-gradient(180deg,#2b333a,#171d22);--gun-deep:linear-gradient(180deg,#1b2126f2,#0d1114f5);--steel-edge:#6b747b;--steel-hi:#8e979e;--amber:#f0a347;--amber-hi:#ffd49a;--ink:#eef1f2;--muted:#a9b3b7;--slab:Rockwell,'Roboto Slab',Georgia,serif}
+:root{color:var(--ink);background:#101418}
+button{background:var(--gun);border:1px solid var(--steel-edge);color:var(--ink);box-shadow:inset 0 1px 0 #ffffff1f,0 2px 0 #0a0d10}
+button:hover{border-color:var(--steel-hi)}
+button.primary,.primary{background:linear-gradient(180deg,#ffc978,#e0892e)!important;color:#1b1209!important;border:1px solid var(--amber-hi)!important;box-shadow:0 0 18px #ff9d3a66,inset 0 1px 0 #fff8!important;font-family:var(--slab)}
+#next-panel,#cluster,#telemetry,#score-panel,#route-strip,#hud-stack .panel{background:var(--gun-deep)!important;border:2px solid var(--steel-edge)!important;border-radius:12px;box-shadow:0 0 0 1px #000,0 10px 30px #0009,inset 0 1px 0 #ffffff1c!important}
+#next-panel{border-left:4px solid var(--amber)!important}
+#next-panel h2,#cluster b,#telemetry b,#score-panel b{font-family:var(--slab)}
+#service-label,.overline,#next-panel small,#telemetry span,#cluster span{color:#e2b36c!important}
+#stop-banner{background:#0b0f12!important;color:var(--amber-hi)!important;border:1px solid var(--amber)!important;font-family:var(--slab)}
+#map-button{background:#0d1114!important;border:3px solid var(--steel-hi)!important;box-shadow:0 0 0 2px #000,0 6px 16px #0009,inset 0 0 0 2px #ffffff14!important}
+#edge-tools button,#clean-view,#mobile-buttons button,#speed-dial{background:radial-gradient(circle at 50% 30%,#39424a,#15191d 75%)!important;border:2px solid var(--steel-hi)!important;color:var(--ink)!important;box-shadow:0 0 0 2px #000,0 4px 10px #0008,inset 0 1px 0 #ffffff33!important}
+#route-choices button{background:var(--gun)!important;border:1px solid var(--steel-edge)!important;border-radius:999px;color:var(--ink)!important}
+#route-choices button[aria-pressed=true],#route-choices button.active,#buttons button.active{border-color:var(--amber)!important;box-shadow:0 0 12px #ff9d3a66!important}
+.sheet:not(#menu),.modal,#load{background:radial-gradient(ellipse at 50% 30%,#1c2328f2,#07090bfa 70%)!important}
+.modal h1,.sheet:not(#menu) h1,#load h1{font-family:var(--slab);background:linear-gradient(180deg,#f4f6f7,#b9c1c6 40%,#6d767d 55%,#d8dde0);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-stroke:1px #20262b}
+.modal small,.sheet:not(#menu) small,#load .overline{color:#e2b36c!important}
+button[data-hotkey]::after{background:#0b0f12;border-color:var(--steel-hi);color:var(--amber-hi)}
+/* Notifications: large white text, no box, where the eye already is. */
+#hud #hud-stack #toast{position:fixed!important;left:50%!important;top:27vh!important;transform:translateX(-50%)!important;width:max-content!important;max-width:88vw!important;background:none!important;border:0!important;box-shadow:none!important;padding:0!important;
+ color:#fff!important;font:900 clamp(22px,2.6vw,34px)/1.2 var(--slab)!important;letter-spacing:.02em;text-align:center;text-shadow:0 2px 3px #000,0 0 22px #000c,0 0 44px #0008}
+#hud #hud-stack #instruction{position:fixed!important;left:50%!important;bottom:clamp(120px,16vh,170px)!important;top:auto!important;transform:translateX(-50%)!important;width:max-content!important;max-width:min(760px,88vw)!important;background:none!important;border:0!important;box-shadow:none!important;padding:0!important;
+ color:#fff!important;font:700 clamp(17px,1.7vw,23px)/1.3 Arial,'PingFang HK',sans-serif!important;text-align:center!important;text-shadow:0 2px 3px #000,0 0 18px #000d,0 0 36px #0009}
+#hud #hud-stack #instruction.action:before{color:var(--amber-hi);font:900 12px/1 var(--slab);letter-spacing:.3em;margin-bottom:6px;text-shadow:0 1px 2px #000}
+html.mobile #hud #hud-stack #toast{top:22vh!important;font-size:20px!important}html.mobile #hud #hud-stack #instruction{bottom:150px!important;font-size:15px!important;max-width:calc(100vw - 150px)!important}
+#hud #hud-stack{transform:none!important}/* a transform would make the fixed notifications position against the stack */
+.cell{background:#0b0f12!important;border:1px solid var(--steel-edge)!important}
+/* Opening layout fixes: one-line centred prompt; chooser never overflows sideways and fits typical desktop heights. */
+#menu .press{white-space:nowrap;text-align:center;max-width:none;width:auto;align-self:center;margin:0 auto}
+#choose-screen{overflow-x:hidden;overflow-y:auto;justify-content:center;gap:2.2vh;padding:2.5vh 16px}
+#choose-screen .emblem-small{flex:none}
+#choose-screen .panel{box-sizing:border-box;max-width:100%;padding:16px 18px 14px}
+.option-row{grid-template-columns:repeat(4,minmax(0,1fr))}.option-row.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.option-row button{min-width:0;padding:12px 14px;min-height:66px}.option-row button b{overflow-wrap:anywhere}.option-row button small{overflow-wrap:anywhere}
+#choose-screen .launch #begin,#choose-screen .launch #menu-music{white-space:nowrap}
+@media(max-width:820px){.option-row{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-height:760px){#choose-screen .note{display:none}.option-row{margin-bottom:12px}}
+#menu #title-screen,#menu #choose-screen{max-width:none;width:100%}
+html.mobile #hud #hud-stack #toast,html.mobile #hud #hud-stack #instruction{max-width:calc(100vw - 24px)!important;white-space:nowrap}
+html.mobile .option-row button{overflow:hidden}html.mobile .option-row button b,html.mobile .option-row button small{display:block;overflow:hidden}
+html.mobile #choose-screen .launch{flex-wrap:nowrap}html.mobile #choose-screen .launch>*{min-width:0;flex:1 1 auto;overflow:hidden}
+html.mobile #choose-screen .launch{flex-direction:column-reverse;align-items:stretch}html.mobile #choose-screen .launch>*{flex:none;width:100%}
+html.mobile .option-row{gap:8px}html.mobile .option-row button{column-gap:8px;padding:10px 10px}html.mobile .option-row button i{width:28px;height:28px;font-size:17px}
+html.mobile #choose-screen .panel{padding:14px 12px 12px}
+html.mobile #hud #hud-stack #instruction{bottom:auto!important;top:calc(22vh + 44px)!important}

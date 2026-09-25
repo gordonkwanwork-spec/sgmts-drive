@@ -2,6 +2,9 @@ import stationNames from './station-data.json' with {type:'json'};
 // Hand-traced ST-1100 key-plan centreline. See docs/rebuild-recon/route-calibration.md.
 // x=east, z=south, +s=A1→A7. Dimensions metres; c is approximate profile chainage.
 export const DATUM = 8;
+// HK1980 Grid ↔ world, from the S/HSK/2A 5 km grid ticks (836500N/831500N, 814500E/819500E) and the OZP↔corridor fit. ±~5 m.
+export const HK1980={E:816684.4,N:831649.2};
+export const fromHK=(E,N)=>({x:E-HK1980.E,z:HK1980.N-N});
 export const METRES_PER_PIXEL = 500 / (112 * 2400 / 1888);
 const K = 2400 / 1888;
 export const TRACE_PIXELS = [
@@ -120,6 +123,8 @@ export function sideCrossing(j,side){return j.c===2650&&side===1?L35.offset+L35.
 export function cycleCrossing(s){return JUNCTIONS.filter(j=>j.halfWidth<=7).some(j=>Math.abs(s-j.s)<j.halfWidth+.7);}
 export function cycleHeight(s){return .02+.28*clamp(Math.min(...[...JUNCTIONS,...UNDERPASSES].map(j=>(Math.abs(s-j.s)-j.halfWidth-1)/6)),0,1);}
 export const DEPOT={s:fromChainage(3565),opening:30,lateral:95,width:140,length:160};
+// The 30 m entrance sits 20 m before DEPOT.s so the lead-in runs down the drawing's 40 m vehicle access strip (V1038-DP-2003).
+DEPOT.gate=DEPOT.s-20;
 export const RAILWAY={start:fromChainage(80),end:fromChainage(1100),station:fromChainage(820)};
 // Heavy-rail viaduct: an R200 approach curve joins the station tangent. One long straight passes Ch.450 at 28 m
 // and carries the 230 m Hung Shui Kiu station box; the R200 curve takes the viaduct across the corridor near Ch.135.

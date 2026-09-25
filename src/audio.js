@@ -1,7 +1,7 @@
 import announcementManifest from '../public/audio/announcements/manifest.json' with {type:'json'};
 // Synthesised vehicle sounds and streamed, user-supplied music share one mixer.
 let ctx = null, master = null;
-let motorOsc = null, motorGain = null, motorOsc2 = null;
+let motorOsc = null, motorGain = null, motorOsc2 = null, humGain = null, whineOsc = null, whineFilter = null, whineGain = null, world = null;
 let rollSrc = null, rollFilter = null, rollGain = null;
 let ambGain = null;
 let indicatorTimer = null;
@@ -17,14 +17,19 @@ function ensure() {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     master = ctx.createGain(); master.gain.value = 0.55; master.connect(ctx.destination);
 
-    // electric propulsion: two detuned saws through a lowpass
+    // Electric traction: deep sine fundamental + octave (motor), transformer hum, and a narrow inverter whine that
+    // climbs with speed. No combustion-style sawtooth growl.
     motorGain = ctx.createGain(); motorGain.gain.value = 0;
-    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900;
-    motorOsc = ctx.createOscillator(); motorOsc.type = 'sawtooth'; motorOsc.frequency.value = 60;
-    motorOsc2 = ctx.createOscillator(); motorOsc2.type = 'triangle'; motorOsc2.frequency.value = 120;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420;
+    motorOsc = ctx.createOscillator(); motorOsc.type = 'sine'; motorOsc.frequency.value = 38;
+    motorOsc2 = ctx.createOscillator(); motorOsc2.type = 'sine'; motorOsc2.frequency.value = 76;
     motorOsc.connect(lp); motorOsc2.connect(lp); lp.connect(motorGain); motorGain.connect(master);
     motorOsc.start(); motorOsc2.start();
-
+    humGain = ctx.createGain(); humGain.gain.value = 0; humGain.connect(master);
+    for (const [f, g] of [[100, 1], [200, .45], [300, .2]]) { const o = ctx.createOscillator(), k = ctx.createGain(); o.frequency.value = f; k.gain.value = g; o.connect(k); k.connect(humGain); o.start(); }
+    whineOsc = ctx.createOscillator(); whineOsc.type = 'square'; whineOsc.frequency.value = 300;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 9; bp.frequency.value = 900; whineFilter = bp;
+    whineGain = ctx.createGain(); whineGain.gain.value = 0; whineOsc.connect(bp); bp.connect(whineGain); whineGain.connect(master); whineOsc.start();
     // tyre / road noise: looped filtered noise
     const len = ctx.sampleRate * 2;
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -62,15 +67,45 @@ export function updateMusic(state){if(!ctx)return;const levels=musicLevels(state
 export function musicStatus(){return music.map(t=>({name:t.name,context:ctx?.state,gain:t.gain.gain.value,target:t.target,playing:!t.element.paused,time:t.element.currentTime,error:t.element.error?.message}));}
 
 
-export function setDrive(speedKmh, accelerating) {
+export function setDrive(speedKmh, accelerating, powered = speedKmh > .5) {
   if (!ctx) return;
-  const t = ctx.currentTime;
-  const sp = Math.min(speedKmh / 60, 1);
-  motorOsc.frequency.setTargetAtTime(55 + sp * 260 + (accelerating ? 25 : 0), t, 0.15);
-  motorOsc2.frequency.setTargetAtTime(110 + sp * 520, t, 0.15);
-  motorGain.gain.setTargetAtTime(sp > 0.01 ? 0.05 + sp * 0.075 + (accelerating ? 0.03 : 0) : 0, t, 0.2);
-  rollFilter.frequency.setTargetAtTime(150 + sp * 900, t, 0.2);
-  rollGain.gain.setTargetAtTime(sp * 0.11, t, 0.2);
+  const t = ctx.currentTime, sp = Math.min(speedKmh / 50, 1), pull = accelerating ? 1 : 0;
+  motorOsc.frequency.setTargetAtTime(38 + sp * 34, t, 0.2);
+  motorOsc2.frequency.setTargetAtTime(76 + sp * 68, t, 0.2);
+  motorGain.gain.setTargetAtTime(powered ? 0.11 + sp * 0.1 + pull * 0.05 : 0, t, 0.25);
+  humGain.gain.setTargetAtTime(powered ? 0.012 + pull * 0.008 : 0, t, 0.3);
+  whineOsc.frequency.setTargetAtTime(180 + sp * 1150, t, 0.15);
+  whineFilter.frequency.setTargetAtTime(360 + sp * 2300, t, 0.15);
+  whineGain.gain.setTargetAtTime(powered && sp > 0.01 ? (0.012 + pull * 0.022) * (0.4 + sp) : 0, t, 0.2);
+  rollFilter.frequency.setTargetAtTime(150 + sp * 700, t, 0.2);
+  rollGain.gain.setTargetAtTime(sp * 0.09, t, 0.2);
+}
+
+// World layers from nearby actors (distances in metres): people (murmur + footsteps), road vehicles (engine + tyres),
+// other ARTs (electric whine + hum). Each layer's level falls off with the nearest few sources.
+function buildWorld() {
+  const noise = rollSrc.buffer, bed = (type, f, q) => { const src = ctx.createBufferSource(); src.buffer = noise; src.loop = true; src.playbackRate.value = .5 + Math.random() * .3; const flt = ctx.createBiquadFilter(); flt.type = type; flt.frequency.value = f; flt.Q.value = q; const g = ctx.createGain(); g.gain.value = 0; src.connect(flt); flt.connect(g); g.connect(master); src.start(); return g; };
+  const voices = bed('bandpass', 520, 1.6), lfo = ctx.createOscillator(), depth = ctx.createGain(); lfo.frequency.value = 3.1; depth.gain.value = .5; lfo.connect(depth); const am = ctx.createGain(); am.gain.value = .6; depth.connect(am.gain); voices.disconnect(); voices.connect(am); am.connect(master); lfo.start();
+  const tyres = bed('lowpass', 480, .7), engine = ctx.createGain(); engine.gain.value = 0; engine.connect(master);
+  const eo = ctx.createOscillator(); eo.type = 'sawtooth'; eo.frequency.value = 46; const ef = ctx.createBiquadFilter(); ef.type = 'lowpass'; ef.frequency.value = 160; eo.connect(ef); ef.connect(engine); eo.start();
+  const artHum = ctx.createGain(); artHum.gain.value = 0; artHum.connect(master);
+  const ao = ctx.createOscillator(); ao.frequency.value = 52; ao.connect(artHum); ao.start();
+  const aw = ctx.createOscillator(); aw.type = 'square'; aw.frequency.value = 700; const awf = ctx.createBiquadFilter(); awf.type = 'bandpass'; awf.Q.value = 10; awf.frequency.value = 1500; const awg = ctx.createGain(); awg.gain.value = .12; aw.connect(awf); awf.connect(awg); awg.connect(artHum); aw.start();
+  return { voices: am, voiceBed: voices, tyres, engine, artHum, nextStep: 0 };
+}
+const nearness = (ds, range) => { let v = 0; for (const d of ds) if (d < range) v += (1 - d / range) ** 2; return Math.min(1, v); };
+export function updateWorldSound({ people = [], cars = [], trams = [] }, running = true) {
+  if (!ctx) return; world ||= buildWorld(); const t = ctx.currentTime, on = running ? 1 : 0;
+  const crowd = nearness(people, 35), road = nearness(cars, 70), art = nearness(trams, 90);
+  world.voiceBed.gain.setTargetAtTime(on * crowd * .06, t, .4);
+  world.tyres.gain.setTargetAtTime(on * road * .08, t, .3); world.engine.gain.setTargetAtTime(on * road * .05, t, .3);
+  world.artHum.gain.setTargetAtTime(on * art * .045, t, .3);
+  // Footsteps: short filtered ticks, denser with more people close by.
+  if (on && crowd > .05 && t > world.nextStep) {
+    const src = ctx.createBufferSource(); src.buffer = rollSrc.buffer; const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1400 + Math.random() * 900; f.Q.value = 2; const g = ctx.createGain();
+    g.gain.setValueAtTime(crowd * .07, t); g.gain.exponentialRampToValueAtTime(.0005, t + .06); src.connect(f); f.connect(g); g.connect(master); src.start(t, Math.random()); src.stop(t + .08);
+    world.nextStep = t + .12 + Math.random() * .5 / (.2 + crowd);
+  }
 }
 
 function beep(freq, dur = 0.12, type = 'sine', gain = 0.2, when = 0) {

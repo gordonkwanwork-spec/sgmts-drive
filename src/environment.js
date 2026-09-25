@@ -1,12 +1,15 @@
 import {windMaterial,PLANT_NIGHT} from './street-models.js';
 import {TessellateModifier} from 'three/addons/modifiers/TessellateModifier.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
-import {terminalCurve,depotCurve,l35BendCurve,l35Mouth,l35D6} from './routes.js';
+import {terminalCurve,depotCurve,depotExitCurve,depotInner,l35BendCurve,l35Mouth,l35D6} from './routes.js';
+import {SITE as DEPOT_SITE,paved as depotPaved,corridorClear,BUILDINGS as DEPOT_BUILDINGS,BAYS as DEPOT_BAYS,CV_STALLS,CV_FENCE,CV_ROAD,CV_ROAD_WIDTH,nearServiceRoad,nearDepotBounds,MASTS,MAST_HEIGHT} from './depot.js';
+import {pointInPolygon} from './lots/wand.js';
+import {lotMaterials} from './lots/massing.js';
 import * as T from 'three';
 import {LENGTH,STOPS,sample,LOOP,roadSection,fromChainage,project,PATH,BRIDGES,CROSSINGS,footpathHeight,cycleOffset,CYCLE_WIDTH,CHANNELS,JUNCTIONS,UNDERPASSES,L35,l35Offset,DEPOT,RAILWAY,railSample,cycleCrossing,cycleHeight,sideCrossing,D1ROAD,laneOffset,curveRadius,returnOffset,CROSSOVER_START,END_STOP,CYCLE_BRIDGES,CYCLE_RAMP,cycleBridgeAt,cycleBridgeHeight,cycleSample} from './alignment.js';
 export {JUNCTIONS,UNDERPASSES} from './alignment.js';
 const inJunction=s=>JUNCTIONS.some(j=>Math.abs(s-j.s)<j.halfWidth+6);
-const inDepot=s=>Math.abs(s-DEPOT.s)<DEPOT.opening/2;
+const inDepot=s=>Math.abs(s-DEPOT.gate)<DEPOT.opening/2;
 const groundCrossing=s=>inJunction(s)||UNDERPASSES.some(j=>Math.abs(j.s-s)<j.halfWidth+.5);
 // Any fence line (corridor or L35) opens 6 m either side of a pedestrian crossing.
 export const crossingGap=(start,end)=>CROSSINGS.some(c=>start<c.s+6&&end>c.s-6);
@@ -28,7 +31,7 @@ export function fenceAllowed(start,end,side){
   &&!crossingGap(start,end)
   &&!JUNCTIONS.some(j=>[-1,1].some(d=>overlaps(j.s+d*(j.halfWidth+10),6)))
   &&!stationFenceSpans.some(p=>p.side===side&&start<p.end&&end>p.start)
-  &&!(side===1&&overlaps(DEPOT.s,22));
+  &&!(side===1&&overlaps(DEPOT.gate,22));
 }
 export function stationAccess(st,platform,dir){
  const r=sample(st.s),along=platform.centerOffset+dir*44.8,angle=0;
@@ -61,7 +64,9 @@ export function pavementLight(v,lamps){
  let glow=0;
  for(const l of lamps){
   const height=l.y-v.y;if(height<.1||height>15||l.kind==='deck'&&height>1.5)continue;
-  const dx=v.x-l.x,dz=v.z-l.z;if(Math.abs(dx)>55||Math.abs(dz)>55)continue;const r=l.axis||sample(l.s),along=dx*r.tx+dz*r.tz,across=dx*r.lx+dz*r.lz;
+  const dx=v.x-l.x,dz=v.z-l.z;if(Math.abs(dx)>55||Math.abs(dz)>55)continue;
+  if(l.kind==='mast'){glow=Math.max(glow,1.3*Math.exp(-(dx*dx+dz*dz)/(30*30)));continue;}// 14 m floodlight: wide, bright round pool
+  const r=l.axis||sample(l.s),along=dx*r.tx+dz*r.tz,across=dx*r.lx+dz*r.lz;
   const radius=l.kind==='cycle'?11:Math.max(9,Math.min(18,height*1.5)),width=l.kind==='cycle'?6:Math.max(5,height*.9);
   glow=Math.max(glow,Math.exp(-(along*along/(radius*radius)+across*across/(width*width)))*.9);
  }
@@ -72,11 +77,12 @@ const cycleLine=Array.from({length:Math.ceil(LENGTH/3)+1},(_,i)=>cycleSample(Mat
 export function cycleClearance(x,z){let nearest=Infinity;for(let i=1;i<cycleLine.length;i++){const a=cycleLine[i-1],b=cycleLine[i],dx=b.x-a.x,dz=b.z-a.z,t=Math.max(0,Math.min(1,((x-a.x)*dx+(z-a.z)*dz)/(dx*dx+dz*dz||1)));nearest=Math.min(nearest,Math.hypot(x-a.x-t*dx,z-a.z-t*dz));}return nearest;}
 // Scenery must clear every nearby bend and crossing road, not just its placement sample.
 // `low` = grass/shrub planting: may run up to the cycle-track edge and around cycle bridges.
+// Scenery keeps out of the depot site (lot 41B) and a radius around its boundary.
+function nearDepotSite(x,z,radius){if(!nearDepotBounds(x,z,radius+CV_ROAD_WIDTH/2+16))return false;if(pointInPolygon([x,z],DEPOT_SITE)||nearServiceRoad(x,z,radius+CV_ROAD_WIDTH/2+14)!=null)return true;for(let i=0;i<DEPOT_SITE.length;i++){const [ax,az]=DEPOT_SITE[i],[bx,bz]=DEPOT_SITE[(i+1)%DEPOT_SITE.length],dx=bx-ax,dz=bz-az,t=Math.max(0,Math.min(1,((x-ax)*dx+(z-az)*dz)/(dx*dx+dz*dz)));if(Math.hypot(x-ax-t*dx,z-az-t*dz)<radius+2)return true;}return false;}
 export function sceneryClear(x,z,radius,low=false){
- const ps=project(x,z),r=sample(ps),lat=(x-r.x)*r.lx+(z-r.z)*r.lz;if((r.c>680&&r.c<980&&lat< -12+radius&&lat> -145-radius)||Math.abs(ps-DEPOT.s)<DEPOT.length/2+radius&&lat>10-radius&&lat<DEPOT.lateral+DEPOT.width/2+radius||ps>=L35.start-30&&ps<=L35.end+40&&lat<0&&(ps<L35.start||ps>fromChainage(3300)?lat> -35-radius:Math.abs(lat+l35Offset(ps))<L35.width/2+3.75+radius)||channelDepth(x,z)>0)return false;
+ const ps=project(x,z),r=sample(ps),lat=(x-r.x)*r.lx+(z-r.z)*r.lz;if((r.c>680&&r.c<980&&lat< -12+radius&&lat> -145-radius)||nearDepotSite(x,z,radius)||ps>=L35.start-30&&ps<=L35.end+40&&lat<0&&(ps<L35.start||ps>fromChainage(3300)?lat> -35-radius:Math.abs(lat+l35Offset(ps))<L35.width/2+3.75+radius)||channelDepth(x,z)>0)return false;
  if(RAILWAY.distance(x,z)<9+radius||cycleClearance(x,z)<CYCLE_WIDTH/2+radius+(low?.2:1.5))return false;
  if(!low)for(const j of CYCLE_BRIDGES){const c=sample(j.s),dx=x-c.x,dz=z-c.z,along=dx*c.tx+dz*c.tz,lat=dx*c.lx+dz*c.lz;if(Math.abs(along)<j.halfWidth+35+radius&&Math.abs(lat-(cycleOffset(j.s)-6))<12+radius)return false;}
- const dp=sample(DEPOT.s),dl=(x-dp.x)*dp.lx+(z-dp.z)*dp.lz,ds=(x-dp.x)*dp.tx+(z-dp.z)*dp.tz;if(dl>10-radius&&dl<170+radius&&Math.abs(ds)<85+radius)return false;
  if(D1ROAD.some(p=>Math.hypot(x-p.x,z-p.z)<14+radius))return false;
  if(Math.hypot(x-r.x,z-r.z)<roadSection(ps).right+3.75+radius)return false;
  return [...JUNCTIONS,...UNDERPASSES].every(j=>{const p=sample(j.s),dx=x-p.x,dz=z-p.z;return Math.abs(dx*p.tx+dz*p.tz)>j.halfWidth+5+radius||Math.abs(dx*p.lx+dz*p.lz)>j.extent+radius;});
@@ -119,8 +125,10 @@ export function ribbon(start,end,left,right,yOffset=0,terrain=false,cut=false,sa
  for(let i=0;i<n;i++){const j=i*2,a=sample(start+(end-start)*i/n),b=sample(start+(end-start)*(i+1)/n),forward=k=>(p[(k+2)*3]-p[k*3])*(b.x-a.x)+(p[(k+2)*3+2]-p[k*3+2])*(b.z-a.z);if(!(cut&&(typeof cut==='function'?cut:inJunction)(start+(end-start)*(i+.5)/n))&&up(j,j+2,j+1)>1e-8&&up(j+1,j+2,j+3)>1e-8&&forward(j)>0&&forward(j+1)>0)idx.push(j,j+2,j+1,j+1,j+2,j+3);}
  let g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(p,3));g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();return g;
 }
-export function terrainLevel(x,z,s){for(const j of [...JUNCTIONS,...UNDERPASSES]){const r=sample(j.s),dx=x-r.x,dz=z-r.z;if(Math.abs(dx*r.lx+dz*r.lz)<j.extent+1&&Math.abs(dx*r.tx+dz*r.tz)<j.halfWidth+4)return j.underpass?r.groundY:r.y;}const d=sample(DEPOT.s),lat=(x-d.x)*d.lx+(z-d.z)*d.lz,along=(x-d.x)*d.tx+(z-d.z)*d.tz;if(lat>24&&lat<166&&Math.abs(along)<81||lat>0&&lat<55&&Math.abs(along)<16)return d.y;return sample(s).groundY;}
+export function terrainLevel(x,z,s){for(const j of [...JUNCTIONS,...UNDERPASSES]){const r=sample(j.s),dx=x-r.x,dz=z-r.z;if(Math.abs(dx*r.lx+dz*r.lz)<j.extent+1&&Math.abs(dx*r.tx+dz*r.tz)<j.halfWidth+4)return j.underpass?r.groundY:r.y;}const d=sample(DEPOT.s),lat=(x-d.x)*d.lx+(z-d.z)*d.lz,along=(x-d.x)*d.tx+(z-d.z)*d.tz;if(lat>0&&lat<55&&Math.abs(along+DEPOT.s-DEPOT.gate)<16)return d.y;if(nearDepotBounds(x,z)&&pointInPolygon([x,z],DEPOT_SITE))return d.y-.8;/* under the yard: deep enough that offset night overlays never bleed through */const road=nearServiceRoad(x,z,5);if(road!=null)return road-.1;return sample(s).groundY;}
 // Fixed world grid prevents the folded wide-offset ribbons that left terrain holes.
+// Ground as drawn: terrain patches cover 100 m either side of the corridor; beyond that the backdrop plane sits at −5.
+export function renderedGround(x,z){const s=project(x,z),r=sample(s);return Math.hypot(x-r.x,z-r.z)>100?-5:terrainLevel(x,z,s);}
 export function terrainPatch(start,end){
  const pts=PATH.filter(p=>p.s>=Math.max(0,start-5)&&p.s<=end+5),step=8,p=[],uv=[],idx=[];
  const minX=Math.floor((Math.min(...pts.map(p=>p.x))-100)/step)*step,maxX=Math.max(...pts.map(p=>p.x))+100,minZ=Math.floor((Math.min(...pts.map(p=>p.z))-100)/step)*step,maxZ=Math.max(...pts.map(p=>p.z))+100;
@@ -139,8 +147,8 @@ export function structureGeometry(start,end,section,sampler=sample){const positi
  for(const i of [0,n])for(let j=1;j<count-1;j++)indices.push(i*count,i*count+j,i*count+j+1);
  const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(positions,3));g.setIndex(indices);g.computeVertexNormals();return g;
 }
-export function buildEnvironment(scene,streetKit){
- const backdrop=new T.Mesh(new T.PlaneGeometry(14000,14000),new T.MeshStandardMaterial({color:0x657647,roughness:1}));backdrop.rotation.x=-Math.PI/2;backdrop.position.y=-5;scene.add(backdrop);
+// occupied(x,z): true inside an OZP lot that has its own model (src/lots), so filler buildings stay out of it.
+export function buildEnvironment(scene,streetKit,{occupied=()=>false}={}){ const backdrop=new T.Mesh(new T.PlaneGeometry(14000,14000),new T.MeshStandardMaterial({color:0x657647,roughness:1}));backdrop.rotation.x=-Math.PI/2;backdrop.position.y=-5;scene.add(backdrop);
  const roadTex=paintTexture('road'),paverTex=paintTexture('walk'),greyPaver=paintTexture('walk-grey'),buffPaver=paintTexture('walk-buff'),pavers=[paverTex,greyPaver,buffPaver];
  const mats={road:new T.MeshStandardMaterial({map:roadTex,roughness:.91}),walk:new T.MeshStandardMaterial({map:paverTex,roughness:.96}),grass:new T.MeshStandardMaterial({map:paintTexture('grass'),roughness:1}),concrete:new T.MeshStandardMaterial({color:0xc6c2ac,roughness:.9,side:T.DoubleSide}),lamp:new T.MeshStandardMaterial({color:0xfff1dc,emissive:0xfff1dc,emissiveIntensity:0}),galvanised:new T.MeshStandardMaterial({color:0xa3adae,metalness:.55,roughness:.58}),yellow:new T.MeshStandardMaterial({color:0xffcf22,roughness:.8}),white:new T.MeshStandardMaterial({color:0xece8d3,roughness:.8}),teal:new T.MeshStandardMaterial({color:0x47776b,roughness:.85}),metal:new T.MeshStandardMaterial({color:0x465654,metalness:.65,roughness:.4})};
  mats.walkGrey=new T.MeshStandardMaterial({map:greyPaver,roughness:.97});mats.walkBuff=new T.MeshStandardMaterial({map:buffPaver,roughness:.96});
@@ -165,7 +173,7 @@ export function buildEnvironment(scene,streetKit){
   }
   for(const edge of [s=>roadSection(s).left,s=>roadSection(s).right]){const line=new T.Mesh(ribbon(start,end,s=>edge(s)-.05,s=>edge(s)+.05,.025,false,inBox),mats.white);group.add(line);}
   for(const lat of [-.14,.14]){const line=new T.Mesh(ribbon(Math.max(35,start),Math.min(end,CROSSOVER_START-75),lat-.055,lat+.055,.028,false,q=>inBox(q)||groundCrossing(q)||inDepot(q)),mats.white);if(start<CROSSOVER_START-75)group.add(line);}
-  for(let q=Math.max(start,DEPOT.s-15);q<Math.min(end,DEPOT.s+15);q+=5)group.add(new T.Mesh(ribbon(q,Math.min(q+2,end),-.055,.055,.03),mats.white));
+  for(let q=Math.max(start,DEPOT.gate-15);q<Math.min(end,DEPOT.gate+15);q+=5)group.add(new T.Mesh(ribbon(q,Math.min(q+2,end),-.055,.055,.03),mats.white));
   for(let s=Math.max(start,CROSSOVER_START-75);s<end;s+=7)group.add(new T.Mesh(ribbon(s,Math.min(s+3,end),-.05,.05,.029),mats.white));
   for(let s=Math.ceil(Math.max(start,35)/1.5)*1.5;s<end;s+=1.5)for(const dir of [-1,1])for(const branch of [0,...(Math.abs(laneOffset(s,dir))>1.91?[1]:[])])for(const track of [-.24,.24]){const offset=q=>branch?dir*1.9:dir===-1?returnOffset(q):laneOffset(q),guide=new T.Mesh(ribbon(s,Math.min(s+.55,end),q=>offset(q)+track-.085,q=>offset(q)+track+.085,.105,false,false),mats.white);guide.name='ART guidance marks';group.add(guide);}
   const marks=group.children.filter(m=>m.name==='ART guidance marks'),positions=[],indices=[];for(const m of marks){const offset=positions.length/3;positions.push(...m.geometry.attributes.position.array);indices.push(...Array.from(m.geometry.index.array,i=>i+offset));m.geometry.dispose();group.remove(m);}const guideGeo=new T.BufferGeometry();guideGeo.setAttribute('position',new T.Float32BufferAttribute(positions,3));guideGeo.setIndex(indices);guideGeo.computeVertexNormals();const guides=new T.Mesh(guideGeo,mats.white);guides.name='ART guidance marks';group.add(guides);
@@ -186,7 +194,7 @@ export function buildEnvironment(scene,streetKit){
   }}
   for(let s=start+15;s<end;s+=52){if([...JUNCTIONS,...UNDERPASSES].some(j=>Math.abs(j.s-s)<j.halfWidth+25))continue;for(let side of [-1,1]){
     const r=sample(s),lat=side*(48+rnd()*40),p=at(s,lat),zone=r.c<650?'residential':r.c<1250?'logistics':r.c<1900?'tech':r.c<2550?'village':r.c<3200?'boulevard':'construction',h=zone==='village'?6+rnd()*4:zone==='logistics'?8+rnd()*5:zone==='tech'?16+rnd()*18:18+rnd()*66,w=15+rnd()*15,d=16+rnd()*16,k=Math.floor(rnd()*4),radius=Math.hypot(w,d)/2+2;
-    if(!sceneryClear(p.x,p.z,radius)||plots.some(q=>Math.hypot(q.x-p.x,q.z-p.z)<q.radius+radius+3))continue;plots.push({x:p.x,z:p.z,radius,zone});
+    if(occupied(p.x,p.z)||!sceneryClear(p.x,p.z,radius)||plots.some(q=>Math.hypot(q.x-p.x,q.z-p.z)<q.radius+radius+3))continue;plots.push({x:p.x,z:p.z,radius,zone});
     if(zone==='construction'){
      for(let y=0;y<h;y+=3.2){box('construction-slab',mats.concrete,p.x,p.y+y,p.z,w,.3,d,r.heading,ch);for(const x of [-w/2+1,w/2-1])for(const z of [-d/2+1,d/2-1]){const u=new T.Vector3(x,y+1.6,z).applyAxisAngle(new T.Vector3(0,1,0),r.heading).add(p);box('construction-column',mats.concrete,u.x,u.y,u.z,.6,3.2,.6,r.heading,ch);}}
      box('crane-mast',mats.teal,p.x,p.y+(h+10)/2,p.z,.8,h+10,.8,0,ch);box('crane-jib',mats.teal,p.x,p.y+h+9,p.z,w+10,.65,.8,r.heading,ch);box('crane-counterweight',mats.concrete,p.x,p.y+h+8,p.z,2,2,2,0,ch);
@@ -348,14 +356,87 @@ export function buildEnvironment(scene,streetKit){
  for(const x of [-13,-7.5,7.5,13])litBox(nightParts.fixture,stationGroup,.3,.06,212,x,h+6.62,0);for(const x of [-4.2,4.2])litBox(nightParts.led,stationGroup,.1,.02,216,x,h+1.16,0);for(const x of [-18.05,18.05])litBox(nightParts.led,stationGroup,.1,.2,224,x,h+7,0);litBox(nightParts.led,stationGroup,24,.1,41,-22,4.85,0);
  for(let z=-102;z<=102;z+=12)for(const x of [-10.3,10.3])glowAt(stationGroup,11,14,x,h+1.18,z);for(const z of [-14,0,14])lampAt(stationGroup,-22,4.6,z);lampAt(stationGroup,-38,4,0);glowAt(sign,33,6.5,0,0,-.15,true);
  for(const ds of [-80,0,80]){const p=at(a2.s+ds,-42),ch=Math.floor((a2.s+ds)/240);box('plaza-bench',mats.metal,p.x,p.y+.75,p.z,3,.15,.8,sample(a2.s).heading,ch);lampPositions.push({s:a2.s+ds,x:p.x,y:p.y+6,z:p.z});box('plaza-lamp',mats.metal,p.x,p.y+3,p.z,.1,6,.1,0,ch);box('plaza-light',mats.lamp,p.x,p.y+6,p.z,.6,.2,.6,0,ch);}
- // A 30 m access opening leads into the one-storey depot and apron on the left.
- const dr=sample(DEPOT.s),depotGroup=new T.Group();depotGroup.name='SGMTS depot';depotGroup.position.set(dr.x,dr.y,dr.z);depotGroup.rotation.y=dr.heading;scene.add(depotGroup);
- const apron=new T.Mesh(new T.BoxGeometry(DEPOT.width,.12,DEPOT.length),mats.road);apron.position.set(-DEPOT.lateral,.02,0);apron.receiveShadow=true;depotGroup.add(apron);
- const access=new T.Mesh(ribbon(DEPOT.s-15,DEPOT.s+15,s=>roadSection(s).right,55,.04,true),mats.road);access.name='30m depot entrance';scene.add(access);
- for(const [w,h,d,x,y,z,mat] of [[58,8,.5,-123,4,-65,mats.concrete],[58,8,.5,-123,4,65,mats.concrete],[.5,8,130,-152,4,0,mats.concrete],[61,.6,134,-123,8.3,0,mats.metal]]){const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);m.castShadow=true;depotGroup.add(m);}
- for(let z=-60;z<=60;z+=20){if(Math.abs(z)<12)continue;const pier=new T.Mesh(new T.BoxGeometry(.5,8,.5),mats.concrete);pier.position.set(-94,4,z);depotGroup.add(pier);}for(const lat of [105,130]){const fixture=new T.Mesh(new T.BoxGeometry(1,.1,12),mats.lamp);fixture.position.set(-lat,7.6,0);depotGroup.add(fixture);lampPositions.push({s:DEPOT.s,x:dr.x+dr.lx*lat,y:dr.y+7.6,z:dr.z+dr.lz*lat});}
- for(const along of [-60,60])for(const lat of [30,85]){const p=new T.Vector3(dr.x+dr.lx*lat+dr.tx*along,dr.y,dr.z+dr.lz*lat+dr.tz*along),ch=Math.floor(DEPOT.s/240);box('depot-light-pole',mats.metal,p.x,p.y+4,p.z,.15,8,.15,0,ch);box('depot-light',mats.lamp,p.x,p.y+8,p.z,.8,.15,.8,0,ch);lampPositions.push({s:DEPOT.s,x:p.x,y:p.y+8,z:p.z});}
- const dp=at(DEPOT.s,94);dp.y+=7;landmarkBoard('SGMTS 車廠  DEPOT',dp,dr.heading+Math.PI/2,30);
+ // SGMTS depot on lot 41B (src/depot.js, drawing V1038-DP-2003): 30 m entrance throat, paved yard clipped to the
+ // corridor reserve, maintenance hall + office, wash shed, plant room, painted stabling bays and floodlight masts.
+ const dr=sample(DEPOT.s),depotGroup=new T.Group();depotGroup.name='SGMTS depot';scene.add(depotGroup);const dy=dr.y,dch=Math.floor(DEPOT.s/240);
+ {// Yard pavement: 2 m grid over the site, asphalt so the fixed night illumination pass lights it.
+  const step=2,xs=DEPOT_SITE.map(p=>p[0]),zs=DEPOT_SITE.map(p=>p[1]),x0=Math.min(...xs),z0=Math.min(...zs),nx=Math.ceil((Math.max(...xs)-x0)/step)+1,nz=Math.ceil((Math.max(...zs)-z0)/step)+1;
+  const ok=[],pos=[],uv=[],idx=[];for(let j=0;j<nz;j++)for(let i=0;i<nx;i++){const x=x0+i*step,z=z0+j*step;ok.push(depotPaved(x,z));pos.push(x,dy+.05,z);uv.push(x/6,z/6);}
+  for(let j=0;j<nz-1;j++)for(let i=0;i<nx-1;i++){const a=j*nx+i,b=a+1,c=a+nx,e=c+1;if(ok[a]&&ok[b]&&ok[c]&&ok[e])idx.push(a,c,b,b,c,e);}
+  const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();
+  const yard=new T.Mesh(g,mats.road);yard.name='Depot yard';yard.receiveShadow=true;depotGroup.add(yard);}
+ // Facades after the reference depot photo: pale ribbed cladding, clerestory glazing, tall roller doors, PV roof.
+ const clad=(()=>{const c=document.createElement('canvas');c.width=c.height=256;const x=c.getContext('2d');x.fillStyle='#dfe3e4';x.fillRect(0,0,256,256);x.fillStyle='#c9cfd2';for(let i=0;i<256;i+=8)x.fillRect(i,0,2,256);x.fillStyle='#8fa4b2';x.fillRect(0,26,256,34);x.fillStyle='#6f7f8a';for(let i=0;i<256;i+=32)x.fillRect(i,26,3,34);const t=new T.CanvasTexture(c);t.wrapS=t.wrapT=T.RepeatWrapping;t.colorSpace=T.SRGBColorSpace;return new T.MeshStandardMaterial({map:t,roughness:.7});})();
+ const pvPanel=new T.MeshStandardMaterial({color:0x1f2f4a,roughness:.35,metalness:.4}),lotMats=lotMaterials(),solid=(name,mat,x0,x1,z0,z1,h,y=dy)=>{const m=new T.Mesh(new T.BoxGeometry(x1-x0,h,z1-z0),mat);m.name=name;m.position.set((x0+x1)/2,y+h/2,(z0+z1)/2);m.castShadow=m.receiveShadow=true;depotGroup.add(m);return m;};
+ const wrapUV=(m,tile)=>{const g=m.geometry,p=g.attributes.position,n=g.attributes.normal,uv=g.attributes.uv;for(let i=0;i<p.count;i++){const along=Math.abs(n.getX(i))>.5?p.getZ(i)*m.scale.z:p.getX(i)*m.scale.x;uv.setXY(i,(along+(g.parameters.width+g.parameters.depth))/tile[0],(p.getY(i)+g.parameters.height/2)/tile[1]);}uv.needsUpdate=true;};
+ for(const b of DEPOT_BUILDINGS){const pv=()=>{for(let x=b.x0+3;x<b.x1-6;x+=6.2)for(let z=b.z0+3;z<b.z1-4;z+=4.4)box('depot-pv-panel',pvPanel,x+2.8,dy+b.h+.35,z+2,5.6,.12,3.8,0,dch);};
+  if(b.kind==='office'){const m=solid(b.name,lotMats.civic,b.x0,b.x1,b.z0,b.z1,b.h);wrapUV(m,[12,13.5]);solid('Office roof plant',mats.concrete,b.x1-18,b.x1-6,b.z0+5,b.z0+12,2.2,dy+b.h);}
+  else if(b.kind==='hall'||b.kind==='workshop'){const m=solid(b.name,clad,b.x0,b.x1,b.z0,b.z1,b.h);wrapUV(m,[16,b.h]);pv();
+   for(const z of b.doors||[]){const x=b.face==='e'?b.x1:b.x0,o=b.face==='e'?1:-1;solid('Depot roller door',mats.metal,Math.min(x,x+o*.3),Math.max(x,x+o*.3),z-2.6,z+2.6,Math.min(6.2,b.h-1.2));solid('Door frame',mats.white,Math.min(x,x+o*.4),Math.max(x,x+o*.4),z-2.9,z+2.9,.35,dy+Math.min(6.2,b.h-1.2));}}
+  else if(b.kind==='shed'){// Covered stabling: clad walls on three sides, open vehicle face with a column line, PV roof.
+   solid(b.name+' roof',clad,b.x0,b.x1,b.z0,b.z1,.7,dy+b.h);pv();
+   const wall=(x0,x1,z0,z1)=>{const m=solid(b.name+' wall',clad,x0,x1,z0,z1,b.h);wrapUV(m,[16,b.h]);};
+   wall(b.x0,b.x1,b.z0,b.z0+.4);wall(b.x0,b.x1,b.z1-.4,b.z1);if(b.open==='w')wall(b.x1-.4,b.x1,b.z0,b.z1);else wall(b.x0,b.x0+.4,b.z0,b.z1);
+   const face=b.open==='w'?b.x0:b.x1;for(let z=b.z0+1;z<=b.z1;z+=9.4)box('stabling-column',mats.galvanised,face,dy+b.h/2,z,.5,b.h,.5,0,dch);
+   for(let x=b.x0+8;x<b.x1;x+=16)for(let z=b.z0+6;z<b.z1;z+=12)box('stabling-light',mats.lamp,x,dy+b.h-.2,z,.4,.12,6,0,dch);}
+  else solid(b.name,mats.concrete,b.x0,b.x1,b.z0,b.z1,b.h);}
+ {const b=DEPOT_BUILDINGS.find(b=>b.kind==='office');landmarkBoard('SGMTS 車廠  DEPOT',new T.Vector3(b.x0-.3,dy+b.h-2.4,(b.z0+b.z1)/2),-Math.PI/2,26);}
+ // Commercial vehicle park: open-air asphalt stalls, fenced from the depot.
+ for(const c of CV_STALLS){for(const off of [-c.w/2,c.w/2])box('cv-stall-line',mats.white,c.x+off,dy+.09,c.z,.12,.02,c.d,0,dch);}
+ {// Chain-link: diamond wire mesh (alpha-tested, see-through), galvanised posts every 3 m and a top rail.
+  const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d');x.strokeStyle='#c3cacd';x.lineWidth=3;x.beginPath();x.moveTo(0,32);x.lineTo(32,0);x.lineTo(64,32);x.lineTo(32,64);x.closePath();x.stroke();
+  const tex=new T.CanvasTexture(c);tex.wrapS=tex.wrapT=T.RepeatWrapping;tex.colorSpace=T.SRGBColorSpace;const wire=new T.MeshStandardMaterial({map:tex,alphaTest:.5,side:T.DoubleSide,metalness:.5,roughness:.5});
+  const panels=[];for(const run of CV_FENCE)for(let i=1;i<run.length;i++){const [ax,az]=run[i-1],[bx,bz]=run[i],len=Math.hypot(bx-ax,bz-az),heading=Math.atan2(-(bz-az),bx-ax),mx=(ax+bx)/2,mz=(az+bz)/2;
+   const g=new T.PlaneGeometry(len,2.4);const uv=g.attributes.uv;for(let k=0;k<uv.count;k++)uv.setXY(k,uv.getX(k)*len/.12,uv.getY(k)*2.4/.12);g.rotateY(heading).translate(mx,dy+1.2,mz);panels.push(g);
+   for(let t=0;t<=len;t+=3)box('chainlink-post',mats.galvanised,ax+(bx-ax)*t/len,dy+1.25,az+(bz-az)*t/len,.08,2.5,.08,0,dch);box('chainlink-rail',mats.galvanised,mx,dy+2.42,mz,len,.05,.05,heading,dch);}
+  const fence=new T.Mesh(mergeGeometries(panels),wire);fence.name='Vehicle park chain-link fence';depotGroup.add(fence);}
+ // Parked goods vehicles: rigid lorries and container tractors in about two stalls in three.
+ {const cab=new T.BoxGeometry(2.4,2.9,2.3),box=new T.BoxGeometry(2.45,3.1,1),wheel=new T.CylinderGeometry(.5,.5,.35,10).rotateZ(Math.PI/2);
+  const paints=[0xd8dde0,0x2f6fb3,0xc23b2e,0xe7e9ea,0x3b8a4a,0xf0b429].map(c=>new T.MeshStandardMaterial({color:c,roughness:.6})),tyre=new T.MeshStandardMaterial({color:0x1b1b1b,roughness:.9}),glassM=new T.MeshStandardMaterial({color:0x1d2a33,roughness:.2,metalness:.3});
+  let k=7;const r=()=>(k=(k*16807)%2147483647)/2147483647;
+  for(const c of CV_STALLS){if(r()<.35)continue;const L=Math.min(c.d-1.5,r()<.5?9:14),g=new T.Group(),front=r()<.5?1:-1,paint=paints[Math.floor(r()*paints.length)];
+   const cb=new T.Mesh(cab,paint);cb.position.set(0,1.95,front*(L/2-1.15));const ws=new T.Mesh(new T.BoxGeometry(2.2,1,.05),glassM);ws.position.set(0,2.6,front*(L/2-.02));
+   const body=new T.Mesh(box,paints[(paints.indexOf(paint)+3)%paints.length]);body.scale.z=L-2.7;body.position.set(0,2.05,-front*1.25);
+   g.add(cb,ws,body);for(const z of [front*(L/2-1.4),-front*(L/2-1.6),-front*(L/2-2.9)])for(const x of [-1.05,1.05]){const w=new T.Mesh(wheel,tyre);w.position.set(x,.5,z);g.add(w);}
+   g.traverse(n=>{if(n.isMesh){n.castShadow=true;n.receiveShadow=true;}});g.position.set(c.x,dy+.05,c.z);g.name='parked goods vehicle';depotGroup.add(g);}}
+ // Graded embankments: the platform and the service road fall 1:1.5 to the surrounding ground (the plan's "Slope").
+ const bank=mats.grass.clone();bank.side=T.DoubleSide;
+ const skirt=(edge,outward,top)=>{const pos=[],idx=[];edge.forEach((p,i)=>{const y=top(p),run=(y+5)*1.5;pos.push(p.x,y-.02,p.z,p.x+outward[i].x*run,-5,p.z+outward[i].z*run);if(i){const k=i*2;idx.push(k-2,k,k-1,k-1,k,k+1);}});
+  const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setAttribute('uv',new T.Float32BufferAttribute(pos.filter((_,j)=>j%3!==1).map(v=>v/5),2));g.setIndex(idx);g.computeVertexNormals();
+  const m=new T.Mesh(g,bank);m.name='Depot embankment';m.receiveShadow=true;depotGroup.add(m);};
+ {const ring=[...DEPOT_SITE,DEPOT_SITE[0]].map(([x,z])=>({x,z})),sign=DEPOT_SITE.reduce((a,p,i)=>{const q=DEPOT_SITE[(i+1)%DEPOT_SITE.length];return a+p[0]*q[1]-q[0]*p[1];},0)>0?1:-1;
+  const out=ring.map((p,i)=>{const a=ring[Math.max(0,i-1)],b=ring[Math.min(ring.length-1,i+1)],dx=b.x-a.x,dz=b.z-a.z,n=Math.hypot(dx,dz)||1;return {x:-dz/n*sign,z:dx/n*sign};});
+  skirt(ring,out,()=>dy);}
+ {// Service road: 2 m stations, carriageway + edge/centre lines, embankments both sides, lamps every 30 m.
+  const pts=[];for(let i=1;i<CV_ROAD.length;i++){const a=CV_ROAD[i-1],b=CV_ROAD[i],n=Math.max(1,Math.ceil(Math.hypot(b.x-a.x,b.z-a.z)/2));for(let j=i>1?1:0;j<=n;j++){const t=j/n;pts.push({x:a.x+(b.x-a.x)*t,z:a.z+(b.z-a.z)*t,y:a.y+(b.y-a.y)*t});}}
+  const smooth=pts.map((p,i)=>{if(!i||i===pts.length-1)return p;let x=0,z=0,w=0;for(let k=Math.max(0,i-4);k<=Math.min(pts.length-1,i+4);k++){x+=pts[k].x;z+=pts[k].z;w++;}return {...p,x:x/w,z:z/w};});
+  const frame=smooth.map((p,i)=>{const a=smooth[Math.max(0,i-1)],b=smooth[Math.min(smooth.length-1,i+1)],dx=b.x-a.x,dz=b.z-a.z,n=Math.hypot(dx,dz)||1;return {...p,tx:dx/n,tz:dz/n,lx:dz/n,lz:-dx/n};});
+  const strip=(o0,o1,yo,mat,name,dash=0)=>{const pos=[],uv=[],idx=[];let run=0;frame.forEach((f,i)=>{if(i)run+=Math.hypot(f.x-frame[i-1].x,f.z-frame[i-1].z);for(const o of [o0,o1])pos.push(f.x+f.lx*o,f.y+yo,f.z+f.lz*o),uv.push(o/4,run/4);
+    if(i&&(!dash||Math.floor(run/dash)%2===0)){const k=i*2;idx.push(k-2,k,k-1,k-1,k,k+1);}});const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();const m=new T.Mesh(g,mat);m.name=name;m.receiveShadow=true;depotGroup.add(m);};
+  const w=CV_ROAD_WIDTH/2;strip(-w,w,.04,mats.road,'Depot service road');for(const o of [-w+.3,w-.3])strip(o-.07,o+.07,.07,mats.white,'Service road edge line');strip(-.07,.07,.07,mats.white,'Service road centre line',3);
+  for(const side of [-1,1])skirt(frame.map(f=>({x:f.x+f.lx*side*w,z:f.z+f.lz*side*w})),frame.map(f=>({x:f.lx*side,z:f.lz*side})),p=>nearServiceRoad(p.x,p.z,w+.5)??dy);
+  for(let i=8;i<frame.length;i+=15){const f=frame[i];roadLamp(new T.Vector3(f.x,f.y,f.z),new T.Vector3(f.tx,0,f.tz),CV_ROAD_WIDTH,'Depot service road',i%30<15?1:-1,10);}}
+ // Painted stabling bays (no rails: ART runs on tyres). Stop bar at each bay's front end.
+ for(const b of DEPOT_BAYS){const cx=(b.front.x+b.back.x)/2,len=b.length,w=3.2;for(const off of [-w/2,w/2])box('depot-bay-line',mats.white,cx,dy+.09,b.front.z+off,len,.02,.12,0,dch);
+  box('depot-bay-line',mats.white,b.back.x,dy+.09,b.front.z,.12,.02,w,0,dch);box('depot-stop-bar',mats.yellow,b.front.x-b.dir.x*.3,dy+.09,b.front.z,.45,.02,w,0,dch);}
+ // Direction arrows on the lead-in and both lead-outs.
+ const arrowShape=new T.Shape([new T.Vector2(-.35,-2),new T.Vector2(.35,-2),new T.Vector2(.35,.2),new T.Vector2(.9,.2),new T.Vector2(0,2),new T.Vector2(-.9,.2),new T.Vector2(-.35,.2)]),arrowGeo=new T.ShapeGeometry(arrowShape).rotateX(-Math.PI/2);
+ const arrows=(curve,every)=>{for(let d=10;d<curve.getLength()-6;d+=every){const u=d/curve.getLength(),p=curve.getPointAt(u),t=curve.getTangentAt(u);batch('depot-arrow',arrowGeo,mats.white,new T.Vector3(p.x,Math.max(p.y,dy)+.1,p.z),new T.Vector3(1,1,1),new T.Euler(0,Math.atan2(t.x,-t.z)+Math.PI,0),dch);}};
+ arrows(depotCurve,30);for(const dir of [1,-1])arrows(depotExitCurve(depotCurve.getPointAt(1),dir),30);
+ // Floodlight masts: four heads each; three crossed lamp axes give a round pool on the yard at night.
+ const depotPaths=[depotCurve,depotExitCurve(depotCurve.getPointAt(1),1),depotExitCurve(depotCurve.getPointAt(1),-1)].flatMap(c=>c.getSpacedPoints(Math.ceil(c.getLength()/2)));
+ const mastClear=(x,z)=>depotPaved(x,z)&&!DEPOT_BUILDINGS.some(b=>x>b.x0-3&&x<b.x1+3&&z>b.z0-3&&z<b.z1+3)&&!CV_STALLS.some(c=>Math.abs(x-c.x)<c.w/2+1&&Math.abs(z-c.z)<c.d/2+1)&&!depotPaths.some(p=>Math.hypot(p.x-x,p.z-z)<6)&&nearServiceRoad(x,z,CV_ROAD_WIDTH/2+3)==null;
+ {const xs=DEPOT_SITE.map(p=>p[0]),zs=DEPOT_SITE.map(p=>p[1]);for(let x=Math.min(...xs)+10;x<Math.max(...xs);x+=36)for(let z=Math.min(...zs)+10;z<Math.max(...zs);z+=36){
+  let best=null;for(const [ox,oz] of [[0,0],[6,0],[-6,0],[0,6],[0,-6],[9,9],[-9,-9]])if(mastClear(x+ox,z+oz)){best={x:x+ox,z:z+oz};break;}
+  if(best&&!MASTS.some(m=>Math.hypot(m.x-best.x,m.z-best.z)<24))MASTS.push(best);}}
+ for(const m of MASTS){box('depot-mast',mats.galvanised,m.x,dy+MAST_HEIGHT/2,m.z,.35,MAST_HEIGHT,.35,0,dch);box('depot-mast-frame',mats.galvanised,m.x,dy+MAST_HEIGHT,m.z,2.4,.15,2.4,0,dch);
+  for(const [ox,oz] of [[1,0],[-1,0],[0,1],[0,-1]])box('depot-floodlight',mats.lamp,m.x+ox*1.1,dy+MAST_HEIGHT-.25,m.z+oz*1.1,oz?1.2:.35,.3,ox?1.2:.35,0,dch);
+  lampPositions.push({s:DEPOT.s,x:m.x,y:dy+MAST_HEIGHT-.3,z:m.z,kind:'mast'});}
+ // Boundary palisade away from the corridor side and the entrance throat.
+ for(let i=0;i<DEPOT_SITE.length;i++){const [ax,az]=DEPOT_SITE[i],[bx,bz]=DEPOT_SITE[(i+1)%DEPOT_SITE.length],len=Math.hypot(bx-ax,bz-az),heading=Math.atan2(-(bz-az),bx-ax);
+  for(let t=1.5;t<len;t+=3){const x=ax+(bx-ax)*t/len,z=az+(bz-az)*t/len,lat=(x-dr.x)*dr.lx+(z-dr.z)*dr.lz,along=(x-dr.x)*dr.tx+(z-dr.z)*dr.tz;
+   if(!corridorClear(x,z)||nearServiceRoad(x,z,CV_ROAD_WIDTH/2+2)!=null||Math.abs(along)<22&&lat<70||Math.hypot(x-sample(project(x,z)).x,z-sample(project(x,z)).z)<24)continue;
+   box('depot-fence',mats.galvanised,x,dy+1.2,z,3,2.4,.06,heading,dch);box('depot-fence-post',mats.galvanised,x-(bx-ax)/len*1.5,dy+1.25,z-(bz-az)/len*1.5,.12,2.5,.12,0,dch);}}
  // Road D1 connects the at-grade junction after A7 to its northern bridge crossing.
  for(let i=1;i<D1ROAD.length;i++){const a=D1ROAD[i-1],b=D1ROAD[i],n=Math.hypot(b.x-a.x,b.z-a.z),heading=Math.atan2(a.x-b.x,a.z-b.z);for(const [offset,w,mat,y] of [[0,18,mats.road,.025],[-10.875,3.75,mats.walk,.3],[10.875,3.75,mats.walk,.3],...(i%2?[[0,.1,mats.white,.09]]:[])]){const m=new T.Mesh(new T.BoxGeometry(w,.1,n+.3),mat);m.name='Road D1 connecting alignment';m.position.set((a.x+b.x)/2+Math.cos(heading)*offset,(a.y+b.y)/2+y,(a.z+b.z)/2-Math.sin(heading)*offset);m.rotation.set(Math.atan2(b.y-a.y,n),heading,0,'YXZ');m.receiveShadow=true;scene.add(m);}}
 
@@ -441,7 +522,7 @@ export function buildEnvironment(scene,streetKit){
   for(let d=d1Distance;d<length;d+=26)for(const side of [-1,1])roadLamp(a.clone().lerp(b,d/length),t,18,'D1',side);
   d1Distance=(d1Distance-length)%26;if(d1Distance<0)d1Distance+=26;
  }
- for(const [curve,width,kind] of [[l35BendCurve,L35.width,'L35 bend'],[depotCurve,7,'Depot approach']])for(let d=12;d<curve.getLength()-12;d+=24){const u=d/curve.getLength();roadLamp(curve.getPointAt(u),curve.getTangentAt(u),width,kind,-1,7);}
+ for(const [curve,width,kind] of [[l35BendCurve,L35.width,'L35 bend'],[depotCurve,7,'Depot approach']])for(let d=12;d<(curve===depotCurve?curve.getLength()-depotInner.getLength()+6:curve.getLength()-12);d+=24){const u=d/curve.getLength();roadLamp(curve.getPointAt(u),curve.getTangentAt(u),width,kind,-1,7);}
  for(let d=0;d<LOOP.length;d+=20){const p=LOOP.sample(d);roadLamp(new T.Vector3(p.x,p.y,p.z),new T.Vector3(p.tx,0,p.tz),LOOP.outerRadius-LOOP.innerRadius,'Terminal loop',-1,7);}
  // Familiar street furniture sits in the outer furnishing strip, leaving the walking route clear.
  const iron=new T.MeshStandardMaterial({color:0x3d4845,metalness:.65,roughness:.85}),postGreen=new T.MeshStandardMaterial({color:0x126d4c,roughness:.65}),binOrange=new T.MeshStandardMaterial({color:0xd57929,roughness:.8}),patchMat=new T.MeshStandardMaterial({color:0x85877b,roughness:1});
@@ -528,7 +609,8 @@ export function buildEnvironment(scene,streetKit){
  const hillMat=new T.MeshStandardMaterial({color:0x65765c,roughness:1});
  for(let i=0;i<26;i++){let r=sample(LENGTH*i/25),hill=new T.Mesh(new T.SphereGeometry(1,18,12),hillMat);hill.position.set(r.x-450-rnd()*280,r.groundY-25,r.z);hill.scale.set(210+rnd()*160,80+rnd()*130,260);if(sceneryClear(hill.position.x,hill.position.z,Math.max(hill.scale.x,hill.scale.z)+20))scene.add(hill);}
  const ringCurve=new T.CatmullRomCurve3(Array.from({length:97},(_,i)=>{const p=LOOP.sample(LOOP.length*i/96);return new T.Vector3(p.x,p.y,p.z);}),false,'centripetal');
- for(const curve of [terminalCurve,depotCurve])for(let d=0;d<curve.getLength();d+=1.5)for(const offset of [-.24,.24]){const m=new T.Mesh(curveRibbon(curve,offset-.085,offset+.085,.105,d,Math.min(d+.55,curve.getLength())),mats.white);m.name='ART branch guidance';scene.add(m);}
+// Paired guidance dashes along the branches; one merged mesh per curve (hundreds of dashes, one draw call).
+for(const curve of [terminalCurve,depotCurve,depotExitCurve(depotCurve.getPointAt(1),1),depotExitCurve(depotCurve.getPointAt(1),-1)]){const dashes=[];for(let d=0;d<curve.getLength();d+=1.5)for(const offset of [-.24,.24])dashes.push(curveRibbon(curve,offset-.085,offset+.085,.105,d,Math.min(d+.55,curve.getLength())));const m=new T.Mesh(mergeGeometries(dashes),mats.white);dashes.forEach(g=>g.dispose());m.name='ART branch guidance';scene.add(m);}
  // SGMTS ramp ends get slim lamp posts so the ramp paving shows light pools.
  // Night fixtures merge into one mesh per material; LED lines and additive light spill show only at night.
  const spill=document.createElement('canvas');spill.width=spill.height=64;{const x=spill.getContext('2d'),g=x.createRadialGradient(32,32,0,32,32,32);g.addColorStop(0,'rgba(255,228,178,.95)');g.addColorStop(1,'rgba(255,228,178,0)');x.fillStyle=g;x.fillRect(0,0,64,64);}

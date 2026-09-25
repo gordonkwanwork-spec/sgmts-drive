@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node src/simulation.test.js && node src/checks/street-models.test.js && node src/checks/railway.test.js && node src/checks/station-adverts.test.js && node src/checks/tram-adverts.test.js && node src/checks/streetscape.test.js && node src/checks/mobile-experience.test.js && node src/checks/onfoot.test.js"
+    "test": "node src/simulation.test.js && node src/checks/street-models.test.js && node src/checks/railway.test.js && node src/checks/station-adverts.test.js && node src/checks/tram-adverts.test.js && node src/checks/streetscape.test.js && node src/checks/mobile-experience.test.js && node src/checks/onfoot.test.js && node src/checks/lots.test.js"
   },
   "dependencies": {
     "three": "^0.166.0",

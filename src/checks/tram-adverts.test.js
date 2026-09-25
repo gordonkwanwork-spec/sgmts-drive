@@ -26,15 +26,15 @@ for(const campaign of TRAM_CAMPAIGNS){
  let glazing=0,doors=0,painted=0;
  for(const [mesh,before] of original){
   assert.equal(mesh.geometry,before.geometry,'Wraps leave geometry and openings unchanged');
-  if(before.material.name==='glass'){
-   glazing++;assert.equal(mesh.material,before.material,'Window material is untouched');
-   assert(!mesh.userData.tramAdvert);
+  // 25 Sep 2026: the print runs across the windows as a see-through film; each glass pane gets its own clone.
+  if(before.material.name==='glass'&&mesh.parent.parent!==null){
+   glazing++;if(mesh.userData.tramAdvert){assert.notEqual(mesh.material,before.material,'Wrapped glass is a per-tram clone');assert.equal(mesh.material.transparent,before.material.transparent,'Wrapped glazing keeps its transparency');assert.equal(mesh.material.opacity,before.material.opacity);}
   }
   if(mesh.userData.tramAdvert){
    painted++;assert.notEqual(mesh.material,before.material,'Unwrapped fleet shares no modified material');
-   assert(!mesh.material.transparent,'Only opaque body panels receive ads');
+   if(before.material.name!=='glass')assert(!mesh.material.transparent,'Body panels stay opaque');
    if(/_door_(left|right)_[01]$/.test(mesh.parent.name)){
-    if(before.material.name==='body_white')doors++;else assert.match(before.material.name,/^livery_/,'Door glass, frames and handles stay clear');
+    if(before.material.name==='body_white')doors++;else assert.match(before.material.name,/^(livery_|glass$|body_black$)/,'Only door panels, frames and glass carry the print');
    }
   }
  }
@@ -42,4 +42,4 @@ for(const campaign of TRAM_CAMPAIGNS){
  const plain=model.scene.clone(true),plainTram={sections:[plain]};applyTramAdvert(plainTram,null);
  assert(!plainTram.advert);plain.traverse(n=>assert(!n.userData.tramAdvert));
 }
-console.log('Tram wraps: every third running tram, four campaigns, opaque body and twelve moving door panels only; glazing and shared originals unchanged.');
+console.log('Tram wraps: every third running tram, four campaigns, print across body and see-through window film; shared originals unchanged.');

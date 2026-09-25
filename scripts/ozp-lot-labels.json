@@ -1,0 +1,967 @@
+[
+{
+"at": [
+11.43,
+-3788.41
+],
+"site": "54",
+"zone": "V",
+"maxBH": null,
+"maxStoreys": 3,
+"note": "Fung Kong Tsuen",
+"areaM2": 43924
+},
+{
+"at": [
+-191.77,
+-3712.21
+],
+"site": "55",
+"zone": "G/IC",
+"maxBH": null,
+"maxStoreys": 3,
+"note": "",
+"areaM2": 13721
+},
+{
+"at": [
+163.83,
+-3773.17
+],
+"site": "53B",
+"zone": "G/IC",
+"maxBH": null,
+"maxStoreys": 8,
+"note": "",
+"areaM2": 11232
+},
+{
+"at": [
+270.51,
+-3707.13
+],
+"site": "53C",
+"zone": "G/IC",
+"maxBH": null,
+"maxStoreys": 8,
+"note": "School cluster",
+"areaM2": 19139
+},
+{
+"at": [
+-283.21,
+-3656.33
+],
+"site": "39C",
+"zone": "OU(SGMTS depot)",
+"maxBH": null,
+"maxStoreys": null,
+"note": "Amendment Item D: parking & operational facilities for SGMTS",
+"areaM2": 21050
+},
+{
+"at": [
+52.07,
+-3427.73
+],
+"site": "52C",
+"zone": "OU(SGMTS depot)",
+"maxBH": 60,
+"maxStoreys": null,
+"note": "Amendment Item D",
+"areaM2": 4511
+},
+{
+"at": [
+-313.69,
+-3636.01
+],
+"site": "39",
+"zone": "GB",
+"maxBH": null,
+"maxStoreys": null,
+"note": "",
+"areaM2": 119579
+},
+{
+"at": [
+46.99,
+-3569.97
+],
+"site": "",
+"zone": "O",
+"maxBH": null,
+"maxStoreys": null,
+"note": "",
+"areaM2": 8856
+},
+{
+"at": [
+199.39,
+-3656.33
+],
+"site": "53D",
+"zone": "G/IC",
+"maxBH": null,
+"maxStoreys": 8,
+"note": "School cluster",
+"areaM2": 21621
+},
+{
+"at": [
+351.79,
+-3620.77
+],
+"site": "52A",
+"zone": "R(A)3",
+"maxBH": 140,
+"maxStoreys": null,
+"note": "",
+"areaM2": 55090
+},
+{
+"at": [
+270.51,
+-3559.81
+],
+"site": "52B",
+"zone": "R(A)2",
+"maxBH": 140,
+"maxStoreys": null,
+"note": "",
+"areaM2": 41053
+},
+{
+"at": [
+-85.09,
+-3382.01
+],
+"site": "39B",
+"zone": "OU(Industry Park)",
+"maxBH": 110,
+"maxStoreys": null,
+"note": "",
+"areaM2": 20256
+},
+{
+"at": [
+-334.01,
+-3361.69
+],
+"site": "39B",
+"zone": "OU(Industry Park)",
+"maxBH": 110,
+"maxStoreys": null,
+"note": "",
+"areaM2": 75319
+},
+{
+"at": [
+341.63,
+-3371.85
+],
+"site": "51",
+"zone": "O",
+"maxBH": null,
+"maxStoreys": null,
+"note": "Major open space; part depressed road",
+"areaM2": 82876
+},
+{
+"at": [
+62.23,
+-3326.13
+],
+"site": "52D",
+"zone": "G/IC",
+"maxBH": null,
+"maxStoreys": 8,
+"note": "",
+"areaM2": 10506
+},
+{
+"at": [
+-135.89,
+-3158.49
+],
+"site": "40C",
+"zone": "OU(Logistics Facility)",
+"maxBH": 110,
+"maxStoreys": null,
+"note": "",
+"areaM2": 66577
+},
+{
+"at": [
+-334.01,
+-3097.53
+],
+"site": "40B",
+"zone": "OU(Industry Park)",
+"maxBH": 110,
+"maxStoreys": null,
+"note": "",
+"areaM2": 37676
+},
+{
+"at": [
+-588.01,
+-2894.33
+],
+"site": "40A",
+"zone": "GB",
+"maxBH": null,
+"maxStoreys": null,
+"note": "",
+"areaM2": 16203
+},
+{
+"at": [
+-471.17,
+-2807.97
+],
+"site": "40A",
+"zone": "OU(Port Back-up)",
+"maxBH": 110,
+"maxStoreys": null,
+"note": "",
+"areaM2": 10444
+},
+{
+"at": [
+-334.01,
+-2731.77
+],
+"site": "41B",
+"zone": "OU(Logistics Facility)",
+"maxBH": 110,
+"maxStoreys": null,
+"note": "Logistics Facility (1)",
+"areaM2": 35293
+},
+{
+"at": [
+-496.57,
+-2721.61
+],
+"site": "41A",
+"zone": "OU(Sewage Treatment Works)",
+"maxBH": 50,
+"maxStoreys": null,
+"note": "San Wai STW",
+"areaM2": 42127
+},
+{
+"at": [
+153.67,
+-2592.07
+],
+"site": "42A",
+"zone": "OU(Logistics Facility)",
+"maxBH": 110,
+"maxStoreys": null,
+"note": "",
+"areaM2": 30984
+},
+{
+"at": [
+-11.43,
+-2287.27
+],
+"site": "43A",
+"zone": "OU(Logistics Facility)",
+"maxBH": 110,
+"maxStoreys": null,
+"note": "",
+"areaM2": 47527
+},
+{
+"at": [
+-217.17,
+-2569.21
+],
+"site": "",
+"zone": "G/IC",
+"maxBH": 40,
+"maxStoreys": null,
+"note": "",
+"areaM2": 1484
+},
+{
+"at": [
+41.91,
+-2569.21
+],
+"site": "42B",
+"zone": "GB",
+"maxBH": null,
+"maxStoreys": null,
+"note": "",
+"areaM2": 6253
+},
+{
+"at": [
+-44.45,
+-2533.65
+],
+"site": "",
+"zone": "O",
+"maxBH": null,
+"maxStoreys": null,
+"note": "",
+"areaM2": 7352
+},
+{
+"at": [
+-334.01,
+-2518.41
+],
+"site": "41C",
+"zone": "OU(Sewage Treatment Works)",
+"maxBH": 50,
+"maxStoreys": null,
+"note": "",
+"areaM2": 31205
+},
+{
+"at": [
+722.63,
+-2457.45
+],
+"site": "",
+"zone": "V",
+"maxBH": null,
+"maxStoreys": 3,
+"note": "Ha Tsuen Shi",
+"areaM2": 20168
+},
+{
+"at": [
+113.03,
+-2366.01
+],
+"site": "43B",
+"zone": "OU(Logistics Facility)",
+"maxBH": 110,
+"maxStoreys": null,
+"note": "",
+"areaM2": 79068
+},
+{
+"at": [
+36.83,
+-2000.25
+],
+"site": "44A",
+"zone": "OU(Enterprise and Technology Park)",
+"maxBH": 90,
+"maxStoreys": null,
+"note": "",
+"areaM2": 37840
+},
+{
+"at": [
+-161.29,
+-1827.53
+],
+"site": "",
+"zone": "I",
+"maxBH": 80,
+"maxStoreys": null,
+"note": "",
+"areaM2": 9103
+},
+{
+"at": [
+229.87,
+-1822.45
+],
+"site": "",
+"zone": "GB",
+"maxBH": null,
+"maxStoreys": null,
+"note": "",
+"areaM2": 10077
+},
+{
+"at": [
+-8.89,
+-1715.77
+],
+"site": "",
+"zone": "GB",
+"maxBH": null,
+"maxStoreys": null,
+"note": "San Sang San Tsuen",
+"areaM2": 4176
+},
+{
+"at": [
+82.55,
+-1710.69
+],
+"site": "45",
+"zone": "O",
+"maxBH": null,
+"maxStoreys": null,
+"note": "Egretry open space (ES 11.98.7)",
+"areaM2": 13810
+},
+{
+"at": [
+92.71,
+-1609.09
+],
+"site": "44B",
+"zone": "OU(Enterprise and Technology Park)",
+"maxBH": 90,
+"maxStoreys": null,
+"note": "",
+"areaM2": 7294
+},
+{
+"at": [
+245.11,
+-1670.05
+],
+"site": "46",
+"zone": "OU(Enterprise and Technology Park)",
+"maxBH": 90,
+"maxStoreys": null,
+"note": "",
+"areaM2": 22163
+},
+{
+"at": [
+397.51,
+-2218.69
+],
+"site": "47",
+"zone": "V",
+"maxBH": null,
+"maxStoreys": 3,
+"note": "San Sang Tsuen",
+"areaM2": 86871
+},
+{
+"at": [
+306.07,
+-1863.09
+],
+"site": "",
+"zone": "G/IC",
+"maxBH": null,
+"maxStoreys": 3,
+"note": "",
+"areaM2": 5158
+},
+{
+"at": [
+-222.25,
+-1664.97
+],
+"site": "36",
+"zone": "I",
+"maxBH": 80,
+"maxStoreys": null,
+"note": "",
+"areaM2": 27695
+},
+{
+"at": [
+-196.85,
+-1532.89
+],
+"site": "",
+"zone": "I",
+"maxBH": 80,
+"maxStoreys": null,
+"note": "",
+"areaM2": 12048
+},
+{
+"at": [
+-110.49,
+-1527.81
+],
+"site": "34E",
+"zone": "G/IC(1)",
+"maxBH": 160,
+"maxStoreys": null,
+"note": "Fire station & ambulance depot",
+"areaM2": 5689
+},
+{
+"at": [
+107.95,
+-1461.77
+],
+"site": "34D",
+"zone": "R(A)3",
+"maxBH": 160,
+"maxStoreys": null,
+"note": "",
+"areaM2": 10668
+},
+{
+"at": [
+-135.89,
+-1431.29
+],
+"site": "",
+"zone": "G/IC",
+"maxBH": null,
+"maxStoreys": 8,
+"note": "",
+"areaM2": 5508
+},
+{
+"at": [
+-19.05,
+-1390.65
+],
+"site": "34A",
+"zone": "R(A)2",
+"maxBH": 160,
+"maxStoreys": null,
+"note": "",
+"areaM2": 50392
+},
+{
+"at": [
+77.47,
+-1385.57
+],
+"site": "",
+"zone": "O",
+"maxBH": null,
+"maxStoreys": null,
+"note": "",
+"areaM2": 16371
+},
+{
+"at": [
+270.51,
+-1400.81
+],
+"site": "34C",
+"zone": "G/IC",
+"maxBH": null,
+"maxStoreys": 8,
+"note": "School cluster",
+"areaM2": 14440
+},
+{
+"at": [
+316.23,
+-1334.77
+],
+"site": "33",
+"zone": "O",
+"maxBH": null,
+"maxStoreys": null,
+"note": "Major open space (ES 11.98)",
+"areaM2": 13113
+},
+{
+"at": [
+-308.61,
+-1299.21
+],
+"site": "",
+"zone": "G/IC",
+"maxBH": null,
+"maxStoreys": 5,
+"note": "",
+"areaM2": 4456
+},
+{
+"at": [
+-339.09,
+-1258.57
+],
+"site": "40",
+"zone": "GB",
+"maxBH": null,
+"maxStoreys": null,
+"note": "",
+"areaM2": 142526
+},
+{
+"at": [
+11.43,
+-1212.85
+],
+"site": "34B",
+"zone": "R(A)1",
+"maxBH": 180,
+"maxStoreys": null,
+"note": "",
+"areaM2": 14097
+},
+{
+"at": [
+113.03,
+-1151.89
+],
+"site": "34B",
+"zone": "R(A)1",
+"maxBH": 180,
+"maxStoreys": null,
+"note": "",
+"areaM2": 4232
+},
+{
+"at": [
+-49.53,
+-994.41
+],
+"site": "32B",
+"zone": "C(1)",
+"maxBH": 200,
+"maxStoreys": null,
+"note": "Office/hotel/retail",
+"areaM2": 10116
+},
+{
+"at": [
+-151.13,
+-897.89
+],
+"site": "32A",
+"zone": "C(1)",
+"maxBH": 200,
+"maxStoreys": null,
+"note": "Office/hotel/retail + PTI",
+"areaM2": 29618
+},
+{
+"at": [
+-262.89,
+-699.77
+],
+"site": "32D",
+"zone": "C(2)",
+"maxBH": 200,
+"maxStoreys": null,
+"note": "",
+"areaM2": 17510
+},
+{
+"at": [
+-364.49,
+-720.09
+],
+"site": "31B",
+"zone": "G/IC",
+"maxBH": 90,
+"maxStoreys": null,
+"note": "Youth facility",
+"areaM2": 6905
+},
+{
+"at": [
+255.27,
+-918.21
+],
+"site": "28B",
+"zone": "OU(Mixed Use)",
+"maxBH": 180,
+"maxStoreys": null,
+"note": "",
+"areaM2": 29898
+},
+{
+"at": [
+184.15,
+-760.73
+],
+"site": "28A",
+"zone": "OU(Mixed Use)",
+"maxBH": 180,
+"maxStoreys": null,
+"note": "",
+"areaM2": 33897
+},
+{
+"at": [
+275.59,
+-948.69
+],
+"site": "28A",
+"zone": "OU(Mixed Use)",
+"maxBH": 180,
+"maxStoreys": null,
+"note": "",
+"areaM2": 36585
+},
+{
+"at": [
+179.07,
+-1019.81
+],
+"site": "30",
+"zone": "O(1)",
+"maxBH": 20,
+"maxStoreys": null,
+"note": "Regional Plaza",
+"areaM2": 29526
+},
+{
+"at": [
+-39.37,
+-532.13
+],
+"site": "",
+"zone": "O",
+"maxBH": null,
+"maxStoreys": null,
+"note": "",
+"areaM2": 5677
+},
+{
+"at": [
+102.87,
+-577.85
+],
+"site": "26A",
+"zone": "G/IC",
+"maxBH": 130,
+"maxStoreys": null,
+"note": "Regional Government Complex",
+"areaM2": 33019
+},
+{
+"at": [
+306.07,
+-496.57
+],
+"site": "27A",
+"zone": "R(A)2",
+"maxBH": 160,
+"maxStoreys": null,
+"note": "",
+"areaM2": 20300
+},
+{
+"at": [
+250.19,
+-415.29
+],
+"site": "26B",
+"zone": "G/IC(1)",
+"maxBH": 130,
+"maxStoreys": null,
+"note": "Police station cum married quarters",
+"areaM2": 8065
+},
+{
+"at": [
+-273.05,
+-384.81
+],
+"site": "35",
+"zone": "OU(District Cooling System)",
+"maxBH": 35,
+"maxStoreys": null,
+"note": "",
+"areaM2": 2803
+},
+{
+"at": [
+-374.65,
+-318.77
+],
+"site": "24B",
+"zone": "G/IC",
+"maxBH": 80,
+"maxStoreys": null,
+"note": "Government joint depot",
+"areaM2": 14924
+},
+{
+"at": [
+-140.97,
+-288.29
+],
+"site": "24A",
+"zone": "V(1)",
+"maxBH": null,
+"maxStoreys": 3,
+"note": "",
+"areaM2": 8597
+},
+{
+"at": [
+-461.01,
+-273.05
+],
+"site": "35",
+"zone": "I",
+"maxBH": 80,
+"maxStoreys": null,
+"note": "",
+"areaM2": 41634
+},
+{
+"at": [
+-303.53,
+-1106.17
+],
+"site": "",
+"zone": "I",
+"maxBH": 80,
+"maxStoreys": null,
+"note": "",
+"areaM2": 23977
+},
+{
+"at": [
+1.27,
+-273.05
+],
+"site": "",
+"zone": "G/IC",
+"maxBH": null,
+"maxStoreys": 8,
+"note": "",
+"areaM2": 4303
+},
+{
+"at": [
+128.27,
+-262.89
+],
+"site": "",
+"zone": "G/IC",
+"maxBH": null,
+"maxStoreys": 8,
+"note": "",
+"areaM2": 5671
+},
+{
+"at": [
+-59.69,
+-252.73
+],
+"site": "25",
+"zone": "R(A)2",
+"maxBH": 130,
+"maxStoreys": null,
+"note": "",
+"areaM2": 16350
+},
+{
+"at": [
+-146.05,
+-85.09
+],
+"site": "",
+"zone": "O",
+"maxBH": null,
+"maxStoreys": null,
+"note": "",
+"areaM2": 3535
+},
+{
+"at": [
+336.55,
+-1136.65
+],
+"site": "",
+"zone": "V",
+"maxBH": null,
+"maxStoreys": 3,
+"note": "Hung Shui Kiu",
+"areaM2": 37263
+},
+{
+"at": [
+-309.88,
+-902.97
+],
+"site": "32C",
+"zone": "C(2)",
+"maxBH": 200,
+"maxStoreys": null,
+"note": "Commercial; take account of proposed TMWB constraints"
+},
+{
+"at": [
+534.67,
+-877.57
+],
+"site": "27C",
+"zone": "R(A)3",
+"maxBH": 160,
+"maxStoreys": null,
+"note": "Subsidised sale flats"
+},
+{
+"at": [
+483.87,
+-718.82
+],
+"site": "27B",
+"zone": "R(A)2",
+"maxBH": 160,
+"maxStoreys": null,
+"note": "Private housing"
+},
+{
+"at": [
+-62.23,
+-2122.17
+],
+"site": "43C",
+"zone": "GB",
+"maxBH": null,
+"maxStoreys": null,
+"note": "Zone label unclear on plan; not a listed logistics site \u2014 check"
+},
+{
+"at": [
+-189.23,
+-509.27
+],
+"site": "31A",
+"zone": "G/IC",
+"maxBH": 80,
+"maxStoreys": null,
+"note": "Post-secondary education (ES 11.87.7). Hand-drawn outline: plan boundary is open here, refine in editor",
+"poly": [
+[
+-392.43,
+-483.87
+],
+[
+-328.93,
+-521.97
+],
+[
+-227.33,
+-547.37
+],
+[
+-100.33,
+-566.42
+],
+[
+-43.18,
+-579.12
+],
+[
+-100.33,
+-401.32
+],
+[
+-360.68,
+-417.83
+],
+[
+-392.43,
+-445.77
+]
+]
+}
+]
