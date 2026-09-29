@@ -53,13 +53,21 @@ function regrow(region,mask,w,h,r){const pass=(src,horiz)=>{const out=new Uint8A
  const g=pass(pass(region,true),false);for(let i=0;i<g.length;i++)g[i]&=mask[i];return g;}
 const thickened=new WeakMap();
 
-// Click → world polygon. A flood that leaks through a gap in the plan retries with thicker lines (≈2.5, 5, 7.5 m).
-export function wandPolygon(mask,cal,[x,z],eps=1.6,maxPixels=400000){
- const [px,py]=worldToPixel(cal,[x,z]),{width:w,height:h}=cal,sx=Math.round(px),sy=Math.round(py);
+// Click → region. A flood that leaks through a gap in the plan retries with thicker lines (≈2.5, 5, 7.5 m).
+function wandRegion(mask,cal,sx,sy,maxPixels){const {width:w,height:h}=cal;
  if(!thickened.has(mask))thickened.set(mask,new Map());const cache=thickened.get(mask);
  for(const r of [0,2,4,6]){const m=r?cache.get(r)||cache.set(r,thicken(mask,w,h,r)).get(r):mask,f=flood(m,w,h,sx,sy,maxPixels);if(!f)continue;
-  const region=r?regrow(f.region,mask,w,h,r):f.region;return simplify(trace(region,w,h),eps).map(p=>pixelToWorld(cal,p));}
- return null;
+  const region=r?regrow(f.region,mask,w,h,r):f.region;let count=0;for(const v of region)count+=v;return {region,count};}
+ return null;}
+// Click → world polygon. `mask` has the plan's labels removed (scripts/ozp_lines.py), so lots follow the black lines, not
+// the text. `raw` (the unfiltered mask) guards against a line piece the cleaning mistook for text: if the clean region is
+// far larger than the raw one, the flood escaped through that gap and the raw outline is used instead. Filling label
+// notches only grows a lot by 10–35 %. A raw region under 200 px (≈320 m²) is the inside of a letter, not a lot.
+export function wandPolygon(mask,cal,[x,z],eps=1.6,maxPixels=400000,raw=null){
+ const [px,py]=worldToPixel(cal,[x,z]),{width:w,height:h}=cal,sx=Math.round(px),sy=Math.round(py);
+ let best=wandRegion(mask,cal,sx,sy,maxPixels);
+ if(raw){const r=wandRegion(raw,cal,sx,sy,maxPixels);if(r&&r.count>=200&&(!best||best.count>1.6*r.count))best=r;}
+ return best&&simplify(trace(best.region,w,h),eps).map(p=>pixelToWorld(cal,p));
 }
 
 export function polygonArea(poly){let a=0;for(let i=0;i<poly.length;i++){const [x1,z1]=poly[i],[x2,z2]=poly[(i+1)%poly.length];a+=x1*z2-x2*z1;}return Math.abs(a)/2;}

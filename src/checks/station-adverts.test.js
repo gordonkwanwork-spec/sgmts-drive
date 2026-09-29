@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 import {STOPS,sample} from '../alignment.js';
 import * as T from 'three';
-import {stationAdvertGeometry,stationBillboards,ROOFTOP_ADVERTS,setBillboardLighting} from '../station-adverts.js';
+import {stationAdvertGeometry,stationBillboards,ROOFTOP_ADVERTS,setBillboardLighting,billboardMaterial,BUILDING_ADVERTS} from '../station-adverts.js';
 
 const manifest=JSON.parse(fs.readFileSync('public/assets/asset-manifest.json'));
 const hashes=new Set();
@@ -30,10 +30,10 @@ for(const st of STOPS){
   g.dispose();
 }
 assert.equal(hashes.size,7,'Every station has different artwork');
-assert.deepEqual(Object.keys(ROOFTOP_ADVERTS),['A2','A3','A6']);
+assert.deepEqual(Object.keys(ROOFTOP_ADVERTS),STOPS.map(st=>st.id));
 for(const st of STOPS){
   const platforms=manifest.stations.find(m=>m.id===st.id).platforms;
-  const boards=stationBillboards(st,platforms,new T.MeshLambertMaterial(),s=>sample(s).y);
+  const boards=stationBillboards(st,platforms,billboardMaterial(new T.Texture()),s=>sample(s).y);
   if(!ROOFTOP_ADVERTS[st.id]){assert.equal(boards.children.length,0);continue;}
   const image=fs.readFileSync(`public/assets/adverts/billboard-${st.id}.png`);
   assert.equal(image.subarray(1,4).toString(),'PNG');
@@ -53,9 +53,18 @@ for(const st of STOPS){
   assert.equal(boards.children.filter(n=>n.name==='Billboard lamp housing').length,8,'Two floodlight fixtures per billboard face');
   for(const night of [true,false,true]){
     setBillboardLighting(boards,night);
-    for(const face of faces){assert(face.material.isMeshLambertMaterial);assert.equal(face.material.emissiveMap,face.material.map);assert.equal(face.material.emissiveIntensity,night?.55:0,'Print floodlit only at night');}
+    for(const face of faces){assert(face.material.isMeshBasicMaterial,'All faces remain readable independent of sun direction');assert.equal(face.material.toneMapped,false);assert.equal(face.material.color.r,night?.65:.85,'Day and night have a guaranteed brightness floor');}
   }
 
 }
 console.log('Seven unique campaigns; 364 upright platform adverts with inward faces, stagger and flare passed');
-console.log('Three rooftop campaigns: six framed boards, twelve readable faces, canopy clearance and stagger passed');
+console.log('Seven rooftop campaigns: fourteen framed boards, twenty-eight readable faces, canopy clearance and stagger passed');
+
+for(const id of BUILDING_ADVERTS){
+ const image=fs.readFileSync(`public/assets/adverts/billboard-${id}.png`);
+ assert.equal(image.subarray(1,4).toString(),'PNG');
+ assert.equal(image.readUInt32BE(16)/image.readUInt32BE(20),3);
+ hashes.add(createHash('sha256').update(image).digest('hex'));
+}
+assert.equal(BUILDING_ADVERTS.length,6);
+assert.equal(hashes.size,13,'Six distinct new building designs plus seven original platform posters');

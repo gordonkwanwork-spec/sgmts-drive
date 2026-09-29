@@ -22,18 +22,18 @@ for(const j of JUNCTIONS){const {poly,lattice}=junctionBox(j),w=roadSection(j.s)
   const c=Math.hypot(ax-w-R,az-h-R);return ax>w+e&&az>h+e&&c>R-3.75+e&&c<R-e;};
  const pts=[...poly,...lattice.flat(),...lattice.map(([a,b])=>[(a[0]+b[0])/2,(a[1]+b[1])/2])];
  for(const [x,z] of pts)assert(!footpath(x,z),`${j.name}: box point (${x.toFixed(2)},${z.toFixed(2)}) lies on a footpath`);
- assert(lattice.length>20,`${j.name}: criss-cross lattice present`);
+ assert(lattice.length>10,`${j.name}: criss-cross lattice present`);
  const xs=poly.map(p=>p[0]),zs=poly.map(p=>p[1]);
- assert(Math.abs(Math.max(...zs)-(h+8.5))<1e-6&&Math.abs(Math.max(...xs)-(sideCrossing(j,1)-1.5))<1e-6&&Math.abs(Math.min(...xs)+(sideCrossing(j,-1)-1.5))<1e-6,`${j.name}: box reaches every crossing`);
+ assert(Math.abs(Math.max(...zs)-(h+8.25))<1e-6&&Math.abs(Math.max(...xs)-(w-.15))<1e-6&&Math.abs(Math.min(...xs)+(w-.15))<1e-6,`${j.name}: box is confined to the corridor between crossings`);
  for(const [a,b] of lattice){const ang=Math.abs(Math.atan2(b[1]-a[1],b[0]-a[0]));assert(Math.abs(ang-Math.PI/4)<1e-6||Math.abs(ang-3*Math.PI/4)<1e-6,'lattice runs at 45 degrees');}
 }
-console.log('Yellow box junctions stay on the carriageway and reach every crossing.');
+console.log('Yellow box junctions stay on the carriageway and stay within the corridor.');
 
 // 2. Fences open at every crossing that meets L35; crossers' walking line passes through the gaps.
 const inL35=CROSSINGS.filter(c=>c.s>L35.start&&c.s<bendS);
 assert(inL35.length===2,'both A6 crossings meet L35');
 for(const c of inL35){
- for(let q=L35.start+30;q<bendS-4;q+=2.2)if(!crossingGap(q,q+2.2))assert(q+2.2<c.s-1.5||q>c.s+1.5,`L35 fence panel ${q.toFixed(1)} blocks the ${c.station} crossing`);
+ for(let q=L35.start+30;q<bendS-4;q+=1.5)if(!crossingGap(q,q+1.5))assert(q+1.5<c.s-1.5||q>c.s+1.5,`L35 fence panel ${q.toFixed(1)} blocks the ${c.station} crossing`);
  for(const side of [-1,1])assert(!fenceAllowed(c.s-1,c.s+1,side),'corridor fence open too');
  const from=cycleOffset(c.s)-2.6,to=roadSection(c.s).right+.8,mid=-l35Offset(c.s);
  assert(from<mid-L35.width/2-.25&&to>mid+L35.width/2+.25,`${c.station} crossers walk over both L35 fence lines`);

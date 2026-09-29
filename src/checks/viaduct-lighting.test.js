@@ -1,3 +1,6 @@
+// Geometry checks use an image handle; browser checks verify embedded textures.
+globalThis.self??=globalThis;
+globalThis.createImageBitmap??=async()=>({width:1024,height:1024,close(){}});
 // W1 checks (node): smooth MTR viaduct alignment and night lighting of Hung Shui Kiu station and its entrances.
 // Run: node src/checks/viaduct-lighting.test.js
 import assert from 'node:assert/strict';
@@ -29,12 +32,14 @@ assert(lat(RAILWAY.stationU).lat< -80,'station sits beyond the plaza on the left
 // Environment: continuous swept viaduct, scenery clearance by true rail distance, night-only station lighting.
 const noop=new Proxy(function(){},{get:(t,k)=>k===Symbol.toPrimitive?()=>0:k==='canvas'?{}:noop,apply:()=>noop,set:()=>true});
 globalThis.document??={createElement:()=>({width:0,height:0,getContext:()=>noop,style:{}})};
+document.createElementNS??=()=>({addEventListener(){},removeEventListener(){},set src(value){}});
 const T=await import('three'),{buildEnvironment,sceneryClear,cycleClearance}=await import('../environment.js');
 for(let u=0;u<=RAILWAY.length;u+=10){const p=RAILWAY.at(u);for(const off of [0,6,-6])assert(!sceneryClear(p.x+p.lx*off,p.z+p.lz*off,4),`scenery cannot sit on the viaduct at u=${u}`);assert(RAILWAY.distance(p.x,p.z)<.5);}
 for(let s=0;s<LENGTH;s+=30){const r=sample(s);assert(!sceneryClear(r.x,r.z,10));}
 const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js'),{readFile}=await import('node:fs/promises');
 const data=await readFile('public/assets/street-kit.glb'),kit=await new GLTFLoader().parseAsync(data.buffer.slice(data.byteOffset,data.byteOffset+data.byteLength),'');
-const scene=new T.Scene(),env=buildEnvironment(scene,kit.scene),meshes=[];scene.traverse(o=>{if(o.isMesh)meshes.push(o);});
+const furniture=JSON.parse((await import('node:fs')).readFileSync(new URL('../../public/street/furniture.json',import.meta.url),'utf8'));
+const scene=new T.Scene(),env=buildEnvironment(scene,kit.scene,{furniture}),meshes=[];scene.traverse(o=>{if(o.isMesh)meshes.push(o);});
 for(const name of ['MTR-viaduct','MTR-rail']){const list=meshes.filter(m=>m.name===name);assert.equal(list.length,1,`${name} is one continuous swept mesh`);list[0].geometry.computeBoundingBox();const b=list[0].geometry.boundingBox;assert(b.max.y<RAILWAY.at(0).y+1.2&&b.min.y>RAILWAY.at(0).y-1.4,`${name} spans rail level`);assert(list[0].castShadow&&list[0].receiveShadow);}
 const station=scene.getObjectByName('Hung Shui Kiu Station');assert(Math.hypot(station.position.x-centre.x,station.position.z-centre.z)<1e-6);assert(Math.abs(station.rotation.y-centre.heading)<1e-9);
 const night=meshes.filter(m=>m.name==='Station night lighting'),nightOnly=night.filter(m=>m.userData.nightOnly);
@@ -56,11 +61,21 @@ for(const p of env.plots)assert(sceneryClear(p.x,p.z,p.radius),'Every building c
 assert(env.plantings.length>5000,'Dense planted verges');
 assert.equal(new Set(env.plantings.map(p=>p.kind)).size,5);
 for(const p of env.plantings){const s=project(p.x,p.z),r=sample(s);const low=p.verge&&['grass','meadow'].includes(p.kind);assert(Math.hypot(p.x-r.x,p.z-r.z)>=roadSection(s).right+(p.strip?3.95:low?4:4.2)&&cycleClearance(p.x,p.z)>=(p.strip?2.2:low?2.35:2.7)&&env.plots.every(q=>Math.hypot(q.x-p.x,q.z-p.z)>=q.radius+.5),'Adjacent planting stays outside paths and buildings');assert(p.heightScale>=1.3,'Taller verge planting');}
-for(const kind of ['D1','L35 bend','Depot approach','Terminal loop','underbridge'])assert(env.lampPositions.some(l=>l.kind===kind),kind+' is lit');
+for(const road of ['D1','L35-bend','depot','loop','service'])assert(env.lampPositions.some(l=>l.road===road),road+' is lit');
+assert(env.lampPositions.some(l=>l.kind==='underbridge'),'underbridges are lit');
 for(const l of env.lampPositions)assert(Number.isFinite(l.x+l.y+l.z),'Finite lamp position');
 for(const m of meshes.filter(m=>m.name==='Road D1 connecting alignment'&&m.material===env.materials.road))assert(m.userData.nightOverlay,'D1 surface receives lighting');
 env.update(800,2);assert.equal(env.windTime.value,2);env.setNight(true);
 assert(meshes.filter(m=>m.name==='Fixed night illumination').every(m=>m.visible));
+
+for(const bridge of scene.children.filter(g=>g.name.startsWith('Cycle footbridge'))){
+ const lights=bridge.children.filter(m=>m.name==='Cycle bridge canopy light');assert(lights.length>=4,'Ceiling fixtures throughout each covered span');
+ for(const light of lights){assert(light.position.y+light.geometry.parameters.height/2<8.89,'Fixture stays below canopy soffit');const p=bridge.localToWorld(light.position.clone());assert(env.lampPositions.some(l=>Math.hypot(l.x-p.x,l.z-p.z)<.01&&Math.abs(l.y-(p.y-.06))<.001),'Night source beneath ceiling fixture');}
+}
+console.log('Cycle bridge ceiling fixtures and night sources verified');
+
+{const {pavementLight}=await import('../environment.js'),{cycleSample,cycleBridgeHeight}=await import('../alignment.js');for(const j of CYCLE_BRIDGES)for(let q=j.s-j.halfWidth-8;q<=j.s+j.halfWidth+8;q+=2){const c=cycleSample(q);assert(pavementLight(new T.Vector3(c.x,c.groundY+cycleBridgeHeight(q),c.z),env.lampPositions)>.3,'Covered cycle deck continuously lit');}}
+console.log('Covered cycle bridge deck light coverage passed');
 // Verges between the left footpath and cycle track are planted wherever at least 0.9 m of open grass exists.
 {const {pavementLight}=await import('../environment.js'),{cycleOffset,cycleSample,cycleCrossing,cycleBridgeAt,cycleBridgeHeight,JUNCTIONS}=await import('../alignment.js');
  const cells=new Map(),key=(x,z)=>Math.floor(x/2)+','+Math.floor(z/2);for(const p of env.plantings){const k=key(p.x,p.z);if(!cells.has(k))cells.set(k,[]);cells.get(k).push(p);}
@@ -90,8 +105,9 @@ assert.equal(meshes.filter(m=>m.name==='Cycle bridge abutment pier'&&m.parent.na
 assert(meshes.filter(m=>m.name.startsWith('cycle-ramp-pier-')).reduce((n,m)=>n+m.count,0)>30,'Ramp piers support long approaches');
 assert(!meshes.some(m=>m.name.startsWith('planter-')),'No concrete tree boxes');
 assert(meshes.some(m=>m.name.startsWith('tree-shrub-')),'Trees have shrub underplanting');
-assert.equal(new Set(env.trees.map(t=>t.kind)).size,4,'Four tree forms');
-console.log('Solid cycle decks and piers, four tree forms and shrub bases passed');
+assert.equal(new Set(env.trees.map(t=>t.kind)).size,6,'Six tree species');assert(env.trees.some(t=>t.kind.startsWith('bare')),'Some trees are leafless');
+assert(!meshes.some(m=>/^(foliage|foliage-leaf)-bare/.test(m.name)),'Leafless species have no crown');
+console.log('Solid cycle decks and piers, six tree species (two leafless) and shrub bases passed');
 
 const plantsWithLOD=meshes.filter(m=>m.userData.full&&m.userData.low);
 assert(plantsWithLOD.length>100,'Planting is divided into small distance-selectable cells');

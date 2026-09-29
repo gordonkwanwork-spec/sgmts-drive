@@ -76,7 +76,7 @@ altitude, drag to look.
 - Tap the circular nearby map to open the full route. Gold is your vehicle, blue arrows show other ART services and their directions, cream circles are stations, and the purple square identifies the depot. Only junctions crossing the corridor show signal phases.
 - The circular button at the top right hides the interface. Tap it again to restore controls.
 
-Menu music plays at launch when the browser permits audio. On a fresh mobile visit, tap **Play menu music** on the start screen to enable it before beginning a journey. Day and night driving tracks fade in as speed builds and fade out when stopped or crashed. **Sound** mutes both music and driving sounds.
+The menu has separate **Menu music** and **Gameplay music** selectors with Automatic, Music off and all 23 recordings (20 new Suno versions plus three original tracks). Choices persist on this browser. **Journey options → Gameplay music** changes the current soundtrack immediately and stays synchronized with the main menu. The compact launch menu uses a location dropdown for free roam. Automatic matches the loading layout, morning/sunset/rain/night driving, free roam/walking/cycling, control centre and completion screen. Tracks crossfade and overlap their final four seconds when repeating. Music stays quieter at stops and ducks quickly for announcements; pause/crash fades it out. Tap **Play menu music** if the browser needs a user gesture. **Music off** preserves vehicle sounds; **Sound** mutes the whole mixer. Only two media streams are used, with per-track gain matching; masters remain in `Music/`, browser MP3s in `public/audio/soundtrack/`.
 
 ## Things to try
 
@@ -220,7 +220,7 @@ The editable vehicle model now includes front and rear Blender cockpits, curved 
 
 ### Blender streetscape kit
 
-`assets/blender/street-kit.blend` contains four building templates (residential, office, village and logistics), five road vehicles, ten pedestrians (men, women, children, older adults and two wheelchair users), a seated cyclist, and five vegetation templates (grass, meadow grass, ferns, shrubs and flowering shrubs). Each named root is a reusable model at the origin; hide the other roots when editing one. `public/assets/street-kit.glb` is loaded by the game, with shared geometry and instanced buildings. The cyclist's legs follow the pedals and the wheels rotate with travel; pedestrians retain their walking/boarding animation.
+`assets/blender/street-kit.blend` contains four building templates (residential, office, village and logistics), five road vehicles, twelve pedestrians (men, women, children, older adults and two wheelchair users), a seated cyclist, and five vegetation templates (grass, meadow grass, ferns, shrubs and flowering shrubs). Each named root is a reusable model at the origin; hide the other roots when editing one. `public/assets/street-kit.glb` is loaded by the game, with shared geometry and instanced buildings. The cyclist's legs follow the pedals and the wheels rotate with travel; pedestrians retain their walking/boarding animation.
 
 Rebuild the kit with:
 
@@ -244,16 +244,19 @@ Two independently moving eight-car trains now use the opening railway viaduct, w
 
 ### Station advertising
 
-Rooftop billboards at 洪水橋 (A2), 洪水橋北 (A3), and 物流圈 (A6) advertise
-洪水橋大學城, 連接中國, and 物流空間出租 in Traditional Chinese. Each platform
-has a framed 15 × 5 m board with separate readable faces and roof supports.
-Two warm floodlight fixtures on projecting arms sit over each face; at night the
-print glows from its own emissive map (no realtime lights, which cost every pixel).
-Placement respects the station stagger and route grade. The three graphics were
-created with the built-in GPT image tool and saved as
-`public/assets/adverts/billboard-A2.png`, `billboard-A3.png`, and `billboard-A6.png`.
-Exact prompts and the government source for the university-town name are in
-`docs/rooftop-advert-prompts.json`. These are fictional game advertisements.
+All seven stations have framed 15 × 5 m rooftop billboards on both platforms,
+with separate readable faces, roof supports and dedicated floodlight fixtures.
+Artwork stays readable from shaded and opposite sides in daylight and at night,
+using unlit print materials and glowing lamp lenses without extra realtime lights.
+Placement respects the station stagger and route grade. The original A2–A3–A6
+campaigns advertise 洪水橋大學城, 連接中國 and 物流空間出租.
+Ten additional GPT-generated Traditional Chinese designs cover A1, A4, A5 and A7,
+plus six campaigns on 24 nearby building facades, up to 24 × 8 m.
+All graphics are saved as `public/assets/adverts/billboard-*.png`; exact new prompts
+are in `docs/corridor-billboard-prompts.json`. Original prompts and the government
+source for the university-town name are in `docs/rooftop-advert-prompts.json`.
+These are fictional game advertisements. Day/night proof captures are in
+`output/playwright/corridor-billboards/`.
 
 The existing 364 platform poster frames carry seven photographic campaigns created
 with the built-in GPT image tool: A1 Northern Metropolis, A2 new technology,
@@ -272,14 +275,16 @@ Performance: inactive local lights are removed from daylight shaders; night ligh
 
 ### Running tram wraps
 
-Every third AI tram (3rd, 6th, 9th, …) carries a reference-inspired Traditional
-Chinese campaign: yellow football, orange finance, red/orange travel, or blue
-rewards. The four fictional GPT-generated designs are stored in
-`public/assets/tram-adverts/`; prompts are in `docs/tram-advert-prompts.json`.
-Wraps recolour existing opaque exterior panels, roofs, skirts and lower sliding
-doors. Windows, windshields, lights, wheels and passenger interiors retain their
-original materials. Normal service has 2 wrapped trams out of 6; the larger fleet
-has 5 out of 17. Player and parked depot vehicles keep their original livery.
+Half the tram fleet carries reference-inspired Traditional Chinese advertising:
+yellow football, orange finance, red/orange travel or blue rewards. Alternating
+vehicles are wrapped across the combined player, AI and depot fleet: 11 of 23
+(the nearest half for an odd total), including 9 of 18 running vehicles.
+The four fictional GPT-generated designs are in `public/assets/tram-adverts/`;
+prompts are in `docs/tram-advert-prompts.json`.
+Each side prints one main graphic on the middle section, with campaign colour
+continuing around the body and roofs. Film covers only the lower half of selected
+passenger windows; upper panes and cab windshields remain clear. Prints follow
+sliding doors and articulation without changing the vehicle geometry.
 
 ---
 
@@ -291,4 +296,68 @@ has 5 out of 17. Player and parked depot vehicles keep their original livery.
 - **Models:** drop `.glb` files onto the editor. They are copied to `public/lots/models/` and assigned to the selected lot. Author models in metres, Y up, with the origin at the centre of the ground floor. Use Rotation, Scale, Offset, **Fit to lot** and **Align to longest edge** to place them.
 - **Tools:** Select (drag corners to reshape), **Wand** (click inside an OZP lot to trace it) and **Draw** (click corners).
 - **In the game:** lots set to *Placeholder massing* or a GLB replace the game's filler buildings inside their boundary. Lots set to *None* keep the existing scenery. Stations, roads and the depot are never altered, and buildings are skipped wherever they would intrude on game scenery.
+- **Labels ignored:** the wand traces `public/lots/ozp-mask.png`, which keeps the plan's black lines but drops the labels printed on or against them (G/IC, O, OU, site circles, height triangles, road names), so lots follow the lines instead of notching around the text (`scripts/ozp_lines.py`). If that cleaning ever opens a gap in a real line, the wand notices that the lot has grown much larger than on the unfiltered `ozp-mask-raw.png` and uses that outline instead. `scripts/retrace-lots.mjs` re-traces saved lots, but replaces one only when the new outline contains the old one and is at most 35% larger, so lots edited by hand stay as they are.
 - **Plan underlay:** `python3 scripts/build_ozp_underlay.py "Annex II_S_HSK_2A.pdf"`. The underlay is aligned to the corridor at 1:7500, with A1 as the anchor. `scripts/seed-lots.mjs` re-seeds from `scripts/ozp-lot-labels.json` without overwriting lots you have edited.
+
+## Street furniture editor (developers)
+
+`npm run dev`, then open **http://localhost:5199/street.html**, or double-click **Edit Street.command** in the project folder. It controls exactly what stands along the corridor and the connecting roads: street lamps, cycle-track lamps, litter bins, post boxes, manhole covers, wayfinding and cycle signs, traffic signal heads, HyD Type 2 railing runs and footpath paving.
+
+- **Data:** `public/street/furniture.json`. It was seeded from the old procedural layout (`scripts/seed-furniture.mjs`), so the game looked the same on day one. Each item stores a road, chainage, side (L = left in the direction of increasing chainage), offset (from the kerb outwards, or from the centreline), rotation and raise. Railings and paving are runs from one chainage to another. **Save** (Ctrl/Cmd+S) writes the file, and the game reads it at start-up.
+- **Roads:** the SGMTS corridor and cycle track (design chainage, the same "Ch." as the HUD), L35, every junction and underpass crossing road, D1, the L35 bend, the depot approach, the depot service road and the A1 terminal loop. On those other roads, chainage is metres from the start of the road.
+- **Tools:** **Place** (P) snaps to 0.5 m chainage and 0.05 m offset (Alt-click places without snapping). **Run** (R) takes two clicks. **Select** (S) lets you drag items along their road; Shift-click or Shift-drag selects several. Q/E rotate, and the arrow keys nudge chainage and offset. **Repeat** fills every N m between two chainages, optionally mirrored to the other side. The filters on the left select a stretch of road for bulk move, rotate, retype or delete.
+- **Direction:** every arrow points to the item's front: lamp arms, sign faces, signal lenses and bin apertures.
+- **Your models:** drop `.glb` files onto the editor. They are copied to `public/street/models/` and can then be placed like any other item. Author models in metres, Y up, with the origin at the base and the front facing −Z. *Light at m* makes a model light the pavement at night.
+- **Signals:** a traffic signal head keeps its junction and phase (corridor, side road or pedestrian), so moving or rotating it leaves the signal timing unchanged.
+- **Night:** baked pavement light pools are recalculated when the game or the editor reloads.
+
+### Operations control centre
+
+Choose **Control centre / 營運控制中心** on the start screen to operate the running fleet from a live corridor map. Select a tram to set its speed ceiling, hold/release it, skip an intermediate station or terminate at A1/A7. Select a junction to inspect road queues, waiting times, signal aspects and the reason for each adaptive decision. Three live 3D CCTV views follow selected trams, junctions and stations.
+
+**Guided operator** explains the essentials; **Signal engineer** exposes timing parameters, pressure scores, detector occupancy, stage requests, isolation and simulated detector failure. Tram priority is conditional: minimum greens, bounded extension, overdue road/pedestrian demand and crossing clearance take precedence. Play a five-minute shift, review its performance and continue in sandbox. Export the session log from the operations panel.
+
+See [operator instructions, controller rules and real-world references](CONTROL-CENTRE.md). This mode is an educational game interpretation; static depot vehicles and background MTR trains remain scenery, and route reversals use only the existing terminal facilities.
+
+### A2 plaza and corridor advertising
+
+The A2 interchange plaza now includes nine double-sided advertising lightboxes,
+colourful Hung Shui Kiu lettering, circular seating, yellow loungers, activity paving,
+planted benches, four pergolas and cycle stands. These new lightboxes are exclusive to
+the plaza; existing station posters remain unchanged. The fountain and interchange
+entrances are retained. Walking height follows the raised plaza paving.
+
+The selected GPT-generated Hong Kong artwork is reused from
+`public/assets/plaza/hk-adverts.png`: shopping, wetland and music plaza posters; community, family-day and
+cycling banners on existing station-approach railings. Artwork uses inset texture
+coordinates to exclude selection labels and frames. Fence banners span contiguous
+panels, limited to one or two beside each crossing, intersection and station end,
+with nearby targets sharing a pair. The A1 loop end has no railing and stays clear.
+Crossing and junction clearances are retained. Night mode illuminates all ad faces,
+lettering and fixtures using shared materials and the existing fixed pavement-lighting
+system. Banner geometry is merged by material and corridor chunk.
+
+Run `node src/checks/plaza.test.js` for artwork bounds, placement, walking-height and
+crossing-exclusion checks. Implementation: `src/plaza.js` and `src/environment.js`.
+
+### NPC reference rebuild
+
+All twelve pedestrian identities and the cyclist use skinned human meshes with
+facial textures and clothing colours derived from the thirteen sheets in
+`assets/character-references/2026-09-29/`. They share the existing 21-bone animation
+layout. Walking, running, seated passengers, wheelchair users and the cyclist all
+load the rebuilt `public/assets/street-kit.glb`; its editable source is
+`assets/blender/street-kit.blend` (textures packed).
+
+The CC0 base topology, age/sex shapes and weights come from MakeHuman. The pinned
+revision and original asset licence are retained in
+`assets/character-source/makehuman/`. Face landmarks, baked textures and their
+source mapping are in `assets/character-source/`. These are game-resolution
+interpretations of the sheets; hair, garment construction and facial likeness
+remain simplified rather than scan-quality reconstructions.
+
+Rebuild textures with `python3 scripts/prepare_character_textures.py`, then run
+Blender in background mode with `-P scripts/build_street_assets.py -- --people`.
+The people-only rebuild preserves the kit's scenery and street furniture.
+Run `npm test` and `npm run build` after rebuilding. A local comparison viewer is
+at `/output/npc-rebuild/viewer.html` on the development server.

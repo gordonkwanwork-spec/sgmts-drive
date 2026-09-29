@@ -17,6 +17,6 @@ const audio=readFileSync(new URL('../audio.js',import.meta.url),'utf8');
 // No spoken speed warning: the penalty beep is enough.
 assert(!experience.includes("announceWarning('speed'")&&!audio.includes('speechSynthesis'));
 assert(experience.includes('parked.isDepot=true')&&experience.includes('tram.isDepot?.18:1.35'));
-assert(environment.includes('building-ad-')&&environment.includes('crossingGap(s-9,s+9)')&&environment.includes('crossingGap(s-10,s+10)'));
+assert(environment.includes("'Building billboard'")&&environment.includes('crossingGap(s-9,s+9)')&&environment.includes('crossingGap(s-10,s+10)'));
 
 console.log('Mobile cameras, 50 km/h control, stable night lights, warnings, depot dimming, adverts and crossing clearances passed.');

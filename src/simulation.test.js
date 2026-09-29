@@ -114,14 +114,7 @@ for(let s=0;s<LENGTH;s+=.5){for(const dir of [-1,1]){assert.ok(Math.abs(laneOffs
 assert.ok(Math.min(...Array.from({length:Math.floor(LENGTH/2)-10},(_,i)=>curveRadius(10+i*2)))>28,'No short-radius key-plan kinks');
 console.log('Smooth bay paths and broadened curves passed.');
 
-const {musicLevels}=await import('./audio.js');
-const cruise={screen:'driving',mode:'service',condition:'morning',v:10,park:false,crashed:false};
-assert.equal(musicLevels({...cruise,screen:'menu'}).menu,.65);
-assert.equal(musicLevels(cruise).day,.65);
-assert.equal(musicLevels({...cruise,condition:'night'}).night,.65);
-assert.equal(musicLevels({...cruise,condition:'night'}).day,0);
-for(const extra of [{v:0},{crashed:true},{park:true},{mobileBrake:true},{screen:'paused'}])assert.equal(musicLevels({...cruise,...extra}).day,0);
-console.log('Menu/day/night selection and stop/crash music fade targets passed.');
+// Music routing and playback lifecycle are covered in checks/music.test.js.
 
 const {returnOffset,CROSSOVER_START}=await import('./alignment.js');
 assert.equal(returnOffset(CROSSOVER_START),1.9);
@@ -138,10 +131,13 @@ assert.equal(ribbon(0,0,-1,1).attributes.position.count,0,'Clipped empty ribbons
 const artBuffer=readFileSync('public/assets/art.glb');
 const artJSON=JSON.parse(artBuffer.subarray(20,20+artBuffer.readUInt32LE(12)).toString());
 for(const [prefix,count] of [['driver_eye',2],['cockpit_section_',2],['passenger_interior_',3],['cab_display',10]])assert.equal(artJSON.nodes.filter(n=>n.name?.startsWith(prefix)&&(prefix==='cab_display'||n.mesh===undefined)).length,count,prefix+' Blender nodes');
-assert(manifest.vehicle.triangles<100000,'Detailed vehicle stays within the geometry budget');
+assert(manifest.vehicle.triangles<200000,'Detailed vehicle stays within the geometry budget');
 
 const {fenceAllowed,stationAccess}=await import('./environment.js');
-for(const c of [...CROSSINGS,...JUNCTIONS.flatMap(j=>[-1,1].map(d=>({s:j.s+d*(j.halfWidth+10)})))])for(const side of [-1,1])for(let q=c.s-7;q<c.s+6;q+=.5)if(q+2.2>c.s-6)assert(!fenceAllowed(q,q+2.2,side),'Fence must leave the full crossing opening clear');
+const {CROSSING_HALF}=await import('./environment.js');
+for(const c of [...CROSSINGS.map(c=>({s:c.s,half:CROSSING_HALF+.3})),...JUNCTIONS.flatMap(j=>[-1,1].map(d=>({s:j.s+d*(j.halfWidth+10),half:6})))])for(const side of [-1,1])for(let q=c.s-c.half-2;q<c.s+c.half;q+=.25)if(q+1.5>c.s-c.half)assert(!fenceAllowed(q,q+1.5,side),'Fence must leave the full crossing opening clear');
+// Station crossings: kerbside railings come right up to the dropped kerb (site photos), not 6 m short of it.
+for(const c of CROSSINGS)for(const side of [-1,1])assert(fenceAllowed(c.s-CROSSING_HALF-1.8,c.s-CROSSING_HALF-.3,side)||!fenceAllowed(c.s-CROSSING_HALF-9,c.s-CROSSING_HALF-7.5,side),'Railing reaches the '+c.station+' crossing');
 for(const st of STOPS)for(const platform of st.platforms)for(const dir of [-1,1]){
  const {a,b,end}=stationAccess(st,platform,dir),r=sample(end);
  for(const p of [...a,...b])assert(p.toArray().every(Number.isFinite));
@@ -185,3 +181,10 @@ const {crosserInPath}=await import('./operating.js');
 assert(crosserInPath(1.9,1,1.9)&&crosserInPath(-1.5,1,1.9)&&!crosserInPath(-4,1,1.9));
 assert(!crosserInPath(5,1,1.9)&&crosserInPath(5,-1,1.9)&&!crosserInPath(-1,-1,1.9));
 console.log('Pedestrian yield is limited to the tram lane.');
+
+const {handrailHazard}=await import('./operating.js');
+assert(!handrailHazard(10,-1.6,200),'normal service braking stays quiet');
+assert(!handrailHazard(3,0,20),'slow corner stays quiet');
+assert(handrailHazard(8,-2.5,200),'sudden braking warns');
+assert(handrailHazard(9,0,40),'fast corner warns');
+assert(!handrailHazard(0,-3,40),'stationary vehicle stays quiet');

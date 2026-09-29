@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node src/simulation.test.js && node src/checks/street-models.test.js && node src/checks/railway.test.js && node src/checks/station-adverts.test.js && node src/checks/tram-adverts.test.js && node src/checks/streetscape.test.js && node src/checks/mobile-experience.test.js && node src/checks/onfoot.test.js && node src/checks/lots.test.js"
+    "test": "node src/checks/music.test.js && node src/checks/tips.test.js && node src/simulation.test.js && node src/checks/cycle-aids.test.js && node src/checks/street-models.test.js && node src/checks/railway.test.js && node src/checks/station-adverts.test.js && node src/checks/plaza.test.js && node src/checks/tram-adverts.test.js && node src/checks/art-interior.test.js && node src/checks/streetscape.test.js && node src/checks/mobile-experience.test.js && node src/checks/onfoot.test.js && node src/checks/lots.test.js && node src/checks/logistics.test.js && node src/checks/commercial.test.js && node src/checks/furniture.test.js && node src/checks/control-system.test.js && node src/checks/free-spawns.test.js && node src/checks/imported-npc.test.js"
   },
   "dependencies": {
     "three": "^0.166.0",

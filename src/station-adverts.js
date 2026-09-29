@@ -24,7 +24,30 @@ export function stationAdvertGeometry(st, platforms, elevation) {
 }
 
 const materials=new Map();
-export const ROOFTOP_ADVERTS={A2:'洪水橋大學城',A3:'連接中國',A6:'物流空間出租'};
+export const ROOFTOP_ADVERTS={A1:'泥圍慢活',A2:'洪水橋大學城',A3:'連接中國',A4:'綠意新生活',A5:'創意在此相遇',A6:'物流空間出租',A7:'智造未來'};
+export const BUILDING_ADVERTS=['coffee','dining','fitness','family','shopping','harbour'];
+
+// A fixed illumination floor keeps shaded and opposite faces equally readable without extra scene lights.
+export const billboardMaterial=map=>new T.MeshBasicMaterial({map,color:new T.Color().setScalar(.85),toneMapped:false});
+
+export async function addBuildingAdverts(scene,asset,anisotropy){
+  const palette=await Promise.all(BUILDING_ADVERTS.map(async id=>{
+    const map=await new T.TextureLoader().loadAsync(asset(`adverts/billboard-${id}.png`));
+    map.colorSpace=T.SRGBColorSpace;map.anisotropy=anisotropy;return billboardMaterial(map);
+  }));
+  let index=0;
+  scene.traverse(board=>{
+    if(board.name!=='Building billboard')return;
+    const face=board.children.find(n=>n.name.startsWith('HK artwork'));
+    if(!face)return;
+    const id=index++%palette.length;
+    face.name=`Billboard artwork ${BUILDING_ADVERTS[id]}`;
+    const {width,height}=face.geometry.parameters;
+    face.geometry.dispose();face.geometry=new T.PlaneGeometry(width,height);
+    face.material=palette[id];face.castShadow=face.receiveShadow=false;
+    board.userData.campaign=BUILDING_ADVERTS[id];
+  });
+}
 
 export function stationBillboards(st,platforms,material,elevation){
   const group=new T.Group();group.name=`Station billboards ${st.id}`;
@@ -46,8 +69,7 @@ export function stationBillboards(st,platforms,material,elevation){
       for(const offset of [-3.75,3.75]){
         const arm=new T.Mesh(new T.BoxGeometry(2.8,.1,.1),lampMaterial);
         arm.name='Billboard lamp arm';arm.position.set(x+side*1.4,bottom+5.35,z+offset);group.add(arm);
-        // Floodlight fixtures only: the wash on the print is baked into its emissive map at night. Real spotlights
-        // here (24 across the stations in view) made every lit pixel on screen evaluate them: 180 → 55 ms at night.
+        // Visible floodlights complement the artwork illumination floor without adding costly scene lights.
         const housing=new T.Mesh(new T.BoxGeometry(.85,.4,.25),lampMaterial);
         housing.name='Billboard lamp housing';housing.position.set(x+side*2.8,bottom+5.3,z+offset);housing.lookAt(x+side*.17,bottom+2.4,z+offset);group.add(housing);
         const lens=new T.Mesh(new T.PlaneGeometry(.72,.3),lensMaterial);
@@ -65,8 +87,8 @@ export function stationBillboards(st,platforms,material,elevation){
 
 export function setBillboardLighting(root,night){
   root.traverse(n=>{
-    if(n.name==='Billboard lamp lens')n.material.emissiveIntensity=night?1.4:0;
-    if(n.name.startsWith('Billboard artwork')){if(n.material.emissiveMap!==n.material.map){n.material.emissiveMap=n.material.map;n.material.needsUpdate=true;}n.material.emissive.set(0xffedcf);n.material.emissiveIntensity=night?.55:0;}
+    if(n.name==='Billboard lamp lens'||n.name==='Advert lamp lens')n.material.emissiveIntensity=night?1.4:0;
+    if(n.name.startsWith('Billboard artwork'))n.material.color.setScalar(night?.65:.85);
   });
 }
 
@@ -81,6 +103,6 @@ export async function addStationAdverts(root,st,platforms,url,anisotropy,elevati
   if(ROOFTOP_ADVERTS[st.id]){
     const map=await new T.TextureLoader().loadAsync(url.replace(/A[1-7]\.png/,`billboard-${st.id}.png`));
     map.colorSpace=T.SRGBColorSpace;map.anisotropy=anisotropy;
-    root.add(stationBillboards(st,platforms,new T.MeshLambertMaterial({map}),elevation));
+    root.add(stationBillboards(st,platforms,billboardMaterial(map),elevation));
   }
 }

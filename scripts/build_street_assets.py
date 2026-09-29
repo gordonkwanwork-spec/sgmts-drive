@@ -57,53 +57,10 @@ def loft(name,pts,radii,material,parent,sides=12):
 
 
 def person(index):
- """Jointed pedestrian: pelvis (body) → chest → shoulders/elbows, hips → knees → ankles. JS drives the gait."""
- p=b.empty('pedestrian_'+str(index));shirt=['teal','burgundy','blue','sand'][index%4]
- female=index%2==1;elder=index in (4,5);child=index in (6,7);seated=index>=8
- p['gender']='female' if female else 'male';p['age']='child' if child else 'older' if elder else 'adult';p['wheelchair']=seated
- hair='silver' if elder else 'hair';skin='skin'+str(index%3);legwear=['trouser_charcoal','trouser_navy','trouser_khaki'][index%3]
- if child:p.scale=(.72,.72,.72)
- elif elder:p.scale=(.94,.96,.94)
- body=b.empty(p.name+'_body',(0,0,-.37 if seated else 0),p)
- # Pelvis and optional tunic stay with the hips; everything above the waist twists with the chest.
- ellipsoid('Hips',(0,-.005,.94),(.155,.105,.12),legwear,body)
- chest=b.empty(p.name+'_chest',(0,0,.98),body)
- w=.9 if female else 1
- loft('Torso',[(0,-.005,0),(0,0,.12),(0,.005,.3),(0,-.005,.43),(0,-.01,.51)],[(.14*w,.1),(.15*w,.105),(.17*w,.12),(.18*w,.105),(.08,.07)],shirt,chest,14)
- if female and not seated:loft('Tunic hem',[(0,0,.12),(0,0,-.02),(0,0,-.2)],[(.155,.11),(.17,.125),(.2,.15)],shirt,chest,14)
- loft('Neck',[(0,0,.48),(0,.005,.6)],[.052,.047],skin,chest)
- ellipsoid('Face',(0,.012,.655),(.093,.108,.118),skin,chest)
- ellipsoid('Jaw',(0,.035,.6),(.074,.078,.055),skin,chest)
- ellipsoid('Hair',(0,-.012,.705),(.1,.117,.082),hair,chest)
- ellipsoid('Nose',(0,.112,.648),(.014,.022,.024),skin,chest)
- for s in [-1,1]:
-  ellipsoid('Eye',(s*.036,.1,.668),(.013,.008,.009),'dark',chest)
-  ellipsoid('Ear',(s*.094,0,.655),(.018,.026,.038),skin,chest)
- if female:ellipsoid('Long hair',(0,-.07,.6),(.12,.1,.17),hair,chest)
- if elder:
-  for side in [-1,1]:b.tube('Spectacle rim',[(side*.037+.03*math.cos(a*math.tau/12),.108,.67+.024*math.sin(a*math.tau/12)) for a in range(13)],.005,'steel',chest,4)
- b.box('Backpack',(0,-.17,.24),(.28,.14,.36),'dark',chest,.05)
- for s in [-1,1]:b.tube('Bag strap',[(s*.12,-.11,.45),(s*.14,.1,.36),(s*.13,.11,.06)],.016,'dark',chest)
- for s in [-1,1]:
-  arm=b.empty(p.name+'_arm_'+str(s),(s*.2*w,-.01,.42),chest);arm.rotation_euler.y=-s*.07
-  loft('Shoulder',[(0,0,.035),(0,0,-.02)],[(.058,.06),(.057,.058)],shirt,arm)
-  loft('Upper arm',[(0,0,.02),(0,0,-.14),(0,0,-.28)],[.056,.05,.043],shirt if not elder else shirt,arm)
-  elbow=b.empty(p.name+'_elbow_'+str(s),(0,0,-.285),arm)
-  ellipsoid('Elbow',(0,0,0),(.043,.043,.045),skin,elbow)
-  loft('Forearm',[(0,0,.015),(0,.004,-.12),(0,.005,-.245)],[.041,.037,.029],skin,elbow)
-  ellipsoid('Hand',(0,.008,-.31),(.027,.043,.072),skin,elbow)
-  if elder and s==1:b.tube('Walking cane',[(0,.03,-.3),(0,.06,-.35),(0,.08,-1.1)],.013,'dark',elbow)
-  hip=b.empty(p.name+'_leg_'+str(s),(s*.092,0,.92),body)
-  ellipsoid('Hip joint',(0,0,0),(.1,.1,.1),legwear,hip)
-  loft('Thigh',[(0,0,.07),(0,.012,-.12),(0,.006,-.3),(0,0,-.43)],[.1,.092,.076,.064],legwear,hip)
-  knee=b.empty(p.name+'_knee_'+str(s),(0,0,-.43),hip)
-  ellipsoid('Knee',(0,0,0),(.061,.063,.07),legwear,knee)
-  loft('Shin',[(0,0,.03),(0,-.012,-.1),(0,0,-.3),(0,0,-.41)],[.062,.064,.049,.042],legwear,knee)
-  ankle=b.empty(p.name+'_ankle_'+str(s),(0,0,-.41),knee)
-  loft('Shoe',[(0,-.06,-.03),(0,-.02,-.045),(0,.08,-.05),(0,.19,-.055)],[(.048,.045),(.055,.05),(.052,.04),(.04,.028)],'pearl',ankle,10)
-  b.box('Shoe sole',(0,.065,-.087),(.1,.28,.022),'rubber',ankle,.008)
-  if seated:hip.rotation_euler.x=math.radians(88);knee.rotation_euler.x=-math.radians(88)
- if seated:
+ """Skinned pedestrian (build_people) plus, for wheelchair users, a rigid chair on the root."""
+ import build_people
+ p,rig,body,v=build_people.person(index)
+ if v.get('chair'):
   for side in [-1,1]:
    wheel('chair_wheel_'+str(side),-.12,.31,.09,p,side*.36)
    wheel('chair_caster_'+str(side),.46,.09,.06,p,side*.29)
@@ -113,7 +70,7 @@ def person(index):
   b.box('Wheelchair seat',(0,-.02,.50),(.56,.48,.09),'dark',p,.025)
   b.box('Wheelchair back',(0,-.24,.76),(.55,.07,.46),'blue',p,.03)
   b.box('Footrest',(0,.46,.14),(.55,.26,.045),'steel',p)
- for o in [o for o in [p,*p.children_recursive] if o.type=='EMPTY']:b.merge_static(o)
+  b.merge_static(p)
 
 
 def vegetation():
@@ -158,33 +115,16 @@ def cyclist():
  b.tube('Chain',[(-.07,-.57,.405),(-.07,0,.48),(-.07,.08,.38),(-.07,0,.28),(-.07,-.57,.325),(-.07,-.57,.405)],.009,'steel',p,5)
  b.box('Rear reflector',(0,-.39,.88),(.07,.025,.05),'red',p,.01)
  b.box('Bike headlight',(0,.53,1.05),(.065,.07,.06),'light',p,.015)
- rider=b.empty('seated_rider',parent=p)
- ellipsoid('Cycling shorts',(0,-.20,1.075),(.21,.17,.15),'navy',rider)
- b.tube('Jersey',[(0,-.20,1.10),(0,.03,1.42)],.20,'teal',rider,12)
- ellipsoid('Neck',(0,.10,1.49),(.07,.075,.09),'skin0',rider)
- ellipsoid('Rider face',(0,.16,1.60),(.12,.115,.15),'skin0',rider)
- ellipsoid('Helmet',(0,.145,1.72),(.16,.18,.10),'pearl',rider)
- for x in [-.08,0,.08]:b.tube('Helmet vent',[(x,.01,1.76),(x,.14,1.815),(x,.27,1.755)],.014,'dark',rider)
- b.tube('Helmet strap',[(-.13,.15,1.68),(0,.22,1.46),(.13,.15,1.68)],.009,'dark',rider)
- b.box('Sunglasses',(0,.261,1.63),(.20,.025,.047),'dark',rider,.01)
- for s in [-1,1]:
-  b.tube('Sleeve',[(s*.18,.015,1.41),(s*.24,.18,1.26)],.075,'teal',rider)
-  b.tube('Bent arm',[(s*.24,.18,1.26),(s*.27,.29,1.19),(s*.27,.48,1.08)],.052,'skin0',rider)
-  ellipsoid('Gloved hand',(s*.27,.48,1.08),(.058,.065,.047),'dark',rider)
-  for name,material,radius in [('thigh','navy',.083),('shin','skin0',.058),('crank','steel',.014)]:
-   o=b.tube(name+'_'+str(s),[(0,0,0),(0,0,1)],radius,material,p,10);o['animated']=True
-  foot=b.empty('pedal_'+str(s),parent=p)
-  b.box('Cycling shoe',(0,.065,0),(.16,.28,.11),'pearl',foot,.035)
-  b.box('Pedal',(0,0,-.065),(.20,.10,.027),'dark',foot)
-  b.merge_static(foot)
- for s in [-1,1]:
-  hip=Vector((s*.14,-.20,1.075));foot=Vector((s*.14,0,.38+s*.17));delta=foot-hip;distance=delta.length
-  along=(.45**2-.46**2+distance**2)/(2*distance);bend=math.sqrt(max(0,.45**2-along**2))
-  knee=hip+delta*(along/distance)+Vector((0,-delta.z,delta.y))*(bend/distance)
-  for name,a,c in [('thigh',hip,knee),('shin',knee,foot),('crank',Vector((s*.14,0,.38)),foot)]:
-   o=bpy.data.objects[name+'_'+str(s)];o.location=a;o.scale.z=(c-a).length;o.rotation_euler=(c-a).to_track_quat('Z','Y').to_euler()
-  bpy.data.objects['pedal_'+str(s)].location=foot
- b.merge_static(rider);b.merge_static(p)
+ import build_people
+ rider,rig,body,_=build_people.person(12);rider.name='seated_rider';rider.parent=p
+ rider.location=(0,-.20,.14)
+ for side in [-1,1]:
+  crank=b.tube('crank_'+str(side),[(0,0,0),(0,0,1)],.014,'steel',p,10);crank['animated']=True
+  pedal=b.empty('pedal_'+str(side),parent=p)
+  b.box('Pedal',(0,0,-.04),(.20,.10,.027),'dark',pedal)
+  b.merge_static(pedal)
+ b.merge_static(p)
+
 
 
 def traffic(kind,w,length,h):
@@ -256,27 +196,225 @@ def building(kind,floors):
   for y in [-4,-3.5,-3,-2.5,-2]:b.box('HVAC grille',(x,y,h+1.17),(2.3,.08,.035),'dark',p)
  b.merge_static(p)
 
-if '--people' in sys.argv:
+def lathe(name,profile,material,parent,segments=40,start=0,end=math.tau):
+ """Surface of revolution about Z from (radius,z) pairs, with cylindrical UVs."""
+ closed=end-start>=math.tau-1e-6;cols=segments if closed else segments+1;vs=[];fs=[]
+ for r,z in profile:
+  for i in range(cols):a=start+(end-start)*i/segments;vs.append((r*math.sin(a),r*math.cos(a),z))
+ for j in range(len(profile)-1):
+  for i in range(segments):fs.append(((j+1)*cols+i,(j+1)*cols+(i+1)%cols,j*cols+(i+1)%cols,j*cols+i))  # outward normals
+ o=b.mesh(name,vs,fs,material,parent,True);uv=o.data.uv_layers.new(name='UVMap')
+ for f in o.data.polygons:
+  for li in f.loop_indices:
+   vi=o.data.loops[li].vertex_index;j,i=divmod(vi,cols);uv.data[li].uv=(i/segments,j/(len(profile)-1))
+ return o
+
+
+def litter_bin():
+ """FEHD orange street litter container after the site photo: capsule body, black rubber band near the base,
+ rounded letterbox aperture with dark liner, ash tray on the crown, and lime warning stickers (JS adds lettering)."""
+ p=b.empty('litter_bin');R=.3
+ prof=[(0,.02),(.2,.02),(.265,.028),(.29,.045),(R,.08)]+[(R,z) for z in (.2,.45,.7)]+[(R*math.cos(a),.82+.17*math.sin(a)) for a in [i*math.pi/2/7 for i in range(1,8)]]
+ body=lathe('Bin shell',prof,'bin_orange',p,48)
+ cut=b.box('cutter',(0,R,.61),(.27,.2,.2),'dark',None,.035)
+ m=body.modifiers.new('Aperture','BOOLEAN');m.object=cut;m.operation='DIFFERENCE';m.solver='EXACT'
+ bpy.ops.object.select_all(action='DESELECT');bpy.context.view_layer.objects.active=body;body.select_set(True);bpy.ops.object.modifier_apply(modifier='Aperture')
+ bpy.data.objects.remove(cut,do_unlink=True)
+ # Rubber aperture trim hugging the cut, inner liner and refuse bag.
+ w,h,rc=.135,.1,.035;trim=[]
+ for cx,cz,a0 in [(w-rc,h-rc,0),(-w+rc,h-rc,math.pi/2),(-w+rc,-h+rc,math.pi),(w-rc,-h+rc,1.5*math.pi)]:
+  for k in range(5):a=a0+k*math.pi/8;x=cx+rc*math.cos(a);trim.append((x,math.sqrt(max(0,R**2-x*x))+.004,.61+cz+rc*math.sin(a)))
+ trim.append(trim[0]);b.tube('Aperture trim',trim,.012,'rubber',p,6)
+ lathe('Liner',[(R-.03,.08),(R-.03,.8)],'dark',p,24)
+ ellipsoid('Refuse bag',(0,.04,.5),(.2,.2,.18),'bin_bag',p)
+ b.tube('Base band',[(R*math.sin(a)*1.012,R*math.cos(a)*1.012,.115) for a in [i*math.tau/48 for i in range(49)]],.016,'rubber',p,6)
+ ellipsoid('Ash tray',(0,0,.985),(.09,.09,.008),'ash',p)
+ for name,z0,z1,half in [('bin_sticker_top',.73,.83,.34),('bin_sticker_low',.25,.47,.56)]:
+  o=lathe(name,[(R+.003,z0),(R+.003,(z0+z1)/2),(R+.003,z1)],name,p,10,-half,half)
+ b.merge_static(p)
+
+
+def rect_sweep(name,path,width,depth,material,parent,closed=True):
+ """Flat bar (width in the path plane, depth across it) swept along a polyline in the Y-Z plane."""
+ n=len(path);vs=[];fs=[]
+ for i,q in enumerate(path):
+  a=Vector(path[i-1] if closed or i>0 else q);c=Vector(path[(i+1)%n] if closed or i<n-1 else q);t=(c-a).normalized();nrm=Vector((0,-t.z,t.y))
+  for sx,sn in [(-1,-1),(1,-1),(1,1),(-1,1)]:vs.append(tuple(Vector(q)+Vector((sx*depth/2,0,0))+nrm*sn*width/2))
+ for i in range(n if closed else n-1):
+  j=(i+1)%n
+  for k in range(4):fs.append((i*4+k,i*4+(k+1)%4,j*4+(k+1)%4,j*4+k))
+ if not closed:fs+=[(3,2,1,0),((n-1)*4,(n-1)*4+1,(n-1)*4+2,(n-1)*4+3)]
+ return b.mesh(name,vs,fs,material,parent,False)
+
+
+def rounded_rect(y0,y1,z0,z1,r0,r1,seg=5):
+ """Anticlockwise outline; r0 radius at the y0 corners, r1 at the y1 corners."""
+ pts=[]
+ for cy,cz,r,a0 in [(y1-r1,z0+r1,r1,-math.pi/2),(y1-r1,z1-r1,r1,0),(y0+r0,z1-r0,r0,math.pi/2),(y0+r0,z0+r0,r0,math.pi)]:
+  for k in range(seg+1):a=a0+k*math.pi/2/seg;pts.append((0,cy+r*math.cos(a),cz+r*math.sin(a)))
+ return pts
+
+
+def railings():
+ """HyD Type 2 railing for control purpose: 40 sq posts, 40x15 flat frames 100-1000 mm above paving, 1500 mm bays.
+ H2130I infill: 16 rounds at Q<=125 c/c. H2132H (junctions/crossings): open panels with two intermediate flats.
+ Panels run along Y between post centres (-0.75..0.75); end panels run +Y from a post."""
+ L=1.5;Q=(L-.055)/12;F=.04;T=.015
+ for kind in ['type2','crossing']:
+  p=b.empty('railing_'+kind);half=(L-.055)/2
+  rect_sweep('Perimeter flat',rounded_rect(-half,half,.1+F/2,1-F/2,.03,.03),F,T,'galvanised',p)
+  if kind=='type2':
+   for i in range(1,12):b.tube('Infill round',[(0,-half+i*Q,.1+F/2),(0,-half+i*Q,1-F/2)],.008,'galvanised',p,8)
+  else:
+   for z in [.4,.7]:rect_sweep('Intermediate flat',[(0,-half,z),(0,half,z)],F,T,'galvanised',p,False)
+  b.merge_static(p)
+  e=b.empty('railing_'+kind+'_end');y0=.0275;y1=(3*Q+.035 if kind=='type2' else 3*Q+.0075)
+  rect_sweep('End perimeter flat',rounded_rect(y0,y1,.1+F/2,1-F/2,.03,Q-.015 if kind=='type2' else Q),F,T,'galvanised',e)
+  if kind=='type2':
+   for i in [1,2]:b.tube('Infill round',[(0,y0+i*Q,.1+F/2+.03),(0,y0+i*Q,1-F/2-.03)],.008,'galvanised',e,8)
+  else:
+   for z in [.4,.7]:rect_sweep('Intermediate flat',[(0,y0,z),(0,y1-.02,z)],F,T,'galvanised',e,False)
+  b.merge_static(e)
+ p=b.empty('railing_post')
+ b.box('Solid square post',(0,0,.51),(.04,.04,1.02),'galvanised',p)
+ for z in [.2,.87]:
+  for y in [-1,1]:b.box('Stiffener clip',(0,y*.035,z),(.05,.03,.06),'galvanised',p)
+ b.box('Post base plate',(0,0,.004),(.12,.12,.008),'galvanised',p)
+ b.merge_static(p)
+
+
+def gully():
+ """H3105A gully grating against the kerb in a concrete boxout (300 margins, 150x150 chamfers).
+ Kerb face at X=0, carriageway towards +X, traffic along Y."""
+ p=b.empty('gully_grating');W=.45;Lg=.75;m=.3;c=.15
+ outer=[(0,-Lg/2-m),(W+m-c,-Lg/2-m),(W+m,-Lg/2-m+c),(W+m,Lg/2+m-c),(W+m-c,Lg/2+m),(0,Lg/2+m)];inner=[(0,-Lg/2),(W,-Lg/2),(W,-Lg/2),(W,Lg/2),(W,Lg/2),(0,Lg/2)]
+ b.mesh('Gully boxout',[(x,y,.006) for x,y in outer+inner],[(i,(i+1)%6,6+(i+1)%6,6+i) for i in range(5)],'boxout',p)
+ b.mesh('Gully sump',[(.03,-Lg/2+.03,.008),(W-.03,-Lg/2+.03,.008),(W-.03,Lg/2-.03,.008),(.03,Lg/2-.03,.008)],[(0,1,2,3)],'sump',p)
+ for y in [-1,1]:b.box('Grating frame',(W/2,y*(Lg/2-.02),.012),(W,.04,.018),'cast_iron',p)
+ for x in [.02,W-.02]:b.box('Grating frame',(x,0,.012),(.04,Lg,.018),'cast_iron',p)
+ # Diagonal slotted bars (plan hatching on the drawing), clipped to the opening.
+ x0,x1,y0,y1=.04,W-.04,-Lg/2+.04,Lg/2-.04;k=y0-x1
+ while k<y1-x0:
+  pts=[(x,x+k) for x in (x0,x1)];a=max(x0,y0-k);c2=min(x1,y1-k)
+  if c2-a>.02:b.box('Grating bar',((a+c2)/2,(a+c2)/2+k,.012),(.022,(c2-a)*math.sqrt(2),.02),'cast_iron',p).rotation_euler.z=-math.pi/4
+  k+=.055
+ b.merge_static(p)
+ # Overflow weir kerb (flexible pavement detail): one kerb length with a lowered, open throat into the gully.
+ w=b.empty('kerb_weir')
+ b.box('Weir kerb back',(-.045,0,.15),(.06,.994,.3),'kerb',w)
+ for y in [-1,1]:b.box('Weir kerb cheek',(.03,y*.42,.15),(.09,.154,.3),'kerb',w,.012)
+ b.box('Weir lintel',(.03,0,.235),(.09,.69,.13),'kerb',w,.012)
+ b.box('Weir throat',(.03,0,.085),(.08,.69,.17),'sump',w)
+ b.merge_static(w)
+
+
+def disc(name,centre,r,material,parent,seg=24):
+ """Lens facing +Y with front-view UVs (image right = viewer's right)."""
+ cx,cy,cz=centre;vs=[(cx+r*math.cos(-i*math.tau/seg),cy,cz+r*math.sin(-i*math.tau/seg)) for i in range(seg)]
+ o=b.mesh(name,vs,[tuple(range(seg))],material,parent);uv=o.data.uv_layers.new(name='UVMap')
+ for li,l in enumerate(o.data.loops):x,_,z=vs[l.vertex_index];uv.data[li].uv=(.5-(x-cx)/(2*r),.5+(z-cz)/(2*r))
+ return o
+
+
+def hood(name,centre,r,top,bottom,parent,seg=20,t=.01):
+ """Tunnel visor: open tube along +Y, long at the top and short underneath, with a rolled lip."""
+ cx,cy,cz=centre;vs=[];fs=[]
+ for rr in (r,r+t):
+  for i in range(seg):a=i*math.tau/seg;L=bottom+(top-bottom)*(1+math.sin(a))/2;vs+=[(cx+rr*math.cos(a),cy,cz+rr*math.sin(a)),(cx+rr*math.cos(a),cy+L,cz+rr*math.sin(a))]
+ for i in range(seg):
+  j=(i+1)%seg;o=2*seg
+  fs+=[(2*i,2*j,2*j+1,2*i+1),(o+2*i+1,o+2*j+1,o+2*j,o+2*i),(2*i+1,2*j+1,o+2*j+1,o+2*i+1)]
+ return b.mesh(name,vs,fs,'signal_black',parent,True)
+
+
+def traffic_signals():
+ """HK junction signal after the Wan Chai site photo: grey Ø114 pole with domed cap, a black 300 mm aspect head clamped
+ beside it on two brackets (tunnel hoods, cable looping from the pole top). Vehicle: red/amber/green; pedestrian: red man
+ over green man. Lenses keep their own materials so the game can light them; lens front faces +Y."""
+ for kind,aspects,lenses in [('vehicle',3,['signal_red','signal_amber','signal_green']),('pedestrian',2,['signal_ped_stop','signal_ped_go'])]:
+  p=b.empty('signal_'+kind);W,D,pitch,x0,y0,zb=.40,.22,.34,.29,-.1,2.25;H=aspects*pitch+.02;zt=zb+H;yf=y0+D
+  lathe('Signal pole',[(0,0),(.078,0),(.078,.035),(.057,.07),(.057,3.72),(.048,3.755),(.025,3.775),(0,3.78)],'signal_grey',p,20)
+  b.box('Signal head',(x0,y0+D/2,zb+H/2),(W,D,H),'signal_black',p,.025)
+  b.box('Signal door seam',(x0,yf+.002,zb+H/2),(W-.03,.006,H-.03),'signal_black',p)
+  for k in range(aspects):
+   z=zt-.01-pitch*(k+.5)
+   if k:b.box('Aspect joint',(x0,yf+.004,z+pitch/2),(W+.006,.012,.012),'signal_seal',p)
+   b.box('Lens bezel',(x0,yf+.003,z),(.33,.006,.33),'signal_black',p)
+   hood('Tunnel hood',(x0,yf,z),.165,.26 if kind=='vehicle' else .2,.05,p)
+   disc(lenses[k],(x0,yf+.008,z),.148,lenses[k],p)
+  for z in (zt-.12,zb+.12):
+   lathe('Pole clamp band',[(.066,z-.04),(.066,z+.04)],'signal_grey',p,20)
+   b.box('Bracket arm',(x0/2+.02,y0+.03,z),(x0-.06,.05,.05),'signal_grey',p)
+   b.box('Bracket plate',(x0,y0-.01,z),(.14,.02,.09),'signal_grey',p)
+  b.tube('Signal cable',[(-.035,-.045,3.6),(-.02,-.07,3.35),(.03,-.09,3.15),(x0-.1,-.13,zt-.02),(x0-.02,-.12,zt-.01),(x0,y0+.04,zt+.005)],.009,'rubber',p,6)
+  if kind=='pedestrian':
+   head=b.empty('signal_pedestrian_head')
+   for obj in list(p.children):
+    if obj.name.startswith('Signal pole'):continue
+    copy=obj.copy();copy.data=obj.data.copy() if obj.data else None;bpy.context.collection.objects.link(copy);copy.parent=head
+   b.merge_static(head)
+  b.merge_static(p)
+
+
+def tree_supports():
+ """Newly planted street tree supports after the site photos, sized for a 0.22 m trunk (the game scales X/Y to the trunk).
+ tree_stakes: three bamboo poles splayed 0.95 m out, crossing the trunk at 2.2 m under a rope lashing (18.01.43 (1)).
+ tree_guard: LCSD green steel cage, 16 rounds between two flat hoops with paired loops on top, around a granite-edged pit (18.02.08)."""
+ p=b.empty('tree_stakes')
+ for i in range(3):
+  a=i*math.tau/3+.3;c,s_=math.cos(a),math.sin(a);lean=lambda z:.95-(.95-.25)*z/2.2
+  b.tube('Bamboo pole',[(lean(z)*c,lean(z)*s_,z) for z in (0,.9,1.8,2.75)],.03,'bamboo',p,8)
+  for z in (.45,.9,1.35,1.8,2.3):b.tube('Bamboo node',[(lean(z)*c,lean(z)*s_,z-.012),(lean(z)*c,lean(z)*s_,z+.012)],.035,'bamboo_node',p,8)
+ for z in (2.14,2.2,2.26):b.tube('Rope lashing',[(.27*math.cos(k*math.tau/16),.27*math.sin(k*math.tau/16),z) for k in range(17)],.01,'rope',p,5)
+ b.merge_static(p)
+ g=b.empty('tree_guard');R=.4;N=16;ring=lambda r,z,n=48:[(r*math.cos(k*math.tau/n),r*math.sin(k*math.tau/n),z) for k in range(n+1)]
+ for z in (.32,1.5):b.tube('Guard hoop',ring(R,z),.018,'guard_green',g,6)
+ for k in range(N):a=k*math.tau/N;b.tube('Guard bar',[(R*math.cos(a),R*math.sin(a),.02),(R*math.cos(a),R*math.sin(a),1.62)],.011,'guard_green',g,6)
+ for k in range(0,N,2):
+  a0,a1=k*math.tau/N,(k+1)*math.tau/N;am=(a0+a1)/2;h=R*math.sin(math.pi/N)
+  b.tube('Guard loop',[(R*math.cos(a0+(a1-a0)*t/8)*(1+.25*math.sin(math.pi*t/8)),R*math.sin(a0+(a1-a0)*t/8)*(1+.25*math.sin(math.pi*t/8)),1.62+.2*math.sin(math.pi*t/8)) for t in range(9)],.011,'guard_green',g,6)
+ for x,y,w,d in [(0,.6,1.3,.1),(0,-.6,1.3,.1),(.6,0,.1,1.1),(-.6,0,.1,1.1)]:b.box('Pit edging',(x,y,.03),(w,d,.08),'granite',g)
+ b.box('Pit soil',(0,0,.012),(1.1,1.1,.02),'soil',g)
+ b.merge_static(g)
+
+
+if '--people' in sys.argv or '--furniture' in sys.argv:
  # Fast path: rebuild only the pedestrians inside the existing kit.
  bpy.ops.wm.open_mainfile(filepath=str(b.BLEND/'street-kit.blend'));b.M.update({m.name:m for m in bpy.data.materials})
  _mat=b.mat;b.mat=lambda n,*a,**k:bpy.data.materials.get(n) or _mat(n,*a,**k)
- for root in [o for o in bpy.data.objects if o.name.startswith('pedestrian_') and o.parent is None]:
+ for root in [o for o in bpy.data.objects if (o.name.startswith('pedestrian_') or o.name=='cyclist') and o.parent is None and '--people' in sys.argv]:
   for o in [root,*root.children_recursive]:bpy.data.objects.remove(o,do_unlink=True)
-b.reset() if '--people' not in sys.argv else None
+b.reset() if '--people' not in sys.argv and '--furniture' not in sys.argv else None
 b.M.update({n:b.mat(n,c,0,.65) for n,c in {'navy':(.045,.075,.11),'hair':(.035,.022,.016),'skin0':(.67,.40,.25),'skin1':(.86,.61,.43),'skin2':(.43,.25,.16),'burgundy':(.35,.045,.10)}.items()})
 b.M['window_lit']=b.mat('window_lit',(.82,.69,.44),0,.35)
 for name,c in {'car':(.16,.35,.42),'taxi':(.65,.035,.025),'van':(.76,.77,.70),'truck':(.19,.36,.29),'bus':(.82,.48,.12)}.items():b.M['paint_'+name]=b.mat('paint_'+name,c,.45,.28)
 b.M['silver']=b.mat('silver',(.55,.56,.52))
+for n,c,metal,rough in [('bin_orange',(.93,.30,.035),0,.38),('bin_bag',(.05,.05,.06),0,.5),('ash',(.13,.12,.1),0,.95),('bin_sticker_top',(.62,.78,.2),0,.6),('bin_sticker_low',(.62,.78,.2),0,.6),
+ ('galvanised',(.6,.63,.62),.6,.42),('cast_iron',(.12,.12,.11),.5,.7),('sump',(.012,.012,.012),0,1),('boxout',(.36,.36,.34),0,.95),('kerb',(.52,.52,.49),0,.9),
+ ('signal_grey',(.30,.33,.33),.35,.5),('signal_black',(.016,.018,.018),0,.45),('signal_seal',(.05,.055,.055),0,.7),
+ ('bamboo',(.47,.39,.24),0,.75),('bamboo_node',(.36,.29,.17),0,.8),('rope',(.33,.26,.17),0,.95),('guard_green',(.06,.33,.22),.3,.5),('granite',(.42,.42,.41),0,.85),('soil',(.2,.15,.1),0,1)]+[(n,(.03,.03,.03),0,.2) for n in ('signal_red','signal_amber','signal_green','signal_ped_stop','signal_ped_go')]:
+ b.M[n]=bpy.data.materials.get(n) or b.mat(n,c,metal,rough)
+ if n.startswith(('signal_','bamboo','rope','guard_','granite','soil')):  # furniture fast path: keep colours in step with this list
+  bsdf=b.M[n].node_tree.nodes['Principled BSDF'];bsdf.inputs['Base Color'].default_value=(*c,1);bsdf.inputs['Metallic'].default_value=metal;bsdf.inputs['Roughness'].default_value=rough;b.M[n].diffuse_color=(*c,1)
 b.M['branch']=b.mat('branch',(.18,.12,.06))
 b.M['flower']=b.mat('flower',(.76,.19,.42))
 for kind,color in {'grass':(.24,.38,.085),'meadow':(.43,.49,.16),'fern':(.09,.30,.14),'shrub':(.15,.32,.07),'flowering':(.22,.38,.10)}.items():b.M['leaf_'+kind]=b.mat('leaf_'+kind,color,0,.95)
 for name,c in {'trouser_charcoal':(.05,.055,.06),'trouser_navy':(.035,.05,.09),'trouser_khaki':(.36,.3,.2)}.items():b.M[name]=b.M.get(name) or b.mat(name,c,0,.88)
-for i in range(10):person(i)
-if '--people' in sys.argv:b.save('street-kit');sys.exit(0)
+import build_people
+if '--furniture' not in sys.argv or '--people' in sys.argv:
+ for i in range(len(build_people.VARIANTS)):person(i)
+if '--people' in sys.argv or '--furniture' in sys.argv:
+ if '--people' in sys.argv:cyclist()
+ if '--furniture' in sys.argv:
+  for root in [o for o in bpy.data.objects if o.parent is None and o.name.split('.')[0] in ('litter_bin','railing_type2','railing_type2_end','railing_crossing','railing_crossing_end','railing_post','gully_grating','kerb_weir','signal_vehicle','signal_pedestrian','signal_pedestrian_head','tree_stakes','tree_guard')]:
+   for o in [root,*root.children_recursive]:bpy.data.objects.remove(o,do_unlink=True)
+  litter_bin();railings();gully();traffic_signals();tree_supports()
+ b.save('street-kit');sys.exit(0)
 vegetation()
 from build_vegetation_lod import add_vegetation_lods
 add_vegetation_lods()
 cyclist()
 for args in [('car',1.8,4.2,1.6),('taxi',1.8,4.7,1.65),('van',2,5.5,2.5),('truck',2.4,8.5,3.2),('bus',2.5,11,3.5)]:traffic(*args)
 for args in [('residential',10),('tech',6),('village',2),('logistics',1)]:building(*args)
+litter_bin();railings();gully();traffic_signals();tree_supports()
 b.save('street-kit')

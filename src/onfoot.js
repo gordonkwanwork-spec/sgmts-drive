@@ -1,4 +1,4 @@
-import {sample,roadSection,projectFrame,STOPS,LENGTH,footpathHeight} from './alignment.js';
+import {sample,roadSection,projectFrame,STOPS,LENGTH,footpathHeight,cycleSample,cycleBridgeHeight,cycleCrossing,JUNCTIONS,junctionPavementHeight} from './alignment.js';
 import {terrainLevel,channelDepth} from './environment.js';
 
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
@@ -8,10 +8,18 @@ export const STEP_UP=.6;
 // ponytail: analytic cross-section, no mesh raycast; station stairs/canopy columns are not modelled.
 export function groundAt(x,z,sGuess){
  const s=clamp(projectFrame(x,z,sGuess),0,LENGTH),r=sample(s),lat=(x-r.x)*r.lx+(z-r.z)*r.lz,e=roadSection(s);
+ // Project onto the separate cycle alignment, including its straight bridge decks.
+ let cs=s;for(let i=0;i<4;i++){const c=cycleSample(cs);cs=clamp(cs+(x-c.x)*c.tx+(z-c.z)*c.tz,0,LENGTH);}
+ const c=cycleSample(cs),clat=(x-c.x)*c.lx+(z-c.z)*c.lz;
+ if(Math.abs(clat)<=2&&!cycleCrossing(cs))return {s,lat,y:c.groundY+cycleBridgeHeight(cs)};
+ // Match raised corner slabs and side-road ramps before the general corridor cross-section.
+ for(const j of JUNCTIONS){if(Math.abs(s-j.s)>j.halfWidth+12)continue;const q=sample(j.s),dx=x-q.x,dz=z-q.z,jx=-(dx*q.lx+dz*q.lz),jz=-(dx*q.tx+dz*q.tz),height=junctionPavementHeight(j,jx,jz);if(height!==null)return {s,lat,y:q.y-q.grade*jz+height};}
  if(lat>e.left-.3&&lat<e.right+.3)return {s,lat,y:r.y};
  const st=STOPS.find(st=>Math.abs(s-st.s)<st.footprintLength/2+st.stagger/2);
  if(st&&Math.abs(lat)>=st.platformLateral-.3&&Math.abs(lat)<st.platformLateral+st.width+.5)return {s,lat,y:r.y+.32};
- if(!r.elevated&&Math.abs(lat)<Math.max(Math.abs(e.left),e.right)+3.75)return {s,lat,y:r.y+footpathHeight(s)};
+ if(Math.abs(lat)<Math.max(Math.abs(e.left),e.right)+3.75)return {s,lat,y:r.groundY+footpathHeight(s)};
+ // The interchange plaza is a raised paved surface, including its thin activity pads.
+ if(s>STOPS[1].s-115&&s<STOPS[1].s+125&&lat>=-84&&lat<=-17)return {s,lat,y:r.groundY+.34};
  return {s,lat,y:terrainLevel(x,z,s)-.24-channelDepth(x,z)};
 }
 

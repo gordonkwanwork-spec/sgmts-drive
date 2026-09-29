@@ -6,6 +6,7 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {STOPS,sample,project,PATH,DATUM,roadSection} from './alignment.js';
 import {buildEnvironment,sceneryClear,terrainLevel,renderedGround} from './environment.js';
 import {buildLot,useOf,plotRatio,ZONES,USE_COLOURS,defaultModel,centroid,occupiedBy,nightMaterials as lotNightMaterials} from './lots/massing.js';
+import {loadFurnitureModels,EMPTY as EMPTY_FURNITURE} from './street/furniture.js';
 import {blockCorridor,wandPolygon,polygonArea,pointInPolygon,corridorReserve} from './lots/wand.js';
 
 const BASE=import.meta.env.BASE_URL,$=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -32,13 +33,15 @@ for(const st of STOPS){const r=sample(st.s),c=document.createElement('canvas');c
  const s=new T.Sprite(new T.SpriteMaterial({map:new T.CanvasTexture(c),depthTest:false}));s.scale.set(40,16,1);s.position.set(r.x,r.y+30,r.z);s.renderOrder=1003;scene.add(s);}
 
 // ---------- OZP underlay: drawn as a tracing overlay on top of the 3D so lot boundaries stay readable ----------
-let cal,mask;const plan=new T.Mesh(new T.PlaneGeometry(1,1),new T.MeshBasicMaterial({transparent:true,opacity:.55,depthTest:false,depthWrite:false}));plan.rotation.x=-Math.PI/2;plan.renderOrder=999;scene.add(plan);
+let cal,mask,rawMask;const plan=new T.Mesh(new T.PlaneGeometry(1,1),new T.MeshBasicMaterial({transparent:true,opacity:.55,depthTest:false,depthWrite:false}));plan.rotation.x=-Math.PI/2;plan.renderOrder=999;scene.add(plan);
 async function loadPlan(){cal=await fetch(BASE+'lots/ozp-underlay.json').then(r=>r.json());
  const tex=await new T.TextureLoader().loadAsync(BASE+'lots/ozp-underlay.jpg');tex.colorSpace=T.SRGBColorSpace;tex.anisotropy=8;plan.material.map=tex;plan.material.needsUpdate=true;
  const w=cal.width*cal.metresPerPixel,h=cal.height*cal.metresPerPixel;plan.scale.set(w,h,1);plan.position.set(cal.originX+w/2,40,cal.originZ+h/2);
- const img=await new Promise((ok,err)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=err;i.src=BASE+'lots/ozp-mask.png';});
- const c=document.createElement('canvas');c.width=cal.width;c.height=cal.height;const g=c.getContext('2d');g.drawImage(img,0,0);const px=g.getImageData(0,0,cal.width,cal.height).data;
- mask=new Uint8Array(cal.width*cal.height);for(let i=0;i<mask.length;i++)mask[i]=px[i*4]>127?1:0;blockCorridor(mask,cal);}
+ // ozp-mask.png: zoning lines with the plan's labels removed (scripts/ozp_lines.py); ozp-mask-raw.png: everything, a leak guard.
+ const load=async name=>{const img=await new Promise((ok,err)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=err;i.src=BASE+'lots/'+name;});
+  const c=document.createElement('canvas');c.width=cal.width;c.height=cal.height;const g=c.getContext('2d');g.drawImage(img,0,0);const px=g.getImageData(0,0,cal.width,cal.height).data;
+  const m=new Uint8Array(cal.width*cal.height);for(let i=0;i<m.length;i++)m[i]=px[i*4]>127?1:0;return blockCorridor(m,cal);};
+ [mask,rawMask]=await Promise.all([load('ozp-mask.png'),load('ozp-mask-raw.png')]);}
 
 // ---------- state ----------
 let doc,lots=[],selected=null,mode='select',models=[],history=[],dirty=false,drawing=[];
@@ -99,7 +102,7 @@ function renderInspector(){const l=byId(selected),el=$('inspector');
  bind('f-rot',v=>l.model.rotation=+v);bind('f-scale',v=>l.model.scale=Math.max(.01,+v));bind('f-ox',v=>l.model.offset=[+v,l.model.offset?.[1]||0]);bind('f-oz',v=>l.model.offset=[l.model.offset?.[0]||0,+v]);
  $('b-fit')&&($('b-fit').onclick=()=>fitModel(l));
  $('b-align')&&($('b-align').onclick=()=>{snapshot();let best=0;for(let i=0;i<l.poly.length;i++){const [a,b]=[l.poly[i],l.poly[(i+1)%l.poly.length]],len=Math.hypot(b[0]-a[0],b[1]-a[1]);if(len>best){best=len;l.model.rotation=Math.round(Math.atan2(-(b[1]-a[1]),b[0]-a[0])*180/Math.PI);}}refreshLot(l);renderInspector();});
- $('b-retrace').onclick=()=>{const poly=mask&&wandPolygon(mask,cal,centroid(l.poly));if(!poly)return status('Re-trace failed: the lot centre is on a line or outside the plan.');snapshot();l.poly=poly;refreshLot(l);renderInspector();handles();};
+ $('b-retrace').onclick=()=>{const poly=mask&&wandPolygon(mask,cal,centroid(l.poly),1.6,400000,rawMask);if(!poly)return status('Re-trace failed: the lot centre is on a line or outside the plan.');snapshot();l.poly=poly;refreshLot(l);renderInspector();handles();};
  $('b-focus').onclick=()=>focusLot(l);
  $('b-dup').onclick=()=>{snapshot();const c=structuredClone(l);c.id=uniqueId(l.site||'lot');c.poly=c.poly.map(([x,z])=>[x+20,z+20]);lots.push(c);refreshLot(c);select(c.id);};
  $('b-del').onclick=deleteSelected;
@@ -133,7 +136,7 @@ renderer.domElement.addEventListener('pointerup',async e=>{if(drag){const l=drag
  if(!downAt||Math.hypot(e.clientX-downAt[0],e.clientY-downAt[1])>5||e.button!==0)return;pointer(e);
  if(mode==='select'){const fills=[...lotViews.values()].map(v=>v.fill),hit=ray.intersectObjects(fills.map(f=>(f.visible=true,f)))[0];fills.forEach(f=>f.visible=$('showFill').checked);
   let id=hit?.object.userData.lotId;if(!id){const p=groundHit(0);id=p&&lots.find(l=>pointInPolygon([p.x,p.z],l.poly))?.id;}select(id||null);}
- else if(mode==='wand'){const p=groundHit(0);if(!p||!mask)return;const poly=wandPolygon(mask,cal,[p.x,p.z]);
+ else if(mode==='wand'){const p=groundHit(0);if(!p||!mask)return;const poly=wandPolygon(mask,cal,[p.x,p.z],1.6,400000,rawMask);
   if(!poly)return status('Wand: no closed lot here (on a line, or the region leaks). Try Draw instead.');if(polygonArea(poly)>600000)return status('Wand: region too large — the boundary has a gap. Try Draw.');
   addLot(poly);}
  else if(mode==='draw'){const p=groundHit(0);if(p){drawing.push([+p.x.toFixed(2),+p.z.toFixed(2)]);drawPreview();}}});
@@ -183,8 +186,9 @@ addEventListener('drop',async e=>{e.preventDefault();dragDepth=0;$('drop').style
  await loadModels();const l=byId(selected);if(l&&last){snapshot();l.model={type:'glb',src:last,rotation:0,scale:1,offset:[0,0]};await refreshLot(l);await fitModel(l);renderList();}renderInspector();status(`Added ${files.length} model(s) to public/lots/models`);});
 
 // ---------- game scenery (context only; stations are loaded as-is and never modified) ----------
+let furniture;
 async function loadScenery(){status('Loading game scenery…');const loader=new GLTFLoader(),asset=f=>BASE+'assets/'+f;
- try{const kit=(await loader.loadAsync(asset('street-kit.glb'))).scene,before=new Set(scene.children);environment=buildEnvironment(scene,kit,{occupied:occupiedBy(lots)});// ponytail: occupancy is fixed at load, as in the game; reload after reassigning models to refresh filler buildings.
+ try{const kit=(await loader.loadAsync(asset('street-kit.glb'))).scene,before=new Set(scene.children);furniture=await fetch(BASE+'street/furniture.json',{cache:'no-store'}).then(r=>r.ok?r.json():EMPTY_FURNITURE,()=>EMPTY_FURNITURE);environment=buildEnvironment(scene,kit,{occupied:occupiedBy(lots),furniture});environment.signals.forEach(h=>scene.add(h.group));scene.add(await loadFurnitureModels(furniture,{loader,url:src=>BASE+'street/models/'+src}));// ponytail: occupancy is fixed at load, as in the game; reload after reassigning models to refresh filler buildings.
   for(const o of [...scene.children])if(!before.has(o))sceneryGroup.add(o);environment.update?.(1500,0);
   for(const st of STOPS){const root=(await loader.loadAsync(asset(`station-${st.id}.glb`))).scene,r=sample(st.s);root.position.set(r.x,r.y,r.z);root.rotation.y=r.heading;sceneryGroup.add(root);}}
  catch(err){console.error(err);status('Game scenery failed to load (see console)');return;}status();}

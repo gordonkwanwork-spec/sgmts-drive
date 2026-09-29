@@ -26,3 +26,6 @@ Music/
 # Original user recordings; published phrase clips are in public/audio/announcements.
 /Announcements/
 __pycache__/
+
+# Local street-furniture reference photos are not part of the game build.
+Street furnitures/

@@ -3,7 +3,7 @@ import {computeBoundsTree,acceleratedRaycast} from 'three-mesh-bvh';
 
 // Real-geometry collision for the walking driver and third-person cameras: BVH raycasts against solid meshes.
 T.BufferGeometry.prototype.computeBoundsTree=computeBoundsTree;T.Mesh.prototype.raycast=acceleratedRaycast;
-const SOFT=/vegetation|foliage|leaf|grass|meadow|fern|shrub|flower|illumination|spill|LED|guidance|marking|zebra/i;
+const SOFT=/vegetation|foliage|leaf|grass|meadow|fern|shrub|flower|illumination|spill|LED|guidance|marking|zebra|ramp trucks/i;
 const ray=new T.Raycaster(),sphere=new T.Sphere(),matrix=new T.Matrix4();ray.firstHitOnly=true;
 let moving=new Map();const grid=new Map(),CELL=40,key=(i,j)=>i*100003+j;
 

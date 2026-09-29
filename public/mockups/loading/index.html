@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SGMTS · Loading studies</title>
+<style>
+/* Palette taken from the approved game interface. */
+body[data-ui-theme=light]{--ui-paper:oklch(99% .008 235);--ui-panel:oklch(97% .015 235 / .76);--ui-soft:oklch(91% .03 235 / .62);--ui-control:oklch(99% .01 235 / .38);--ui-line:oklch(64% .05 240 / .42);--ui-reflection:oklch(100% .005 235 / .8);--ui-text:oklch(28% .07 250);--ui-muted:oklch(43% .04 245);--ui-blue:#084789;--ui-cyan:#00baf2;--ui-orange:#ed682a;--ui-shadow:oklch(27% .06 250 / .15);}
+body[data-ui-theme=dark]{--ui-paper:oklch(23% .04 248);--ui-panel:oklch(25% .04 246 / .76);--ui-soft:oklch(34% .05 244 / .68);--ui-control:oklch(37% .04 240 / .32);--ui-line:oklch(75% .04 235 / .34);--ui-reflection:oklch(96% .01 225 / .22);--ui-text:oklch(96% .01 225);--ui-muted:oklch(82% .02 230);--ui-blue:oklch(96% .01 225);--ui-cyan:#00baf2;--ui-orange:#f17835;--ui-shadow:oklch(8% .02 248 / .38);}
+
+*{box-sizing:border-box}body{margin:0;background:var(--ui-paper);color:var(--ui-text);font-family:system-ui,-apple-system,'PingFang HK',sans-serif}button{font:inherit;cursor:pointer}button:focus-visible{outline:3px solid var(--ui-cyan);outline-offset:5px}.screen{height:calc(100svh - 88px);min-height:630px;position:relative;isolation:isolate;overflow:hidden;display:none}.screen.active{display:block}.headline{position:absolute;left:7%;top:17%;z-index:2}.eyebrow{font:500 12px system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase}.headline h1{font-size:48px;line-height:1.12;letter-spacing:-1.7px;margin:0 0 18px;font-weight:600;max-width:570px}.headline p{font-size:14px;color:var(--ui-muted)}.bottom{position:absolute;bottom:44px;left:7%;right:7%;display:flex;justify-content:space-between;align-items:end}.next{font-size:25px;margin-top:12px}.next span{font-size:14px;margin-left:12px;opacity:.6}.percent{font-size:24px;font-variant-numeric:tabular-nums;letter-spacing:-.5px}.percent small{font-size:14px;letter-spacing:0;margin-left:3px}.night{background:var(--ui-paper)}.night .eyebrow{color:var(--ui-muted)}.route{position:absolute;width:90%;height:49%;left:5%;top:36%;overflow:visible}.route text{font-family:system-ui,sans-serif;fill:var(--ui-text);font-size:13px}.route .code{font:10px Menlo,monospace;fill:var(--ui-muted)}.route circle{transition:fill .2s}.night .bottom{border-top:1px solid var(--ui-line);padding-top:22px}.pulse{fill:var(--ui-orange);filter:drop-shadow(0 0 5px var(--ui-orange)) drop-shadow(0 0 14px var(--ui-orange))}#lit{filter:drop-shadow(0 0 4px var(--ui-cyan)) drop-shadow(0 0 10px var(--ui-cyan))}
+.window{background:var(--ui-paper);color:var(--ui-text)}.window .headline{top:18%}.window .headline p{color:var(--ui-muted)}.scene{position:absolute;left:45%;right:7%;top:19%;bottom:230px;border:18px solid var(--ui-blue);border-radius:100px;overflow:hidden;background:var(--ui-soft);box-shadow:0 14px 0 var(--ui-line), inset 0 0 0 4px var(--ui-shadow)}.sky{height:100%;background:linear-gradient(var(--ui-soft),var(--ui-paper));position:relative}.sun{position:absolute;left:22%;top:15%;width:80px;height:80px;border-radius:50%;background:var(--ui-orange)}.hills{position:absolute;left:-20%;width:160%;height:60%;top:35%;background:var(--ui-line);clip-path:polygon(0 80%,15% 28%,24% 60%,39% 0,52% 57%,64% 20%,78% 73%,90% 12%,100% 80%,100% 100%,0 100%)}.city{position:absolute;inset:24% -30% 10%;background:repeating-linear-gradient(90deg,transparent 0 20px,var(--ui-line) 20px 56px,transparent 56px 84px,var(--ui-soft) 84px 140px);clip-path:polygon(0 35%,8% 35%,8% 60%,15% 60%,15% 10%,22% 10%,22% 50%,33% 50%,33% 0,40% 0,40% 36%,50% 36%,50% 66%,60% 66%,60% 30%,73% 30%,73% 60%,87% 60%,87% 23%,100% 23%,100% 100%,0 100%)}.platform{position:absolute;bottom:0;height:26%;width:100%;background:linear-gradient(var(--ui-blue) 0 5%,var(--ui-paper) 5% 17%,var(--ui-orange) 17% 22%,var(--ui-soft) 22% 100%)}.platform:after{content:'';position:absolute;inset:35% 0 0;background:repeating-linear-gradient(90deg,transparent 0 90px,var(--ui-line) 91px 93px)}.post{position:absolute;bottom:26%;width:12px;height:95%;background:var(--ui-line);left:62%}.sign{position:absolute;left:18%;max-width:78%;top:30%;padding:18px 24px;background:#084789;color:white;min-width:210px;box-shadow:0 5px 0 var(--ui-orange)}.sign .zh{font-size:29px;letter-spacing:4px}.sign .en{font-size:12px;margin-top:6px}.reflection{position:absolute;inset:0;pointer-events:none;background:linear-gradient(115deg,transparent 30%,#ffffff30 30%,#ffffff05 44%,transparent 44%,transparent 72%,#ffffff18 72%,transparent 76%)}.window .bottom{right:7%}.mini-route{display:flex;gap:0;position:absolute;left:7%;right:7%;bottom:160px}.mini-stop{flex:1;border-top:2px solid var(--ui-line);position:relative;height:0;font:12px Menlo,monospace;color:var(--ui-muted)}.mini-stop:before{content:'';position:absolute;left:0;top:-6px;width:10px;height:10px;background:var(--ui-paper);border:2px solid var(--ui-line);border-radius:50%}.mini-stop.done{border-color:var(--ui-cyan);color:var(--ui-cyan)}.mini-stop.done:before{background:var(--ui-cyan);border-color:var(--ui-cyan)}.mini-stop:last-child{flex:0}.mini-stop span{position:absolute;bottom:16px;left:5px;transform:translateX(-50%)}.ticket{background:var(--ui-paper);color:var(--ui-blue)}.board{position:absolute;left:7%;right:7%;top:22%;display:grid;grid-template-columns:1fr 250px;gap:55px}.board h1{font-size:48px;letter-spacing:-1.7px;line-height:1.12;margin:0 0 36px;font-weight:600}.board .eyebrow{letter-spacing:2px}.flaps{display:flex;gap:8px;margin-top:28px}.flap{position:relative;background:#084789;color:var(--ui-orange);border-radius:4px;padding:16px 14px;font:clamp(35px,4.8vw,72px) Menlo,monospace;box-shadow:0 5px 0 var(--ui-shadow);min-width:62px;text-align:center}.flap:after{content:'';position:absolute;left:0;right:0;top:50%;height:2px;background:var(--ui-shadow);box-shadow:0 1px 0 #ffffff18}.board-sub{margin-top:22px;font:11px Menlo,monospace;letter-spacing:1px}.list{padding-left:24px}.row{padding:12px 0;border-bottom:1px solid var(--ui-line);font-size:12px;display:flex;gap:12px;align-items:center}.row b{font:11px Menlo,monospace;opacity:.55}.row i{margin-left:auto;font-style:normal}.row.current{font-weight:800}.ticket .bottom{border-top:1px solid var(--ui-line);padding-top:24px}.ticket .next{font-weight:600}.ticket-status{font:11px Menlo,monospace;letter-spacing:1px}.preview{height:88px;display:flex;align-items:center;justify-content:space-between;padding:0 4%;background:var(--ui-panel);color:var(--ui-text);gap:20px}.preview-label{font:10px Menlo,monospace;letter-spacing:1px;color:var(--ui-muted)}.choices{display:flex;gap:6px}.choices button,.controls button{min-height:44px;min-width:44px;color:inherit;border:0;background:transparent;border-radius:5px;padding:12px 16px;font-size:12px}.choices button[aria-pressed=true]{background:#084789;color:white}.controls{display:flex}.controls button{font-size:14px}#theme{font-size:12px;border:1px solid var(--ui-line);border-radius:999px;white-space:nowrap}.headline h1,.board h1{color:var(--ui-blue)}.percent{color:var(--ui-muted)}.row.current i{color:var(--ui-orange)}.mini-stop.done{color:var(--ui-text)}.caption{font-size:10px;display:block;opacity:.6;margin-top:3px}
+@media(max-width:750px){.screen{height:calc(100svh - 126px);min-height:630px}.headline{top:16%}.headline h1{font-size:32px;letter-spacing:-.8px;max-width:330px}.route{width:100%;left:0;top:35%;height:46%}.route text{font-size:22px!important}.route .code{font-size:42px!important}.route text:not(.code){display:none}.route text{font-size:12px}.route .name{display:none}.bottom{bottom:30px}.next{font-size:19px}.next span{display:block;margin:5px 0}.preview{height:126px;flex-wrap:wrap;justify-content:center;padding:12px;gap:7px}.preview-label{display:none}.choices{width:100%;justify-content:center}.choices button{padding:10px;font-size:13px}.controls button{padding:5px 16px}.window .headline{top:15%}.window .headline p{font-size:14px}.scene{left:7%;right:7%;top:36%;bottom:230px;border-width:10px;border-radius:56px}.mini-route{bottom:160px}.sign{left:10%;min-width:0;max-width:85%;padding:10px 14px;top:20%}.sign .zh{font-size:20px;letter-spacing:2px}.sun{width:40px;height:40px}.board{top:18%;grid-template-columns:1fr;gap:18px}.board h1{font-size:32px;letter-spacing:-.8px;margin:0 0 28px}.list{display:none}.flap{font-size:42px;min-width:0;padding:13px 10px}.ticket .next{font-size:18px}.ticket-status{font-size:9px}}
+
+.watermark{position:absolute;z-index:0;top:-2%;left:-6%;width:112%;opacity:.13;pointer-events:none;user-select:none;mask-image:linear-gradient(to bottom,black 15%,transparent 95%),radial-gradient(circle,black 1px,transparent 1.5px);mask-size:100% 100%,4px 4px;mask-repeat:no-repeat,repeat;mask-composite:intersect}
+.brand-logo{display:block;width:100%;height:auto}
+.screen>:not(.watermark){z-index:1}
+body[data-ui-theme=dark] .watermark{opacity:.09}
+body[data-ui-theme=light] .brand-logo{filter:url(#logo-key-light)}
+body[data-ui-theme=dark] .brand-logo{filter:url(#logo-key-dark)}
+
+.headline{top:21%}.window .headline{top:23%;width:34%}
+.eyebrow,.ticket-status,.board-sub{color:var(--ui-muted)}
+.ticket-status,.board-sub{text-transform:uppercase;font:500 12px system-ui,sans-serif;letter-spacing:.06em}
+.next strong{font-weight:600}.next span{opacity:1;color:var(--ui-muted)}
+.preview-label{font:13px system-ui,sans-serif;letter-spacing:0}.caption{font-size:11px;opacity:1;color:var(--ui-muted)}
+button:hover{background:var(--ui-soft)}button:active{transform:translateY(1px)}
+.flap{color:oklch(97% .015 235);font-variant-numeric:tabular-nums}
+#map-stops circle{transition:none}.preview{border-top:1px solid var(--ui-line)}
+@media(max-width:750px){.watermark{top:2%;left:-15%;width:130%;mask-size:100% 100%,3px 3px}.headline,.window .headline{top:20%;width:86%}.route{top:36%}.board{top:22%}.next{font-size:18px}.flaps{gap:6px}}
+
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* Keep the full SVG label bounds inside a row above loading status. */
+.night.active{display:grid;grid-template-rows:auto minmax(0,1fr) auto;padding:clamp(64px,17vh,180px) 7% 44px;gap:32px}
+.night .headline{position:static;width:auto}
+.night .route{position:static;width:100%;height:100%;min-height:0;min-width:0;overflow:hidden}
+.night .bottom{position:static}
+@media(max-width:750px){.night.active{padding:96px 7% 30px;gap:24px}}
+
+@media(min-width:751px) and (max-height:800px){.night .route text{font-size:20px}.night .route .code{font-size:16px}}
+</style></head><body data-ui-theme="light">
+<main>
+<svg aria-hidden="true" width="0" height="0" style="position:absolute;pointer-events:none"><defs><filter id="logo-key-light" color-interpolation-filters="sRGB"><feColorMatrix in="SourceGraphic" type="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 -4 0 0 0 3.85" result="r"/><feColorMatrix in="SourceGraphic" type="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 -4 0 3.85" result="b"/><feComposite in="r" in2="b" operator="over"/><feComposite in2="SourceGraphic" operator="in"/></filter><filter id="logo-key-dark" color-interpolation-filters="sRGB"><feColorMatrix in="SourceGraphic" type="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 4 0 0 0 -1.8" result="r"/><feColorMatrix in="SourceGraphic" type="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 4 0 0 -1.92" result="g"/><feComposite in="r" in2="g" operator="over"/><feComposite in2="SourceGraphic" operator="in"/></filter></defs></svg>
+<section class="screen night active" aria-label="Route map concept"><div class="watermark" aria-hidden="true"><img class="brand-logo" src="../../branding/sgmts-drive-light.png" alt=""></div><div class="headline"><h1>Preparing your route.</h1></div>
+<svg class="route" viewBox="0 -20 1200 390" aria-label="Seven-station route"><path d="M90 240H360Q400 240 430 210L560 80Q590 50 630 50H1110" fill="none" stroke="var(--ui-line)" stroke-width="5"/><path id="lit" d="M90 240H360Q400 240 430 210L560 80Q590 50 630 50H1110" fill="none" stroke="var(--ui-cyan)" stroke-width="4"/><g id="map-stops"></g><circle id="traveller" class="pulse" r="7"/></svg>
+<div class="bottom"><div><div class="eyebrow">LOADING STATION</div><div class="next"><strong class="station-name"></strong><span class="station-zh"></span></div></div><div class="percent" role="progressbar" aria-label="Route loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="pct">00</span><small>%</small></div></div></section>
+<section class="screen window" aria-label="Window seat concept" hidden><div class="watermark" aria-hidden="true"><img class="brand-logo" src="../../branding/sgmts-drive-light.png" alt=""></div><div class="headline"><h1>Your journey is loading.</h1></div><div class="scene" aria-hidden="true"><div class="sky"><div class="sun"></div><div class="hills"></div><div class="city"></div><div class="post"></div><div class="sign"><div class="zh station-zh"></div><div class="en station-name"></div></div><div class="platform"></div><div class="reflection"></div></div></div><div class="mini-route"></div><div class="bottom"><div><div class="eyebrow">LOADING STATION</div><div class="next"><strong class="station-name"></strong><span class="station-zh"></span></div></div><div class="percent" role="progressbar" aria-label="Route loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="pct">00</span><small>%</small></div></div></section>
+<section class="screen ticket" aria-label="Departure board concept" hidden><div class="watermark" aria-hidden="true"><img class="brand-logo" src="../../branding/sgmts-drive-light.png" alt=""></div><div class="board"><div><h1>Preparing departure.</h1><div class="flaps" aria-label="Station counter"></div><div class="board-sub">STATION</div></div><div class="list"></div></div><div class="bottom"><div><div class="ticket-status">LOADING STATION</div><div class="next"><strong class="station-name"></strong><span class="station-zh"></span></div></div><div class="percent" role="progressbar" aria-label="Route loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="pct">00</span><small>%</small></div></div></section>
+</main><nav class="preview" aria-label="Mockup controls"><div class="preview-label">Loading concepts<span class="caption">Simulated progress · 18-second loop</span></div><div class="choices"><button aria-pressed="true" data-view="0">Route map</button><button aria-pressed="false" data-view="1">Window seat</button><button aria-pressed="false" data-view="2">Departure board</button></div><div class="controls"><button id="theme" aria-pressed="false">☾ Dark theme</button><button id="pause" aria-label="Pause animation">Pause</button><button id="restart" aria-label="Replay animation">Replay</button></div></nav>
+<script>
+// Standalone design study: progress is simulated, not connected to the game loader.
+const stations=[
+ {"id":"A1","name":"Nai Wai","zh":"泥圍","simplified":"泥围","terminus":true},
+ {"id":"A2","name":"Hung Shui Kiu","zh":"洪水橋","simplified":"洪水桥","terminus":false},
+ {"id":"A3","name":"Hung Shui Kiu North","zh":"洪水橋北","simplified":"洪水桥北","terminus":false},
+ {"id":"A4","name":"Ha Tsuen South","zh":"厦村南","simplified":"厦村南","terminus":false},
+ {"id":"A5","name":"Ha Tsuen","zh":"厦村","simplified":"厦村","terminus":false},
+ {"id":"A6","name":"Logistics Cluster","zh":"物流圈","simplified":"物流圈","terminus":false},
+ {"id":"A7","name":"Industry Park","zh":"產業園","simplified":"产业园","terminus":true}
+]
+;
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+function setTheme(theme){document.body.dataset.uiTheme=theme;$$('.brand-logo').forEach(el=>el.src='../../branding/sgmts-drive-'+theme+'.png');$('#theme').textContent=theme==='light'?'☾ Dark theme':'☀ Light theme';$('#theme').setAttribute('aria-pressed',String(theme==='dark'));}
+let initialTheme='light';try{if(localStorage.getItem('sgmts-ui-theme')==='dark')initialTheme='dark';}catch{}
+setTheme(initialTheme);$('#theme').onclick=()=>setTheme(document.body.dataset.uiTheme==='light'?'dark':'light');
+const path=$('#lit'), length=path.getTotalLength();
+const points=stations.map((s,i)=>path.getPointAtLength(length*i/6));
+$('#map-stops').innerHTML=stations.map((s,i)=>{const p=points[i];return `<g transform="translate(${p.x},${p.y})"><circle r="8" fill="var(--ui-paper)" stroke="var(--ui-cyan)" stroke-width="3"/><text class="code" y="-32" text-anchor="middle">${s.id}</text><text class="name" y="72" text-anchor="middle">${s.name}</text><text y="94" text-anchor="middle">${s.zh}</text></g>`}).join('');
+$('.mini-route').innerHTML=stations.map(s=>`<div class="mini-stop"><span>${s.id}</span></div>`).join('');
+$('.list').innerHTML=stations.map(s=>`<div class="row"><b>${s.id}</b><span>${s.name}</span><i>·</i></div>`).join('');
+$('.flaps').innerHTML=Array.from('01/07',c=>`<div class="flap">${c}</div>`).join('');
+let view=0,time=0,last=null,playing=!matchMedia('(prefers-reduced-motion: reduce)').matches;
+function render(t){
+ const progress=Math.min(t/16,1), raw=progress*6, index=Math.min(Math.floor(raw),6), phase=raw-index;
+ $$('.screen h1').forEach((el,i)=>el.textContent=progress===1?'Your route is ready.':['Preparing your route.','Your journey is loading.','Preparing departure.'][i]);
+ $$('.percent').forEach(el=>el.setAttribute('aria-valuenow',Math.round(progress*100)));
+ $$('.bottom .eyebrow,.ticket-status').forEach(el=>el.textContent=progress===1?'Route ready':'Loading station');
+ $$('.pct').forEach(el=>el.textContent=String(Math.round(progress*100)).padStart(2,'0'));
+ $$('.station-name').forEach(el=>el.textContent=stations[index].name);
+ $$('.station-zh').forEach(el=>el.textContent=stations[index].zh);
+ path.style.strokeDasharray=length;path.style.strokeDashoffset=length*(1-progress);
+ const p=path.getPointAtLength(length*progress);$('#traveller').setAttribute('cx',p.x);$('#traveller').setAttribute('cy',p.y);
+ $$('#map-stops circle').forEach((el,i)=>el.setAttribute('fill',i<=index?'var(--ui-cyan)':'var(--ui-paper)'));
+ $$('.mini-stop').forEach((el,i)=>el.classList.toggle('done',i<=index));
+ // Hold each platform sign, then ease it out as the train departs.
+ const travel=phase<.35?0:Math.pow((phase-.35)/.65,2);
+ $('.sign').style.transform=`translateX(${-travel*800}px)`;$('.sign').style.opacity=1-travel;
+ $('.post').style.transform=`translateX(${-phase*1100}px)`;
+ $('.city').style.transform=`translateX(${-progress*100}px)`;
+ $('.hills').style.transform=`translateX(${-progress*40}px)`;
+ $$('.row').forEach((el,i)=>{el.classList.toggle('current',i===index);el.querySelector('i').textContent=i<index||progress===1?'✓':i===index?'←':'·'});
+ const flap=$$('.flap')[1];flap.textContent=index+1;flap.style.transform=`perspective(300px) rotateX(${progress<1&&phase<.09?-60*(1-phase/.09):0}deg)`;
+}
+function select(i){view=i;$$('.screen').forEach((el,n)=>{el.classList.toggle('active',n===i);el.hidden=n!==i});$$('[data-view]').forEach((el,n)=>el.setAttribute('aria-pressed',n===i));time=0;render(time)}
+function syncPause(){$('#pause').textContent=playing?'Pause':'Play';$('#pause').setAttribute('aria-label',playing?'Pause animation':'Play animation')}
+$$('[data-view]').forEach(el=>el.onclick=()=>select(Number(el.dataset.view)));
+$('#pause').onclick=()=>{playing=!playing;syncPause()};$('#restart').onclick=()=>{time=0;render(0)};
+window.__seek=t=>{time=Math.max(0,Math.min(18,t));render(time)};
+function tick(now){if(last===null){last=now;window.__ready=true}if(playing&&!document.hidden){time+=Math.min((now-last)/1000,.1);if(time>18)time=window.__recording?18:0;render(time)}last=now;requestAnimationFrame(tick)}
+render(0);syncPause();requestAnimationFrame(tick);
+</script></body></html>

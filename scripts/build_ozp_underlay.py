@@ -19,7 +19,10 @@ img = page.crop(CROP)
 img.save(os.path.join(out, 'ozp-underlay.jpg'), quality=82)
 # Zoning boundaries are the darkest ink; grey base-map linework drops out. Dilate 1 px to close line breaks.
 mask = img.point(lambda v: 0 if v < 100 else 255).filter(ImageFilter.MinFilter(3))
-mask.convert('1').save(os.path.join(out, 'ozp-mask.png'))
+mask.convert('1').save(os.path.join(out, 'ozp-mask-raw.png'))
+# The wand's mask keeps the lines but not the labels printed against them (scripts/ozp_lines.py).
+sys.path.insert(0, os.path.dirname(__file__)); from ozp_lines import clean
+clean(mask, img).save(os.path.join(out, 'ozp-mask.png'))
 json.dump({'source': 'S/HSK/2A (Annex II), 1:7500', 'width': img.width, 'height': img.height, 'metresPerPixel': M_PER_PX,
            'originX': -(ORIGIN_PX[0] - CROP[0]) * M_PER_PX, 'originZ': -(ORIGIN_PX[1] - CROP[1]) * M_PER_PX},
           open(os.path.join(out, 'ozp-underlay.json'), 'w'), indent=1)

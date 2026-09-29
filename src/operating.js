@@ -1,5 +1,7 @@
 // Shared runtime rules: small pure checks that can be verified without WebGL.
 export function tractionLocked({park,door,doorTarget,ramp,rampTarget,hold}){return park||door>.001||doorTarget>0||ramp>.001||rampTarget>0||hold>0;}
+// Plug-sliding leaves: swing out past the bodyside, then slide apart beyond the 1.07 m clear opening.
+export function doorLeafPose(open){const o=Math.min(1,Math.max(0,open));return {out:.07*Math.min(1,o/.2),slide:.6*Math.max(0,(o-.2)/.8)};}
 export function verticalOverlap(a,b){return a.yBottom<b.yTop&&b.yBottom<a.yTop;}
 export function doorsFit(doors,{length,edge=7.05,floor=.31},side=1){return side===1&&doors.length>0&&doors.every(d=>Math.abs(d.along)<length/2-4&&Math.abs(edge-d.lateral)<.95&&Math.abs(d.floor-floor)<.55);}
 
@@ -38,4 +40,9 @@ export function followingStop(s,dir,services,self=null){
 export function crosserInPath(lat,walkDir,lane,half=2.35,stride=2.2){
  const lo=lane-half,hi=lane+half;if(lat>=lo&&lat<=hi)return true;
  const ahead=walkDir===1?lo-lat:lat-hi;return ahead>=0&&ahead<=stride;
+}
+
+// Passenger discomfort: actual deceleration or lateral acceleration, not ordinary service braking.
+export function handrailHazard(speed,acceleration,radius){
+ return Math.abs(speed)>2&&(acceleration<-2.2||speed*speed/Math.max(1,radius)>1.2);
 }

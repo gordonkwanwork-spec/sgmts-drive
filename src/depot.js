@@ -39,7 +39,7 @@ export const BUILDINGS=[
  {name:'Heavy Maintenance & Test Track',...rect([938,758,1316,833]),h:12,kind:'hall',doors:[rowZ(779),rowZ(812)],face:'w'},
  {name:'Stabling shed · 16 ART',...rect([938,833,1316,1025]),h:8,kind:'shed',open:'w'},
  {name:'Stabling shed · 20 ART',...rect([361,826,740,1060]),h:8,kind:'shed',open:'e'},
- {name:'Storage',...rect([361,1060,740,1088]),h:5,kind:'store'}];
+ {name:'Storage 物資庫',...rect([361,1060,740,1088]),h:5,kind:'store',doors:[rowZ(1074)],face:'w'}];
 
 // Stabling bays inside the sheds: 30.5 m × 3.2 m painted boxes. front = bay end a vehicle drives towards; dir = unit heading.
 const bay=(x0,x1,y,dir)=>{const a=px(dir>0?x1:x0,y),b=px(dir>0?x0:x1,y);return {front:{x:a.x,z:a.z},back:{x:b.x,z:b.z},dir:{x:Math.sign(a.x-b.x),z:0},length:Math.abs(a.x-b.x)};};
@@ -56,6 +56,8 @@ export const CV_STALLS=[];for(const [y0,y1] of [[400,471],[532,603],[603,674],[7
 // 2.4 m chain-link fence enclosing the park from the depot buildings, access strip and SGMTS corridor; the only
 // opening is the 9 m gate where the public service road enters from the west.
 export const CV_FENCE=[[[294,478],[292,392],[740,392]],[[740,392],[740,800]],[[740,800],[300,800],[296,524]]].map(ring);
+// Same boundary as CV_FENCE, closed, for point-in-polygon tests: the park is its own paved lot, not depot yard.
+export const CV_PARK=ring([[294,478],[292,392],[740,392],[740,800],[300,800],[296,524]]);
 // Public service road (7.3 m, two-way): from the southern end of Road D3 along the Road D5 alignment south of the
 // depot, north along the site's west side, then east over the drainage reserve into the vehicle park's north aisle.
 // Never touches the SGMTS corridor. y rises from D3's level (1.5) to the depot platform.

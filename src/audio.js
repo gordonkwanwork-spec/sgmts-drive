@@ -1,15 +1,17 @@
+import {MUSIC_TRACKS,musicChoice} from './music-catalog.js';
+export {MUSIC_TRACKS,musicChoice} from './music-catalog.js';
 import announcementManifest from '../public/audio/announcements/manifest.json' with {type:'json'};
 // Synthesised vehicle sounds and streamed, user-supplied music share one mixer.
 let ctx = null, master = null;
 let motorOsc = null, motorGain = null, motorOsc2 = null, humGain = null, whineOsc = null, whineFilter = null, whineGain = null, world = null;
 let rollSrc = null, rollFilter = null, rollGain = null;
-let ambGain = null;
 let indicatorTimer = null;
 let muted=false;
 let announcementSource=null,announcementActive=false,announcementGeneration=0;
 const announcementQueue=[];
 const announcementBuffers=new Map(),announcementLog=[];
 const music=[];
+let musicState={screen:'loading'},activeMusic=null;
 
 function ensure() {
   if (ctx) return true;
@@ -41,30 +43,55 @@ function ensure() {
     rollSrc.connect(rollFilter); rollFilter.connect(rollGain); rollGain.connect(master);
     rollSrc.start();
 
-    // ambient city bed: quiet band-passed noise
-    const ambSrc = ctx.createBufferSource(); ambSrc.buffer = buf; ambSrc.loop = true; ambSrc.playbackRate.value = 0.3;
-    const ambF = ctx.createBiquadFilter(); ambF.type = 'bandpass'; ambF.frequency.value = 320; ambF.Q.value = 0.4;
-    ambGain = ctx.createGain(); ambGain.gain.value = 0.025;
-    ambSrc.connect(ambF); ambF.connect(ambGain); ambGain.connect(master);
-    ambSrc.start();
-    for(const name of ['menu','day','night']){const element=new Audio(import.meta.env.BASE_URL+'audio/'+name+'.mp3');element.loop=true;element.preload='auto';element.setAttribute('playsinline','');const gain=ctx.createGain();gain.gain.value=0;ctx.createMediaElementSource(element).connect(gain);gain.connect(master);music.push({name,element,gain,target:0});}
+    for(let i=0;i<2;i++){
+      const element=new Audio();element.loop=true;element.preload='auto';element.setAttribute('playsinline','');
+      const gain=ctx.createGain();gain.gain.value=0;ctx.createMediaElementSource(element).connect(gain);gain.connect(master);
+      music.push({element,gain,track:null,target:0,playingRequest:false,retireAt:0});
+    }
     master.gain.value=muted?0:.55;
     return true;
   } catch { return false; }
 }
 
-export async function initAudio() {
-  if(!ensure())return false;
-  // Start both operations inside the user gesture; awaiting resume first loses activation on mobile.
-  const pending=[];
-  if(ctx.state!=='running'&&ctx.state!=='closed')pending.push(ctx.resume());
-  for(const t of music)if(t.element.paused)pending.push(t.element.play());
-  await Promise.allSettled(pending);
-  return ctx.state==='running'&&!music[0].element.paused;
+function playMusic(deck){
+ if(deck.playingRequest)return deck.playingRequest;
+ if(!deck.element.paused)return Promise.resolve();
+ const request=Promise.resolve(deck.element.play()).catch(()=>{}).finally(()=>{if(deck.playingRequest===request)deck.playingRequest=null;});
+ deck.playingRequest=request;return request;
 }
-export function musicLevels({screen,condition,v,crashed,park,mobileBrake,mode}){const driving=screen==='driving'&&mode!=='free'&&!crashed&&!park&&!mobileBrake,level=driving?Math.min(1,Math.max(0,(Math.abs(v)-1)/7))*.65:0;return {menu:screen==='menu'?.65:0,day:condition!=='night'?level:0,night:condition==='night'?level:0};}
-export function updateMusic(state){if(!ctx)return;const levels=musicLevels(state);for(const t of music){const target=levels[t.name]*(announcementActive?.22:1);if(Math.abs(target-t.target)>.01){t.gain.gain.setTargetAtTime(target,ctx.currentTime,target>t.target?2.5:1.2);t.target=target;}}}
-export function musicStatus(){return music.map(t=>({name:t.name,context:ctx?.state,gain:t.gain.gain.value,target:t.target,playing:!t.element.paused,time:t.element.currentTime,error:t.element.error?.message}));}
+export async function initAudio() {
+ if(!ensure())return false;
+ // Resume and media play both begin within the input gesture, including on mobile.
+ const resume=ctx.state==='suspended'?ctx.resume():Promise.resolve();
+ updateMusic(musicState);
+ const play=activeMusic?playMusic(activeMusic):Promise.resolve();
+ await Promise.all([resume.catch(()=>{}),play]);
+ return ctx.state==='running'&&!!activeMusic&&!activeMusic.element.paused;
+}
+export function updateMusic(state){
+ musicState=state;
+ if(!ctx)return;
+ const {id,level}=musicChoice(state),now=ctx.currentTime;
+ const ending=activeMusic&&Number.isFinite(activeMusic.element.duration)&&activeMusic.element.duration>8&&activeMusic.element.currentTime>=activeMusic.element.duration-4;
+ if(id&&(activeMusic?.track?.id!==id||ending)){
+  const previous=activeMusic,deck=music.find(t=>t!==previous);
+  deck.element.pause();deck.playingRequest=null;deck.track=MUSIC_TRACKS.find(t=>t.id===id);
+  deck.gain.gain.cancelScheduledValues(now);deck.gain.gain.setValueAtTime(0,now);deck.target=0;deck.retireAt=0;
+  deck.element.src=(import.meta.env?.BASE_URL||'/')+'audio/'+deck.track.file;
+  deck.element.currentTime=0;activeMusic=deck;playMusic(deck);
+  if(previous)previous.retireAt=now+4;
+ }
+ if(!id&&activeMusic){activeMusic.retireAt=now+2;activeMusic=null;}
+ for(const deck of music){
+  const target=deck===activeMusic?level*deck.track.gain*(announcementActive?.22:1):0;
+  if(Math.abs(target-deck.target)>.0001){
+   const duck=announcementActive&&target<deck.target;
+   deck.gain.gain.setTargetAtTime(target,now,duck?.045:target>deck.target?1:.55);deck.target=target;
+  }
+  if(deck!==activeMusic&&deck.retireAt&&now>=deck.retireAt){deck.element.pause();deck.retireAt=0;}
+ }
+}
+export function musicStatus(){return music.map(t=>({name:t.track?.id||null,title:t.track?.title||'',context:ctx?.state,gain:t.gain.gain.value,target:t.target,playing:!t.element.paused,time:t.element.currentTime,error:t.element.error?.message}));}
 
 
 export function setDrive(speedKmh, accelerating, powered = speedKmh > .5) {
@@ -85,19 +112,19 @@ export function setDrive(speedKmh, accelerating, powered = speedKmh > .5) {
 // other ARTs (electric whine + hum). Each layer's level falls off with the nearest few sources.
 function buildWorld() {
   const noise = rollSrc.buffer, bed = (type, f, q) => { const src = ctx.createBufferSource(); src.buffer = noise; src.loop = true; src.playbackRate.value = .5 + Math.random() * .3; const flt = ctx.createBiquadFilter(); flt.type = type; flt.frequency.value = f; flt.Q.value = q; const g = ctx.createGain(); g.gain.value = 0; src.connect(flt); flt.connect(g); g.connect(master); src.start(); return g; };
-  const voices = bed('bandpass', 520, 1.6), lfo = ctx.createOscillator(), depth = ctx.createGain(); lfo.frequency.value = 3.1; depth.gain.value = .5; lfo.connect(depth); const am = ctx.createGain(); am.gain.value = .6; depth.connect(am.gain); voices.disconnect(); voices.connect(am); am.connect(master); lfo.start();
+  const voices = bed('bandpass', 520, 1.6);
   const tyres = bed('lowpass', 480, .7), engine = ctx.createGain(); engine.gain.value = 0; engine.connect(master);
   const eo = ctx.createOscillator(); eo.type = 'sawtooth'; eo.frequency.value = 46; const ef = ctx.createBiquadFilter(); ef.type = 'lowpass'; ef.frequency.value = 160; eo.connect(ef); ef.connect(engine); eo.start();
   const artHum = ctx.createGain(); artHum.gain.value = 0; artHum.connect(master);
   const ao = ctx.createOscillator(); ao.frequency.value = 52; ao.connect(artHum); ao.start();
   const aw = ctx.createOscillator(); aw.type = 'square'; aw.frequency.value = 700; const awf = ctx.createBiquadFilter(); awf.type = 'bandpass'; awf.Q.value = 10; awf.frequency.value = 1500; const awg = ctx.createGain(); awg.gain.value = .12; aw.connect(awf); awf.connect(awg); awg.connect(artHum); aw.start();
-  return { voices: am, voiceBed: voices, tyres, engine, artHum, nextStep: 0 };
+  return { voiceBed: voices, tyres, engine, artHum, nextStep: 0 };
 }
 const nearness = (ds, range) => { let v = 0; for (const d of ds) if (d < range) v += (1 - d / range) ** 2; return Math.min(1, v); };
 export function updateWorldSound({ people = [], cars = [], trams = [] }, running = true) {
   if (!ctx) return; world ||= buildWorld(); const t = ctx.currentTime, on = running ? 1 : 0;
   const crowd = nearness(people, 35), road = nearness(cars, 70), art = nearness(trams, 90);
-  world.voiceBed.gain.setTargetAtTime(on * crowd * .06, t, .4);
+  world.voiceBed.gain.setTargetAtTime(on * crowd * .012, t, .4);
   world.tyres.gain.setTargetAtTime(on * road * .08, t, .3); world.engine.gain.setTargetAtTime(on * road * .05, t, .3);
   world.artHum.gain.setTargetAtTime(on * art * .045, t, .3);
   // Footsteps: short filtered ticks, denser with more people close by.
@@ -200,7 +227,7 @@ export async function announce(key){
  announcementActive=true;const generation=announcementGeneration;
  try{
   // Decode and schedule all three clips on the same clock: no autoplay gap between languages.
-  const clips=await Promise.all(announcementManifest[key].map(async clip=>{if(!announcementBuffers.has(clip.file))announcementBuffers.set(clip.file,fetch(import.meta.env.BASE_URL+'audio/announcements/'+clip.file+'?v=audible-2').then(r=>{if(!r.ok)throw Error('Announcement unavailable');return r.arrayBuffer();}).then(b=>ctx.decodeAudioData(b)));return {clip,buffer:await announcementBuffers.get(clip.file)};}));
+  const clips=await Promise.all(announcementManifest[key].map(async clip=>{if(!announcementBuffers.has(clip.file))announcementBuffers.set(clip.file,fetch((import.meta.env?.BASE_URL||'/')+'audio/announcements/'+clip.file+'?v=audible-2').then(r=>{if(!r.ok)throw Error('Announcement unavailable');return r.arrayBuffer();}).then(b=>ctx.decodeAudioData(b)));return {clip,buffer:await announcementBuffers.get(clip.file)};}));
   if(generation!==announcementGeneration)return false;if(ctx.state!=='running'){announcementActive=false;return false;}
   let time=ctx.currentTime+.06;const sources=[];
   for(const {clip,buffer} of clips){const source=ctx.createBufferSource(),gain=ctx.createGain();gain.gain.value=.95;source.buffer=buffer;source.connect(gain);gain.connect(master);source.start(time);sources.push(source);announcementLog.push({key,language:clip.language,start:time,duration:buffer.duration});time+=buffer.duration+.22;}
@@ -209,7 +236,7 @@ export async function announce(key){
  }catch(error){for(const clip of announcementManifest[key])announcementBuffers.delete(clip.file);console.warn('Announcement playback failed',key,error);if(generation===announcementGeneration)announcementActive=false;return false;}
 }
 
-// Dedicated heavy-rail mixer: rolling roar, rail-joint pulses and electric traction.
+// Dedicated heavy-rail mixer: continuous rolling roar and electric traction.
 // Synthesised sound design, not a recording of an actual Tuen Ma Line train.
 const railVoices=[];
 export function railwaySoundMix(distance,side,radialSpeed=0){return {gain:distance>=280?0:.30/(1+(distance/34)**2),pan:Math.max(-1,Math.min(1,side)),doppler:343/(343+Math.max(-40,Math.min(40,radialSpeed)))};}
@@ -225,8 +252,8 @@ export function updateRailwaySound(trains,camera,running,dt){
   for(const p of emitters){const d=p.distanceTo(camera.position);if(d<distance){distance=d;nearest=p;}}
   const side=nearest?((nearest.x-camera.position.x)*right.x+(nearest.z-camera.position.z)*right.z)/Math.max(1,distance):0;
   const radial=Number.isFinite(distance)&&Number.isFinite(v.distance)&&dt>0?(distance-v.distance)/dt:0,mix=railwaySoundMix(distance,side,radial);
-  // A paired wheel pulse rides the low roar; total gain fades smoothly on pause and mute.
-  v.target=running?mix.gain:0;v.gain.gain.setTargetAtTime(v.target*(.83+.12*Math.sin(now*27)+.05*Math.sin(now*53)),now,.12);v.pan.pan.setTargetAtTime(mix.pan,now,.12);v.noise.playbackRate.setTargetAtTime(.75*mix.doppler,now,.18);v.tone.frequency.setTargetAtTime((186+i*11)*mix.doppler,now,.18);v.distance=Number.isFinite(distance)?distance:null;
+  // Continuous electric rolling sound; no synthetic wheel/chuff pulses.
+  v.target=running?mix.gain:0;v.gain.gain.setTargetAtTime(v.target,now,.12);v.pan.pan.setTargetAtTime(mix.pan,now,.12);v.noise.playbackRate.setTargetAtTime(.75*mix.doppler,now,.18);v.tone.frequency.setTargetAtTime((186+i*11)*mix.doppler,now,.18);v.distance=Number.isFinite(distance)?distance:null;
  }
 }
 export function railwaySoundStatus(){return railVoices.map(v=>({target:v.target,gain:v.gain.gain.value,pan:v.pan.pan.value,distance:v.distance,muted,context:ctx?.state}));}

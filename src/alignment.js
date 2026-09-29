@@ -105,7 +105,14 @@ for(const st of STOPS){const d=Math.min(...st.platforms.map(p=>Math.abs(s-st.s-p
 export const END_STOP=LENGTH-14;
 
 export const CROSSINGS=STOPS.flatMap(st=>[-1,1].map(side=>({s:clamp(st.s+side*(st.footprintLength/2+st.stagger/2+TAPER+6),0,LENGTH),station:st.id}))).filter(c=>c.s>8&&!sample(c.s).elevated);
-export function footpathHeight(s){const distance=Math.min(...CROSSINGS.map(c=>Math.abs(c.s-s)),...JUNCTIONS.flatMap(j=>[-1,1].map(d=>Math.abs(s-j.s-d*(j.halfWidth+10)))));return .02+.28*clamp((distance-1.5)/6,0,1);}
+export function footpathHeight(s){const station=Math.min(...CROSSINGS.map(c=>Math.abs(c.s-s))),junction=Math.min(...JUNCTIONS.flatMap(j=>[-1,1].map(d=>Math.abs(s-j.s-d*(j.halfWidth+10)))));return .02+.28*clamp(Math.min((station-1.5)/6,(junction-1.5)/2.5),0,1);}
+// Height of the drawn junction pavement in its local frame (x across, z opposite chainage).
+export function junctionPavementHeight(j,x,z){const w=roadSection(j.s).right,h=j.halfWidth,ax=Math.abs(x),az=Math.abs(z),R=6;
+ if(ax>w&&ax<w+R&&az>h&&az<h+R){const d=Math.hypot(ax-w-R,az-h-R);if(d>=R-3.75&&d<=R)return .3;}
+ if(ax>=w+R&&ax<=j.extent&&az>=h&&az<=h+3.75){return Math.abs(x-Math.sign(x)*sideCrossing(j,Math.sign(x)))<=1.5?.025+.28*(az-h)/3.75:.3;}
+ return null;
+}
+
 export const CYCLE_WIDTH=4;
 function baseCycleOffset(s){let offset=roadSection(s).right+3.75+CYCLE_WIDTH/2;for(const st of STOPS){const d=Math.abs(s-st.s)-st.footprintLength/2-st.stagger/2,u=clamp(1-Math.max(0,d)/45,0,1),w=u*u*(3-2*u),flare=st.id==='A1'?Math.max(0,st.s-s-25)*.42:0;offset=Math.max(offset,offset+(7.05+st.width+flare+CYCLE_WIDTH/2-offset)*w);}const u=clamp(Math.min((s-L35.start+45)/45,(L35.end+50-s)/50),0,1),blend=u*u*(3-2*u);const normal=offset+(Math.max(offset,l35Offset(s)+L35.width/2+3.75+CYCLE_WIDTH/2)-offset)*blend;const d=Math.abs(toChainage(s)-3395),u3=clamp((200-d)/100,0,1);return -Math.max(normal+.6,normal+(52-normal)*u3*u3*(3-2*u3));}
 
@@ -155,6 +162,7 @@ export function returnOffset(s){const u=clamp((CROSSOVER_START-s)/70,0,1);return
 
 export const CYCLE_BRIDGES=[...UNDERPASSES,...JUNCTIONS.filter(j=>j.halfWidth>7)];
 export const CYCLE_RAMP=140;
+export function cycleCanopyAt(s){return CYCLE_BRIDGES.find(j=>Math.abs(s-j.s)<=j.halfWidth+8.5);}
 export function cycleBridgeAt(s){return CYCLE_BRIDGES.find(j=>Math.abs(s-j.s)<j.halfWidth+8+CYCLE_RAMP);}
 export function cycleOffset(s){const j=cycleBridgeAt(s);if(!j)return baseCycleOffset(s);const u=clamp((j.halfWidth+8+CYCLE_RAMP-Math.abs(s-j.s))/CYCLE_RAMP,0,1);return baseCycleOffset(s)-12*u*u*(3-2*u);}
 // The route, paint and riders share the same straight bridge deck and eased approaches.
