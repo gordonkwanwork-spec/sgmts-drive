@@ -2,14 +2,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 import {STOPS,sample} from '../alignment.js';
+import {webpSize} from './webp-size.js';
 import * as T from 'three';
 import {stationAdvertGeometry,stationBillboards,ROOFTOP_ADVERTS,setBillboardLighting,billboardMaterial,BUILDING_ADVERTS} from '../station-adverts.js';
 
 const manifest=JSON.parse(fs.readFileSync('public/assets/asset-manifest.json'));
 const hashes=new Set();
 for(const st of STOPS){
-  const image=fs.readFileSync(`public/assets/adverts/${st.id}.png`);
-  assert.equal(image.subarray(1,4).toString(),'PNG');
+  const image=fs.readFileSync(`public/assets/adverts/${st.id}.webp`);
+  assert.equal(webpSize(image).height/webpSize(image).width,1.5,'Poster keeps its 2:3 portrait shape');
   hashes.add(createHash('sha256').update(image).digest('hex'));
   const platforms=manifest.stations.find(m=>m.id===st.id).platforms;
   const g=stationAdvertGeometry(st,platforms,s=>sample(s).y);
@@ -35,9 +36,8 @@ for(const st of STOPS){
   const platforms=manifest.stations.find(m=>m.id===st.id).platforms;
   const boards=stationBillboards(st,platforms,billboardMaterial(new T.Texture()),s=>sample(s).y);
   if(!ROOFTOP_ADVERTS[st.id]){assert.equal(boards.children.length,0);continue;}
-  const image=fs.readFileSync(`public/assets/adverts/billboard-${st.id}.png`);
-  assert.equal(image.subarray(1,4).toString(),'PNG');
-  assert.equal(image.readUInt32BE(16)/image.readUInt32BE(20),3,'Artwork fits boards without stretching');
+  const image=fs.readFileSync(`public/assets/adverts/billboard-${st.id}.webp`);
+  assert.equal(webpSize(image).width/webpSize(image).height,3,'Artwork fits boards without stretching');
   const faces=boards.children.filter(n=>n.name.startsWith('Billboard artwork'));
   assert.equal(faces.length,4,'Both platforms have two readable faces');
   for(let i=0;i<faces.length;i++){
@@ -61,9 +61,8 @@ console.log('Seven unique campaigns; 364 upright platform adverts with inward fa
 console.log('Seven rooftop campaigns: fourteen framed boards, twenty-eight readable faces, canopy clearance and stagger passed');
 
 for(const id of BUILDING_ADVERTS){
- const image=fs.readFileSync(`public/assets/adverts/billboard-${id}.png`);
- assert.equal(image.subarray(1,4).toString(),'PNG');
- assert.equal(image.readUInt32BE(16)/image.readUInt32BE(20),3);
+ const image=fs.readFileSync(`public/assets/adverts/billboard-${id}.webp`);
+ assert.equal(webpSize(image).width/webpSize(image).height,3);
  hashes.add(createHash('sha256').update(image).digest('hex'));
 }
 assert.equal(BUILDING_ADVERTS.length,6);

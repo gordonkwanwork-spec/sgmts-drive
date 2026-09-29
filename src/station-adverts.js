@@ -28,11 +28,13 @@ export const ROOFTOP_ADVERTS={A1:'泥圍慢活',A2:'洪水橋大學城',A3:'連�
 export const BUILDING_ADVERTS=['coffee','dining','fitness','family','shopping','harbour'];
 
 // A fixed illumination floor keeps shaded and opposite faces equally readable without extra scene lights.
-export const billboardMaterial=map=>new T.MeshBasicMaterial({map,color:new T.Color().setScalar(.85),toneMapped:false});
+// polygonOffset pulls artwork toward the camera by a few depth steps at any range, so it never z-fights the frame or wall behind it.
+const ART_OFFSET={polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2};
+export const billboardMaterial=map=>new T.MeshBasicMaterial({map,color:new T.Color().setScalar(.85),toneMapped:false,...ART_OFFSET});
 
 export async function addBuildingAdverts(scene,asset,anisotropy){
   const palette=await Promise.all(BUILDING_ADVERTS.map(async id=>{
-    const map=await new T.TextureLoader().loadAsync(asset(`adverts/billboard-${id}.png`));
+    const map=await new T.TextureLoader().loadAsync(asset(`adverts/billboard-${id}.webp`));
     map.colorSpace=T.SRGBColorSpace;map.anisotropy=anisotropy;return billboardMaterial(map);
   }));
   let index=0;
@@ -65,7 +67,7 @@ export function stationBillboards(st,platforms,material,elevation){
     for(const side of [-1,1]){
       // Separate front faces keep lettering readable from both sides, never mirrored.
       const face=new T.Mesh(faceGeometry,material);face.name=`Billboard artwork ${st.id}`;
-      face.rotation.y=side*Math.PI/2;face.position.set(x+side*.165,bottom+2.5,z);group.add(face);
+      face.rotation.y=side*Math.PI/2;face.position.set(x+side*.2,bottom+2.5,z);group.add(face);
       for(const offset of [-3.75,3.75]){
         const arm=new T.Mesh(new T.BoxGeometry(2.8,.1,.1),lampMaterial);
         arm.name='Billboard lamp arm';arm.position.set(x+side*1.4,bottom+5.35,z+offset);group.add(arm);
@@ -94,14 +96,14 @@ export function setBillboardLighting(root,night){
 
 export async function addStationAdverts(root,st,platforms,url,anisotropy,elevation){
   const palette=await Promise.all(Array.from({length:7},(_,i)=>{
-    const source=url.replace(/A[1-7]\.png/,'A'+(i+1)+'.png');
-    if(!materials.has(source))materials.set(source,new T.TextureLoader().loadAsync(source).then(map=>{map.colorSpace=T.SRGBColorSpace;map.anisotropy=anisotropy;return new T.MeshBasicMaterial({map,toneMapped:false});}));
+    const source=url.replace(/A[1-7]\.webp/,'A'+(i+1)+'.webp');
+    if(!materials.has(source))materials.set(source,new T.TextureLoader().loadAsync(source).then(map=>{map.colorSpace=T.SRGBColorSpace;map.anisotropy=anisotropy;return new T.MeshBasicMaterial({map,toneMapped:false,...ART_OFFSET});}));
     return materials.get(source);
   }));
   const posters=new T.Mesh(stationAdvertGeometry(st,platforms,elevation),palette);
   posters.name=`Station adverts ${st.id}`;root.add(posters);
   if(ROOFTOP_ADVERTS[st.id]){
-    const map=await new T.TextureLoader().loadAsync(url.replace(/A[1-7]\.png/,`billboard-${st.id}.png`));
+    const map=await new T.TextureLoader().loadAsync(url.replace(/A[1-7]\.webp/,`billboard-${st.id}.webp`));
     map.colorSpace=T.SRGBColorSpace;map.anisotropy=anisotropy;
     root.add(stationBillboards(st,platforms,billboardMaterial(map),elevation));
   }

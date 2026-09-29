@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import * as T from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {untexturedGLB} from './glb-geometry.js';
+import {webpSize} from './webp-size.js';
 import {TRAM_CAMPAIGNS,tramCampaign,applyTramAdvert,tramWindowRange} from '../tram-adverts.js';
 
 for(const count of [6,17,18,23]){
@@ -12,9 +13,8 @@ for(const count of [6,17,18,23]){
 }
 assert.equal(new Set(Array.from({length:12},(_,i)=>tramCampaign(i)?.id).filter(Boolean)).size,4);
 for(const c of TRAM_CAMPAIGNS){
- const image=readFileSync(`public/assets/tram-adverts/${c.id}.png`);
- assert.equal(image.subarray(1,4).toString(),'PNG');
- assert.equal(image.readUInt32BE(16)/image.readUInt32BE(20),3);
+ const image=readFileSync(`public/assets/tram-adverts/${c.id}.webp`);
+ assert.equal(webpSize(image).width/webpSize(image).height,3);
 }
 const bytes=readFileSync('public/assets/art.glb');
 const model=await new GLTFLoader().parseAsync(untexturedGLB(bytes),'');

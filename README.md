@@ -255,7 +255,7 @@ Placement respects the station stagger and route grade. The original A2–A3–A
 campaigns advertise 洪水橋大學城, 連接中國 and 物流空間出租.
 Ten additional GPT-generated Traditional Chinese designs cover A1, A4, A5 and A7,
 plus six campaigns on 24 nearby building facades, up to 24 × 8 m.
-All graphics are saved as `public/assets/adverts/billboard-*.png`; exact new prompts
+All graphics are saved as `public/assets/adverts/billboard-*.webp` (the full-size PNG sources are in `assets/advert-sources/`; rebuild the WebP files with `python3 scripts/adverts_to_webp.py`); exact new prompts
 are in `docs/corridor-billboard-prompts.json`. Original prompts and the government
 source for the university-town name are in `docs/rooftop-advert-prompts.json`.
 These are fictional game advertisements. Day/night proof captures are in
@@ -265,7 +265,7 @@ The existing 364 platform poster frames carry seven photographic campaigns creat
 with the built-in GPT image tool: A1 Northern Metropolis, A2 new technology,
 A3 university town, A4 green living, A5 arts and culture, A6 logistics cluster,
 and A7 artificial intelligence. These are fictional promotional artworks.
-Full-resolution textures are in `public/assets/adverts/A1.png` through `A7.png`;
+Textures are in `public/assets/adverts/A1.webp` through `A7.webp` (full-size PNG sources in `assets/advert-sources/adverts/`);
 the exact generation prompts are in `docs/station-advert-prompts.json`.
 The runtime overlay follows the baked poster frames, A1 flare, A2 stagger and route
 grade, with one shared texture and one additional draw call per station. The
@@ -274,7 +274,7 @@ day and opposite-platform night captures are in `output/playwright/station-adver
 
 Station canopies now use closed 120 mm Blender shells and seven distinct accent colours, with separately emissive bilingual signs. Cycling approaches use 420 mm closed decks and regular piers. Six nearby street lights illuminate people and foliage at night; tree planting mixes four canopy forms/colours with shrub bases. Check structures with `node src/checks/viaduct-lighting.test.js`; station asset checks are included in `npm test`.
 
-Performance: inactive local lights are removed from daylight shaders; night light counts stay fixed to avoid shader recompilation while moving. Vegetation uses full detail within 65 m, simplified Blender geometry beyond that, and culling beyond 550 m. The 3D canvas uses at most one render pixel per CSS pixel on Retina displays; HTML controls remain native-resolution.
+Performance: all large models download in parallel and street-kit.glb is parsed once; advert textures are WebP (about 3 MB instead of 60 MB). Saloon, cab and door parts of each vehicle are fused per material, never cast shadows, and hide beyond 30 m. Phones shadow the 60 m around the vehicle into a 1024² map. Camera near planes are per view (third person 1 m, cockpit 0.1 m, bird's-eye 2 m, platform 0.3 m, free 0.3 m) so distant kerbs, paint and billboard art do not z-fight. Inactive local lights are removed from daylight shaders; night light counts stay fixed to avoid shader recompilation while moving. Vegetation uses full detail within 65 m, simplified Blender geometry beyond that, and culling beyond 550 m. The 3D canvas uses at most one render pixel per CSS pixel on Retina displays; HTML controls remain native-resolution.
 
 ### Running tram wraps
 
@@ -282,7 +282,7 @@ Half the tram fleet carries reference-inspired Traditional Chinese advertising:
 yellow football, orange finance, red/orange travel or blue rewards. Alternating
 vehicles are wrapped across the combined player, AI and depot fleet: 11 of 23
 (the nearest half for an odd total), including 9 of 18 running vehicles.
-The four fictional GPT-generated designs are in `public/assets/tram-adverts/`;
+The four fictional GPT-generated designs are in `public/assets/tram-adverts/` (WebP; PNG sources in `assets/advert-sources/tram-adverts/`);
 prompts are in `docs/tram-advert-prompts.json`.
 Each side prints one main graphic on the middle section, with campaign colour
 continuing around the body and roofs. Film covers only the lower half of selected

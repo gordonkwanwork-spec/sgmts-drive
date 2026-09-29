@@ -14,7 +14,7 @@ export const tramWindowRange=name=>[name==='section_front'?-2.15:-2.85,name==='s
 
 export async function loadTramAdverts(asset,anisotropy){
   return Promise.all(TRAM_CAMPAIGNS.map(async c=>{
-    const map=await new T.TextureLoader().loadAsync(asset(`tram-adverts/${c.id}.png`));
+    const map=await new T.TextureLoader().loadAsync(asset(`tram-adverts/${c.id}.webp`));
     map.colorSpace=T.SRGBColorSpace;map.wrapS=map.wrapT=T.ClampToEdgeWrapping;map.anisotropy=anisotropy;
     return {...c,map};
   }));

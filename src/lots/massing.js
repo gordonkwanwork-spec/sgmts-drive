@@ -367,7 +367,7 @@ export async function buildLots(lots,ctx){const g=new T.Group();g.name='OZP lots
    if(!cells.has(k))cells.set(k,[]);cells.get(k).push(...r.parts);trees.push(...r.trees);ramps.push(...r.ramps);}
   else if(lot.model?.type==='glb'&&lot.model.src)g.add(await buildLot(lot,ctx));}
  for(const parts of cells.values())addAll(g,mergeByMaterial(parts));addAll(g,treeMeshes(trees));
- if(ramps.length)await loadModel(ctx.truckUrl||(import.meta.env?.BASE_URL??'/')+'assets/street-kit.glb?v=street-kit-20260928')// same URL as the game's kit load, so it comes from cache
+ if(ramps.length)await (ctx.kit?Promise.resolve(ctx.kit):loadModel(ctx.truckUrl||(import.meta.env?.BASE_URL??'/')+'assets/street-kit.glb?v=street-kit-20260928'))// the game passes the kit it already parsed; the editor loads its own
   .then(kit=>g.add(rampTraffic(ramps,kit.getObjectByName('truck')))).catch(e=>console.warn('Ramp trucks unavailable',e));
  g.updateMatrixWorld(true);g.traverse(n=>n.matrixAutoUpdate=false);return g;}
 

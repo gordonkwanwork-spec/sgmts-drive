@@ -30,8 +30,8 @@ export function selectBannerSites(fences){
  return selected;
 }
 export function createPlazaAssets(){
- const atlas=new T.TextureLoader().load(import.meta.env.BASE_URL+'assets/plaza/hk-adverts.png');atlas.colorSpace=T.SRGBColorSpace;atlas.anisotropy=8;
- const materials=ART_RECTS.map(()=>new T.MeshStandardMaterial({map:atlas,emissiveMap:atlas,emissive:0xffffff,roughness:.8}));
+ const atlas=new T.TextureLoader().load(import.meta.env.BASE_URL+'assets/plaza/hk-adverts.webp');atlas.colorSpace=T.SRGBColorSpace;atlas.anisotropy=8;
+ const materials=ART_RECTS.map(()=>new T.MeshStandardMaterial({map:atlas,emissiveMap:atlas,emissive:0xffffff,roughness:.8,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
  const metal=new T.MeshStandardMaterial({color:0x39434a,roughness:.65});
  const lens=new T.MeshStandardMaterial({color:0xffefd7,emissive:0xffefd7});
  const solid=color=>new T.MeshStandardMaterial({color,roughness:.75,emissive:color,emissiveIntensity:0});
@@ -40,7 +40,7 @@ export function createPlazaAssets(){
  function part(root,name,geometry,material,x=0,y=0,z=0){const m=new T.Mesh(geometry,material);m.name=name;m.position.set(x,y,z);m.castShadow=m.receiveShadow=true;root.add(m);if(name.endsWith('activity paving')){m.updateWorldMatrix(true,false);const a=geometry.attributes.position;for(let i=0;i<a.count;i++){const v=new T.Vector3().fromBufferAttribute(a,i).applyMatrix4(m.matrixWorld);a.setY(i,a.getY(i)+sample(project(v.x,v.z)).groundY-(root.position.y-.32));}geometry.computeVertexNormals();}return m;}
  const box=(root,name,mat,x,y,z,w,h,d)=>part(root,name,new T.BoxGeometry(w,h,d),mat,x,y,z);
  function artwork(root,id,w,h,x,y,z,angle=0){const g=new T.PlaneGeometry(w,h),uv=g.attributes.uv,[px,py,pw,ph]=ART_RECTS[id];for(let i=0;i<uv.count;i++)uv.setXY(i,(px+uv.getX(i)*pw)/1536,1-(py+(1-uv.getY(i))*ph)/1024);const m=part(root,'HK artwork '+id,g,materials[id],x,y,z);m.rotation.y=angle;return m;}
- function board(parent,id,w,h,pos,heading,name){const g=new T.Group();g.name=name;g.position.copy(pos);g.rotation.y=heading;parent.add(g);box(g,'Advert frame',metal,0,0,0,w+.16,h+.16,.18);artwork(g,id,w,h,0,0,.101);return g;}
+ function board(parent,id,w,h,pos,heading,name){const g=new T.Group();g.name=name;g.position.copy(pos);g.rotation.y=heading;parent.add(g);box(g,'Advert frame',metal,0,0,0,w+.16,h+.16,.18);artwork(g,id,w,h,0,0,.13);return g;}
  function lamps(g,w,h){for(const x of [-w*.32,w*.32]){box(g,'Advert floodlight arm',metal,x,h/2+.2,.36,.06,.06,.7);box(g,'Advert floodlight',metal,x,h/2+.15,.69,.36,.13,.2);box(g,'Advert lamp lens',lens,x,h/2+.075,.69,.3,.025,.16);}}
  return {materials,board,lamps,
  setNight(on){materials.forEach((m,i)=>m.emissiveIntensity=on?(i>=6?.65:.85):0);lens.emissiveIntensity=on?1.5:0;[white,yellow,wood,green,blue,red].forEach(m=>m.emissiveIntensity=on?.2:0);colors.forEach(m=>m.emissiveIntensity=on?1:.08);},
@@ -50,7 +50,7 @@ export function createPlazaAssets(){
  const orient=sample(a2.s).heading-Math.PI/2;
  const local=(name,ds,lat)=>{const g=new T.Group();g.name=name;g.position.copy(at(ds,lat));g.rotation.y=orient;root.add(g);return g;};
  const lamp=(ds,lat)=>{const p=parkLamp(batch,at(ds,lat),5.5,mats.lamp,Math.floor((a2.s+ds)/240));lampPositions.push({s:a2.s+ds,x:p.x,y:p.y,z:p.z});};
- for(const [i,[ds,lat]] of LIGHTBOX_SITES.entries()){const p=at(ds,lat,1.9),g=board(root,3+i%3,1.35,2.1,p,orient,'A2 plaza lightbox');artwork(g,3+i%3,1.35,2.1,0,0,-.101,Math.PI);box(g,'Lightbox base',metal,0,-1.42,0,1.65,.25,.65);box(g,'Lightbox pedestal',metal,0,-1.2,0,.9,.35,.2);lampPositions.push({s:a2.s+ds,x:p.x,y:p.y+1,z:p.z});}
+ for(const [i,[ds,lat]] of LIGHTBOX_SITES.entries()){const p=at(ds,lat,1.9),g=board(root,3+i%3,1.35,2.1,p,orient,'A2 plaza lightbox');artwork(g,3+i%3,1.35,2.1,0,0,-.13,Math.PI);box(g,'Lightbox base',metal,0,-1.42,0,1.65,.25,.65);box(g,'Lightbox pedestal',metal,0,-1.2,0,.9,.35,.2);lampPositions.push({s:a2.s+ds,x:p.x,y:p.y+1,z:p.z});}
  const letters=local('Hung Shui Kiu landmark',-80,-52);box(letters,'Blue activity paving',blue,0,-.005,0,31,.035,10);
  const font=new FontLoader().parse(fontData);const words=['HUNG','SHUI','KIU'].map(word=>{const g=new TextGeometry(word,{font,size:2.2,depth:.25,curveSegments:3,bevelEnabled:false});g.computeBoundingBox();return g;});let cursor=-(words.reduce((sum,g)=>sum+g.boundingBox.max.x,0)+2)/2;
  for(const [i,word] of ['HUNG','SHUI','KIU'].entries()){const geo=words[i];part(letters,'Landmark letters '+word,geo,colors[i],cursor,at(-80-cursor,-52).y-letters.position.y+.08,0);cursor+=geo.boundingBox.max.x+1;}

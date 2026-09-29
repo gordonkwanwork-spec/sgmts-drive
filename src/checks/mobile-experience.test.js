@@ -5,12 +5,12 @@ const experience=readFileSync(new URL('../experience.js',import.meta.url),'utf8'
 const environment=readFileSync(new URL('../environment.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../experience.css',import.meta.url),'utf8');
 // Mobile hide keeps exactly the driving controls and the camera button (25 Sep 2026 request).
-assert(css.includes('html.mobile body.clean-view :is([data-action=go],[data-action=stop],[data-action=doors],[data-action=express],[data-action=cruise],#speed-dial,#camera){visibility:visible!important}'));
+assert(css.includes('html.mobile body.clean-view :is([data-action=go],[data-action=stop],[data-action=doors],[data-action=express],[data-action=cruise],#camera,#ff-button){visibility:visible!important}'));
 // Every button with a shortcut carries a visible hotkey badge (hidden on touch layouts).
 assert(experience.includes('b.dataset.hotkey=key')&&css.includes('button[data-hotkey]::after{content:attr(data-hotkey)')&&css.includes('html.mobile button[data-hotkey]::after{display:none}'));
 
 assert(experience.includes("const CAMERAS=['Third person / 跟隨','Cockpit / 駕駛室','Bird’s-eye / 鳥瞰','Platform / 月台']"));
-assert(experience.includes('max="50"')&&experience.includes('onLoop?12:50'));
+assert(experience.includes('max="60"')&&experience.includes('onLoop?12:60'));
 assert(experience.includes("if(mobile||!night){streetLights.forEach(light=>light.intensity=0);return;}"));
 // Warnings are trilingual and share the announcement queue; no English-only speech.
 const audio=readFileSync(new URL('../audio.js',import.meta.url),'utf8');
