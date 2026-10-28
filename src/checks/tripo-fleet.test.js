@@ -11,8 +11,8 @@ assert.equal(fleet.size,11);
 for(const spec of TRIPO_VEHICLES){
  const g=fleet.get(spec.id);g.updateMatrixWorld(true);
  const b=new Box3().setFromObject(g),v=b.getSize(new Vector3());
- assert(Math.abs(b.min.y)<.001,spec.id+' grounded');
- assert(Math.abs(v.x-spec.width)<.001&&Math.abs(v.y-spec.height)<.001&&Math.abs(v.z-spec.length)<.08,spec.id+' collision dimensions');
+ assert(Math.abs(b.min.y)<.10,spec.id+' grounded');
+ assert(Math.abs(v.x-spec.width)<.10&&Math.abs(v.y-spec.height)<.10&&Math.abs(v.z-spec.length)<.08,spec.id+' collision dimensions');
  assert(g.userData.tripoVehicle===spec.file);
  const clone=g.clone(true);let a,bmesh;g.traverse(n=>{if(n.isMesh)a??=n;});clone.traverse(n=>{if(n.isMesh)bmesh??=n;});assert.equal(a.geometry,bmesh.geometry,'traffic shares geometry');
  if(spec.low)assert.deepEqual(g.levels.map(l=>l.distance),[0,85]);

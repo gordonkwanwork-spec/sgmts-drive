@@ -425,18 +425,12 @@ export function rampPose(ramp,lane,phase,time,m=new T.Matrix4()){
 }
 const UP=new T.Vector3(0,1,0);
 function rampTraffic(ramps,truck){
- // One geometry (a group per material) in the truck's own frame.
- truck.updateMatrixWorld(true);const inv=truck.matrixWorld.clone().invert(),meshes=[];truck.traverse(n=>{if(n.isMesh)meshes.push(n);});
- const uv=meshes.every(m=>m.geometry.attributes.uv),geos=meshes.map(m=>{let g=m.geometry.clone().applyMatrix4(inv.clone().multiply(m.matrixWorld));
-  for(const k of Object.keys(g.attributes))if(!['position','normal',...(uv?['uv']:[])].includes(k))g.deleteAttribute(k);return g.index?g.toNonIndexed():g;});
- const geometry=mergeGeometries(geos,true),materials=meshes.map(m=>m.material),m=new T.Matrix4();
- // One mesh per ramp with fixed bounds (a truck never leaves its ramp), so a ramp off screen costs nothing.
- return ramps.map(ramp=>{const trucks=[0,1].flatMap(lane=>Array.from({length:TRUCKS_PER_LANE},(_,k)=>({ramp,lane,phase:(k+lane*.5)/TRUCKS_PER_LANE}))),
-  mesh=new T.InstancedMesh(geometry,materials,trucks.length),reach=Math.max(...ramp.lanes)+12;
-  mesh.name='ramp trucks';mesh.castShadow=mesh.receiveShadow=true;mesh.boundingSphere=new T.Sphere(new T.Vector3(ramp.cx,ramp.y0+ramp.rise/2,ramp.cz),Math.hypot(reach,ramp.rise/2));
-  const pose=time=>{trucks.forEach((t,i)=>mesh.setMatrixAt(i,rampPose(t.ramp,t.lane,t.phase,time,m)));mesh.instanceMatrix.needsUpdate=true;};pose(0);
-  mesh.onBeforeRender=renderer=>{const f=renderer.info.render.frame;if(mesh.userData.frame===f)return;mesh.userData.frame=f;pose(performance.now()/1000);};
-  return mesh;});}
+ truck.updateMatrixWorld(true);const inv=truck.matrixWorld.clone().invert(),by=new Map();
+ truck.traverse(n=>{if(!n.isMesh)return;let wheel=n.parent;while(wheel!==truck&&!wheel.userData.roadWheel)wheel=wheel.parent;const centre=wheel.userData.roadWheel?wheel.position:null,key=(centre?wheel.name:'body')+':'+n.material.uuid;let geo=n.geometry.clone().applyMatrix4(inv.clone().multiply(n.matrixWorld));if(centre)geo.translate(-centre.x,-centre.y,-centre.z);for(const k of Object.keys(geo.attributes))if(!['position','normal','uv'].includes(k))geo.deleteAttribute(k);if(geo.index)geo=geo.toNonIndexed();if(!by.has(key))by.set(key,{geos:[],material:n.material,centre:centre?.clone(),radius:wheel.userData.roadWheel?.radius});by.get(key).geos.push(geo);});
+ const parts=[...by.values()].map(p=>{const geometry=mergeGeometries(p.geos);p.geos.forEach(g=>g.dispose());return {...p,geometry};}),m=new T.Matrix4(),turn=new T.Matrix4(),spin=new T.Matrix4();
+ return ramps.flatMap(ramp=>{const trucks=[0,1].flatMap(lane=>Array.from({length:TRUCKS_PER_LANE},(_,k)=>({ramp,lane,phase:(k+lane*.5)/TRUCKS_PER_LANE}))),reach=Math.max(...ramp.lanes)+12;
+  return parts.map(p=>{const mesh=new T.InstancedMesh(p.geometry,p.material,trucks.length);mesh.name=p.centre?'ramp wheels':'ramp trucks';mesh.castShadow=mesh.receiveShadow=true;mesh.boundingSphere=new T.Sphere(new T.Vector3(ramp.cx,ramp.y0+ramp.rise/2,ramp.cz),Math.hypot(reach,ramp.rise/2));
+   const pose=time=>{trucks.forEach((t,i)=>{rampPose(t.ramp,t.lane,t.phase,time,m);if(p.centre){turn.makeTranslation(p.centre.x,p.centre.y,p.centre.z).multiply(spin.makeRotationX(-time*RAMP_SPEED/p.radius));m.multiply(turn);}mesh.setMatrixAt(i,m);});mesh.instanceMatrix.needsUpdate=true;};pose(0);mesh.onBeforeRender=renderer=>{const f=renderer.info.render.frame;if(mesh.userData.frame===f)return;mesh.userData.frame=f;pose(performance.now()/1000);};return mesh;});});}
 
 // Lit-window materials for the game's night switch.
 export const nightMaterials=()=>Object.values(lotMaterials()).filter(m=>m.emissiveMap);

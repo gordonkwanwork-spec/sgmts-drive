@@ -1,3 +1,5 @@
+import {rigVehicle} from './vehicle-motion.js';
+import {staticMotorRider} from './street-models.js';
 import * as T from 'three';
 import {COLLEAGUES} from './colleagues.js';
 
@@ -36,13 +38,14 @@ export function vehicleModel(gltf,spec){
  return root;
 }
 
-export async function loadTripoVehicles(loader,url){
+export async function loadTripoVehicles(loader,url,riderSource=null){
  const files=[...new Set(TRIPO_VEHICLES.flatMap(v=>[v.file,...(v.low?[v.low]:[])]))];
  const sources=Object.fromEntries(await Promise.all(files.map(async f=>[f,await loader.loadAsync(url(f))])));
  const templates=new Map();
  for(const spec of TRIPO_VEHICLES){
-  const main=vehicleModel(sources[spec.file],spec);let root=main;
-  if(spec.low){root=new T.LOD();root.addLevel(main,0);root.addLevel(vehicleModel(sources[spec.low],spec),85);root.name=spec.id;root.userData.tripoVehicle=spec.file;}
+  const main=rigVehicle(vehicleModel(sources[spec.file],spec),spec);let root=main;
+  if(spec.low){root=new T.LOD();root.addLevel(main,0);root.addLevel(rigVehicle(vehicleModel(sources[spec.low],spec),spec),85);root.name=spec.id;root.userData.tripoVehicle=spec.file;}
+  if(riderSource&&['motorbike','motor-scooter'].includes(spec.id))root.add(staticMotorRider(riderSource,spec.id==='motor-scooter'));
   // Small shared emissive lamps keep the existing night-lighting path working.
   for(const [end,color,name] of [[-1,0xfff4dc,'light'],[1,0xc52018,'red']]){
    const material=new T.MeshStandardMaterial({color,emissive:color,emissiveIntensity:.35});material.name=name;

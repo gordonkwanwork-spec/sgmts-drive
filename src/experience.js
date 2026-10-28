@@ -1,3 +1,4 @@
+import {animateRoadWheels} from './vehicle-motion.js';
 import {stationBenchSeats,nearestStation,uniqueStationPeople} from './station-people.js';
 import {COLLEAGUES} from './colleagues.js';
 import {TRIPO_PEOPLE,TRIPO_VEHICLES,loadTripoVehicles} from './tripo-assets.js';
@@ -827,6 +828,7 @@ function actors(dt){const subjectS=viewS();
   c.group.position.set(r.x+r.lx*c.lat+r.tx*c.along,(r.elevated?r.groundY:r.y)+c.along*(r.elevated?0:r.grade)+.08,r.z+r.lz*c.lat+r.tz*c.along);c.group.rotation.y=r.heading+c.dir*Math.PI/2;c.group.visible=Math.abs(j.s-subjectS)<450;
   if(c.group.visible)contact(c.group,c.width,c.length,c.height,'Traffic');
  }
+ for(const c of traffic)if(c.group.visible)animateRoadWheels(c.group,c.v*dt);
  updateStreetLife(dt,subjectS);updateBirds(dt,subjectS);
  for(const p of walkerObjects){
   const previousX=p.group.position.x,previousY=p.group.position.y,previousZ=p.group.position.z;
@@ -1085,7 +1087,7 @@ const rainGeometry=new T.BufferGeometry();rainGeometry.setAttribute('position',n
 async function boot(){try{let loaded=0;
  // ponytail: every large model starts downloading at once; the sequence below only awaits them in build order.
  const rosterDownload=Promise.all(TRIPO_PEOPLE.map(c=>loader.loadAsync(asset('characters/tripo/'+c.path))));
- const fleetDownload=loadTripoVehicles(loader,f=>asset('vehicles/tripo/'+f));
+ const fleetDownload=rosterDownload.then(roster=>loadTripoVehicles(loader,f=>asset('vehicles/tripo/'+f),roster[15]));
  const download=Object.fromEntries(['street-kit.glb','tuen-ma-train.glb','art.glb','characters/tripo/schoolboy-white-uniform-blue-backpack-walk.glb','characters/tripo/schoolgirl-blue-uniform-walk.glb',...STOPS.map(st=>`station-${st.id}.glb`)].map(f=>[f,loader.loadAsync(asset(f))]));
 
  [colleagueModels,vehicleModels]=await Promise.all([rosterDownload,fleetDownload]);
