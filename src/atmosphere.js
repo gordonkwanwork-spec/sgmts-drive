@@ -160,14 +160,26 @@ export function createAtmosphere({renderer,scene,camera,sky,sun,ambient,quality}
   bloom=new UnrealBloomPass(new T.Vector2(size.x/2,size.y/2),.2,.55,1.3);composer.addPass(bloom);
   cinematic=new CinematicPass(camera);composer.addPass(cinematic);
  }
- let look=LOOKS.morning,condition='morning',flash=0,nextFlash=12,cinematicOn=quality==='high';
+ let look={...LOOKS.morning},condition='morning',flash=0,nextFlash=12,cinematicOn=quality==='high',shift=[0,0];// player's sun offset in degrees [azimuth, height], kept across conditions
+ // Aim the sun at the condition's preset plus the player's offset; every sun consumer reads ATMOS.uSunDir or look.sun.
+ function aim(){const b=(LOOKS[condition]||LOOKS.morning).sun;look.sun=dir(T.MathUtils.clamp(Math.asin(b.y)+shift[1]*DEG,.03,1.5),Math.atan2(b.x,b.z)+shift[0]*DEG);ATMOS.uSunDir.value.copy(look.sun);sky.material.uniforms.sunPosition.value.copy(look.sun);}
  if(cinematicOn)buildPost();
  const sunScreen=new T.Vector3();
+ function bake(){
+  const isNight=condition==='night',name=condition;
+  const layers=[isNight?night:sky,clouds],parents=layers.map(o=>o.parent),skyScale=sky.scale.x;sky.scale.setScalar(400);
+  ground.material.color.set(isNight?0x07090c:name==='rain'?0x3b4240:0x4f5a48);layers.forEach(o=>{envScene.add(o);o.position.set(0,0,0);});
+  envTarget?.dispose();envTarget=pmrem.fromScene(envScene,0,.1,2000);scene.environment=envTarget.texture;
+  layers.forEach((o,i)=>parents[i].add(o));sky.scale.setScalar(skyScale);
+ }
  const api={clouds,night,
   get cinematic(){return cinematicOn;},
   setCinematic(on){cinematicOn=on;if(on&&!composer)buildPost();},
+  // Cheap enough to call every slider tick; call bake() (re-lights reflections and ambient) once the slider settles.
+  setSunShift(az,el,settled){shift=[az,el];aim();if(settled)bake();},
+  get sunShift(){return shift;},
   setCondition(name){
-   condition=name;look=LOOKS[name]||LOOKS.morning;const isNight=name==='night';
+   condition=name;look={...(LOOKS[name]||LOOKS.morning)};aim();const isNight=name==='night';
    ATMOS.uSunDir.value.copy(look.sun);ATMOS.uSunFog.value.set(look.sunFog);
    sky.visible=!isNight;night.visible=isNight;
    const su=sky.material.uniforms;su.sunPosition.value.copy(look.sun);su.turbidity.value=look.sky.turbidity;su.rayleigh.value=look.sky.rayleigh;su.mieCoefficient.value=look.sky.mie;su.mieDirectionalG.value=look.sky.g;
@@ -175,11 +187,7 @@ export function createAtmosphere({renderer,scene,camera,sky,sun,ambient,quality}
    scene.fog.color.set(look.fog);scene.fog.density=look.density;scene.background=new T.Color(look.fog);
    renderer.toneMappingExposure=look.exposure;scene.environmentIntensity=look.env;
    cu.uCover.value=look.cloud.cover;cu.uLit.value.set(look.cloud.lit);cu.uShade.value.set(look.cloud.shade);cu.uOpacity.value=look.cloud.opacity;cu.uSunCol.value.set(look.sunColor).multiplyScalar(isNight?.1:.6);cu.uHorizon.value.set(look.fog);
-   // Bake the sky (and cloud deck) into the reflection/ambient environment.
-   const layers=[isNight?night:sky,clouds],parents=layers.map(o=>o.parent),skyScale=sky.scale.x;sky.scale.setScalar(400);
-   ground.material.color.set(isNight?0x07090c:name==='rain'?0x3b4240:0x4f5a48);layers.forEach(o=>{envScene.add(o);o.position.set(0,0,0);});
-   envTarget?.dispose();envTarget=pmrem.fromScene(envScene,0,.1,2000);scene.environment=envTarget.texture;
-   layers.forEach((o,i)=>parents[i].add(o));sky.scale.setScalar(skyScale);
+   bake();
    if(bloom){[bloom.strength,bloom.radius,bloom.threshold]=look.bloom;}
   },
   update(dt,time,subjectY){
@@ -195,7 +203,7 @@ export function createAtmosphere({renderer,scene,camera,sky,sun,ambient,quality}
    u.uSunUV.value.set(sunScreen.x*.5+.5,sunScreen.y*.5+.5);u.uSunOn.value=look.shafts>0&&sunScreen.z<1?T.MathUtils.smoothstep(facing,.1,.6):0;u.uShafts.value=look.shafts;u.uSunCol.value.set(look.sunColor);
   },
   render(){if(cinematicOn&&composer)composer.render();else renderer.render(scene,camera);},
-  setSize(w,h){composer?.setSize(w,h);},
+  setSize(w,h){composer?.setPixelRatio(renderer.getPixelRatio());composer?.setSize(w,h);},
  };
  return api;
 }

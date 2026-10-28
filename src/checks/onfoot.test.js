@@ -1,11 +1,14 @@
+import {junctionPoint} from '../street/junction-frame.js';
 import assert from 'node:assert/strict';
 import {groundAt,pushOut,walkStep,passengerLine,STEP_UP,pushOutFences,JUMP_SPEED,GRAVITY,FENCE_CLEAR} from '../onfoot.js';
-import {sample,STOPS,LENGTH} from '../alignment.js';
+import {sample,STOPS,LENGTH,PLATFORM_RISE} from '../alignment.js';
 
 // Surface is finite along the whole corridor, on both sides and well off it.
 for(let s=0;s<=LENGTH;s+=25)for(const lat of [0,9,-14,-40,60]){const r=sample(s),g=groundAt(r.x+r.lx*lat,r.z+r.lz*lat,s);assert(Number.isFinite(g.y),`ground NaN at s=${s} lat=${lat}`);}
 // Platform tops sit above the carriageway at every station.
-for(const st of STOPS){const r=sample(st.s),lat=st.platformLateral+1.5,road=groundAt(r.x,r.z,st.s),plat=groundAt(r.x+r.lx*lat,r.z+r.lz*lat,st.s);assert(Math.abs(plat.y-road.y-.32)<.05,`${st.id} platform height`);}
+for(const st of STOPS){const r=sample(st.s),lat=st.platformLateral+1.5,road=groundAt(r.x,r.z,st.s),plat=groundAt(r.x+r.lx*lat,r.z+r.lz*lat,st.s);assert(Math.abs(plat.y-road.y-.32-PLATFORM_RISE)<.05,`${st.id} platform height`);}
+// ST-5301 Section C: approximately 300 mm above the road, including paving.
+assert.equal(PLATFORM_RISE,0,'drawing platform datum retained');
 // Colliders push out; a viaduct side cannot be stepped onto from the ground.
 const out=pushOut(1,0,.35,[{x:0,z:0,radius:2}]);assert(Math.hypot(out.x,out.z)>=2.34);
 const deck=Array.from({length:LENGTH},(_,s)=>sample(s)).find(r=>r.elevated&&r.y-r.groundY>3);
@@ -32,17 +35,23 @@ for(const st of STOPS)for(const platform of st.platforms)for(const dir of [-1,1]
  if(st.id==='A1'&&dir===-1)continue;
  const s=Math.max(4,Math.min(LENGTH-4,stationAccess(st,platform,dir).end+dir*2)),r=sample(s),lat=platform.side*(roadSection(s).right+2.8);
  assert(Math.abs(groundAt(r.x+r.lx*lat,r.z+r.lz*lat,s).y-r.groundY-footpathHeight(s))<.02,`${st.id} bike access surface`);
+ // Walking down the access ramp: no step, gentler than 1:12, from platform level to the footpath.
+ const {a,b,end}=stationAccess(st,platform,dir);let prev=null;
+ for(let k=0;k<=20;k++){const u=k/20,p=a[0].clone().lerp(a[1],.5).lerp(b[0].clone().lerp(b[1],.5),u),y=groundAt(p.x,p.z,st.s+platform.centerOffset+dir*(st.footprintLength/2)+(end-st.s-platform.centerOffset-dir*st.footprintLength/2)*u).y;
+  if(prev){const run=Math.hypot(p.x-prev.p.x,p.z-prev.p.z);assert(Math.abs(y-prev.y)<=run/12+.01,`${st.id} ${dir} ramp step ${(y-prev.y).toFixed(3)} over ${run.toFixed(2)} m`);}prev={p,y};}
+ assert(Math.abs(prev.y-b[0].y)<.05,`${st.id} ramp reaches footpath`);
 }
 
 // All four junction corners use the raised slab surface, including the road grade.
 const {JUNCTIONS,sideCrossing}=await import('../alignment.js');
 for(const j of JUNCTIONS){const r=sample(j.s),w=roadSection(j.s).right;
  for(const sx of [-1,1])for(const sz of [-1,1]){
-  const x=sx*(w+6-4/Math.SQRT2),z=sz*(j.halfWidth+6-4/Math.SQRT2),wx=r.x-r.lx*x-r.tx*z,wz=r.z-r.lz*x-r.tz*z;
-  assert(Math.abs(groundAt(wx,wz,j.s-z).y-(r.y-r.grade*z+.3))<.002,`${j.name}: raised corner`);
+  if(j.c===2650&&sx===1&&sz===-1)continue; // This corner is the separately checked rounded L35 median nose.
+  const x=sx*(w+6-4/Math.SQRT2),z=sz*(j.halfWidth+6-4/Math.SQRT2),p=junctionPoint(j,x,.18-r.grade*z,z),wx=r.x-r.lx*p.x-r.tx*p.z,wz=r.z-r.lz*p.x-r.tz*p.z;
+  assert(Math.abs(groundAt(wx,wz,j.s-z).y-(r.y+p.y))<.002,`${j.name}: raised corner`);
   const rx=sx*sideCrossing(j,sx),rz=sz*(j.halfWidth+.65),px=r.x-r.lx*rx-r.tx*rz,pz=r.z-r.lz*rx-r.tz*rz;
   // The elevated cycle deck takes precedence where it crosses above a side-road ramp.
-  const g=groundAt(px,pz,j.s-rz),ramp=r.y-r.grade*rz+.025+.28*.65/3.75;
+  const g=groundAt(px,pz,j.s-rz),ramp=r.y-r.grade*rz+.05+.13*.65/3.75;
   assert(g.y>=ramp-.002,`${j.name}: ramp does not sink below paving`);
  }
 }
@@ -54,3 +63,20 @@ for(const j of JUNCTIONS){const s=j.s+j.halfWidth+10,w=roadSection(s).right,geo=
   assert(found,'Dropped-kerb boundary vertex is present');}
  geo.dispose();
 }
+
+// Auto-follow converges behind every held direction without making the walker circle.
+const {followWalking}=await import('../onfoot.js');
+for(const [f,side] of [[1,0],[-1,0],[0,-1],[0,1],[1,1],[-1,-1]]){
+ const p={heading:3.1},o={yaw:3.1},want=o.yaw+Math.atan2(-side,f);
+ for(let i=0;i<300;i++)followWalking(p,o,f,side,1/60);
+ const gap=(a,b)=>Math.abs(Math.atan2(Math.sin(a-b),Math.cos(a-b)));
+ assert(gap(p.heading,want)<.001,'held input must keep its world heading');
+ assert(gap(o.yaw,p.heading)<.001,'camera must settle behind the walker');
+ o.yaw+=.8;followWalking(p,o,0,0,1/60);const manual=o.yaw;
+ followWalking(p,o,0,0,1/60);assert.equal(o.yaw,manual,'stationary mouse look stays free');
+ followWalking(p,o,1,0,1/60);assert.equal(p.walkYaw,manual,'new movement uses the current view');
+}
+console.log('Walking camera follows behind; held sideways/backwards movement stays straight.');
+// Building walls (fence top = eaves height) stay solid even at the top of a jump.
+{const wall=[{ax:-5,az:0,bx:5,bz:0,y:0,top:2.75,wall:true}];let x=0,z=-1;for(let i=0;i<30;i++)({x,z}=pushOutFences(x,z+.08,.35,wall,1.27));assert(z<0,'jumped through a building wall');}
+console.log('Drawing-height platforms, access ramps graded, building walls solid to a jump');

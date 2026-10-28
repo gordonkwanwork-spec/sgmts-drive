@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 // Dev-only endpoints for the editors: save the data file, list and upload .glb models.
-// editor.html → /__lots (public/lots/lots.json, public/lots/models); street.html → /__street (public/street/furniture.json, public/street/models).
+// The map editor (editor.html; street.html redirects to it) uses both: /__lots (public/lots/lots.json, public/lots/models) and /__street (public/street/furniture.json incl. drawn streets and hills, public/street/models).
 function endpoints(route,dir,file,valid){const root=path.resolve(dir);return server=>server.middlewares.use(route,(req,res)=>{
  const send=(code,body)=>{res.statusCode=code;res.setHeader('Content-Type','application/json');res.end(JSON.stringify(body));};
  const body=()=>new Promise(r=>{const c=[];req.on('data',d=>c.push(d));req.on('end',()=>r(Buffer.concat(c)));});

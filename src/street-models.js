@@ -1,4 +1,5 @@
 import * as T from 'three';
+import {clone as cloneSkinned} from 'three/addons/utils/SkeletonUtils.js';
 
 // Two rigid leg segments keep knees bent and feet attached to the pedals.
 export function cyclingPose(phase,side){
@@ -43,10 +44,19 @@ function fitLimb(r,upper,lower,end,target,bendHint){
 }
 
 export const PEDESTRIAN_COUNT=12;
+// The sun's shadow is faint under the sky fill (and absent at night), so every person also gets a soft contact disc that keeps them planted.
+let discMaterial;const discGeometry=new T.PlaneGeometry(1,1).rotateX(-Math.PI/2);
+export function contactShadow(group,radius){
+ if(!discMaterial){const N=64,data=new Uint8Array(N*N*4);
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){const a=Math.min(1,Math.max(0,(1-Math.hypot(x+.5-N/2,y+.5-N/2)/(N/2))/.6));data.set([0,0,0,255*a*a*(3-2*a)],(y*N+x)*4);}
+  const map=new T.DataTexture(data,N,N);map.magFilter=map.minFilter=T.LinearFilter;map.generateMipmaps=false;map.needsUpdate=true;
+  discMaterial=new T.MeshBasicMaterial({map,transparent:true,opacity:.55,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});}
+ const disc=new T.Mesh(discGeometry,discMaterial);disc.name='contact shadow';disc.position.y=.02;disc.scale.setScalar(2*radius);group.add(disc);return group;
+}
 // Use the shaded base colour, including the face atlas and vertex colours, for lamp fill.
 export function characterLighting(group){
  const glow={value:0};
- group.traverse(n=>{if(!n.isMesh)return;
+ group.traverse(n=>{if(!n.isMesh||n.name==='contact shadow')return;
   const prepare=source=>{const material=source.clone();if(!material.emissive)return material;
    material.emissive.set(0);
    material.onBeforeCompile=shader=>{
@@ -71,8 +81,32 @@ export function importedPedestrian(gltf){
  const box=new T.Box3().setFromObject(model),scale=1.75/(box.max.y-box.min.y);
  model.scale.multiplyScalar(scale);model.position.y-=box.min.y*scale;model.rotation.y=Math.PI;
  model.traverse(n=>{if(n.isMesh){n.castShadow=true;n.receiveShadow=true;n.material=n.material.clone();}});
- group.name='Imported NPC · Quaternius Casual Character';group.add(model);
+ group.name='Imported NPC · Quaternius Casual Character';group.add(model);contactShadow(group,.7);
  group.userData.importedNPC={mixer,actions,current:actions.Idle_Neutral};return group;
+}
+// Tripo Mixamo rigs use the shared distance-locked poses by default. Complete authored motion sets can opt into baked playback.
+// The model is normalised to 1.75 m and the group is scaled to `height`, so stride length follows body size.
+export function tripoPlayer(gltf,height=1.75,name='Tripo character',baked=false){
+ const group=new T.Group(),model=cloneSkinned(gltf.scene);
+ model.updateMatrixWorld(true);
+ const box=new T.Box3().setFromObject(model),scale=1.75/(box.max.y-box.min.y),bone=n=>model.getObjectByName('mixamorig'+n)||model.getObjectByName('mixamorig:'+n);
+ if(!bone('Hips'))throw Error('Tripo character needs its Mixamo humanoid rig');
+ // Exports differ in which way the rig faces (the schoolboy's is 90° off): turn the left-hip vector to −X, i.e. face −Z like the other actors.
+ const left=bone('LeftUpLeg').getWorldPosition(new T.Vector3()).sub(bone('RightUpLeg').getWorldPosition(new T.Vector3()));
+ model.scale.multiplyScalar(scale);model.position.y-=box.min.y*scale;model.rotation.y=Math.round(Math.atan2(-left.z,-left.x)/(Math.PI/2))*Math.PI/2;
+ model.traverse(n=>{if(n.isMesh){n.castShadow=true;n.receiveShadow=true;}});
+ group.add(model);group.name=name;group.scale.setScalar(height/1.75);group.userData.height=height;contactShadow(group,.7);
+ if(baked){
+  const r=rig(group),mixer=new T.AnimationMixer(model),actions={};
+  for(const source of gltf.animations){const clip=source.clone(),name=clip.name.split('.')[0];if(name==='turn')continue;
+   // The game owns position/heading. Tripo's run has a half-metre root offset even in its in-place export.
+   for(const track of clip.tracks)if(track.name.endsWith('Hips.position'))for(let i=0;i<track.values.length;i+=3){track.values[i]=bone('Hips').position.x;track.values[i+2]=bone('Hips').position.z;}
+   actions[name]=mixer.clipAction(clip);
+  }
+  for(const name of ['idle','walk','run','sit'])if(!actions[name])throw Error('Tripo animation missing '+name);
+  group.userData.tripoAnimation={mixer,actions,current:null,hip:r.bones.hips};
+ }
+ return group;
 }
 export function gaitAngles(phase,speed,age='adult'){
  const run=Math.min(1,Math.max(0,(speed-2.2)/1.3)),older=age==='older'?.7:1,swing=(.42+.35*run)*older;
@@ -90,15 +124,22 @@ export function gaitAngles(phase,speed,age='adult'){
 // so the gait maths above drive real bones: +X flexes a hip/shoulder/elbow forward, −X flexes a knee.
 const X=new T.Vector3(1,0,0),Y=new T.Vector3(0,1,0),Z=new T.Vector3(0,0,1),_q=new T.Quaternion(),_r=new T.Quaternion();
 const JOINTS=['hips','spine','chest','neck','head','clavicle_L','clavicle_R','upperarm_L','upperarm_R','forearm_L','forearm_R','hand_L','hand_R','thigh_L','thigh_R','shin_L','shin_R','foot_L','foot_R','toe_L','toe_R'];
+const MIXAMO={Hips:'hips',Spine:'spine',Spine1:'chest',Neck:'neck',Head:'head',Shoulder:'clavicle',Arm:'upperarm',ForeArm:'forearm',Hand:'hand',UpLeg:'thigh',Leg:'shin',Foot:'foot',ToeBase:'toe'};
+function jointName(name){const m=/^mixamorig:?(Left|Right)?([A-Za-z]+\d?)$/.exec(name);if(!m)return name.replace(/^P\d+_/,'');const joint=MIXAMO[m[2]];return joint&&(m[1]?joint+'_'+m[1][0]:joint);}
 export function rig(group){
  if(group.userData.rig!==undefined)return group.userData.rig;
  let mesh=null;group.traverse(n=>{if(!mesh&&n.isSkinnedMesh)mesh=n;});if(!mesh)return group.userData.rig=null;
  group.updateMatrixWorld(true);const inv=group.getWorldQuaternion(new T.Quaternion()).invert(),bones={};
- for(const bone of mesh.skeleton.bones){const name=bone.name.replace(/^P\d+_/,'');if(!JOINTS.includes(name))continue;
+ for(const bone of mesh.skeleton.bones){const name=jointName(bone.name);if(!JOINTS.includes(name))continue;
   // Parent rest frame relative to the character root, then the character axes in that frame.
   const parent=inv.clone().multiply(bone.parent.getWorldQuaternion(new T.Quaternion())).invert();
   bones[name]={bone,rest:bone.quaternion.clone(),pos:bone.position.clone(),x:X.clone().applyQuaternion(parent),y:Y.clone().applyQuaternion(parent),z:Z.clone().applyQuaternion(parent),
    scale:bone.parent.getWorldScale(new T.Vector3()).y/group.getWorldScale(new T.Vector3()).y};}
+ // A-posed Mixamo rigs hold their arms out: rest them hanging at the sides (poses are offsets from rest).
+ for(const [side,k] of [['L',-1],['R',1]]){const up=bones['upperarm_'+side],fore=bones['forearm_'+side];
+  if(!up||!fore||!/^mixamorig/.test(up.bone.name))continue;
+  const a=group.worldToLocal(up.bone.getWorldPosition(new T.Vector3())),b=group.worldToLocal(fore.bone.getWorldPosition(new T.Vector3()));
+  up.rest.premultiply(_q.setFromAxisAngle(up.z,Math.atan2(-1,k*.12)-Math.atan2(b.y-a.y,b.x-a.x)));}
  // Hip height above the feet, in the hips' parent units, for sitting and crouching.
  const hipY=new T.Vector3().setFromMatrixPosition(bones.hips.bone.matrixWorld).applyMatrix4(group.matrixWorld.clone().invert()).y;
  return group.userData.rig={mesh,bones,hipY};
@@ -131,7 +172,7 @@ export function sitPose(hipY,seat=.45,t=0,seed=0){
 }
 // Sitting on the ground: legs out in front, hands planted behind.
 export function groundSitPose(hipY,t=0,seed=0){
- const p=zero();p.drop=Math.max(0,hipY-.12);p.fwd=-.02;p.hips=[-.15,0,0];p.spine=[.08,0,0];p.chest=[.1+Math.sin(t*1.5+seed)*.015,0,0];p.head=[.05,Math.sin(t*.2+seed)*.4,0];
+ const p=zero();p.drop=Math.max(0,hipY-.18);p.fwd=-.02;p.hips=[-.15,0,0];p.spine=[.08,0,0];p.chest=[.1+Math.sin(t*1.5+seed)*.015,0,0];p.head=[.05,Math.sin(t*.2+seed)*.4,0];
  // Thighs rise ~15° above level (knees up), shins slope back down so the heels rest on the ground.
  for(const s of ['L','R']){const k=s==='R'?1:-1;p['thigh_'+s]=[1.98,0,k*.12];p['shin_'+s][0]=-.62;p['foot_'+s][0]=.1;p['upperarm_'+s]=[-.8,0,k*.22];p['forearm_'+s][0]=.05;p['hand_'+s][0]=-.6;}
  return p;
@@ -151,6 +192,21 @@ function apply(r,pose){
 /** Pose one pedestrian. `distance` is ground travel this frame; group.userData.action picks sit/jump/wheelchair:
  *  {sit:seatHeight} seats them (blending down over ~0.6 s), {air:true} while airborne, landing crouch after. */
 export function posePedestrian(group,distance,dt=1/60){
+ // The frame loop can send microsecond remainder steps; distance/dt is meaningless there (it read as 'stopped' and restarted the walk clip every frame). Pool them.
+ const pool=group.userData.pool??={d:0,t:0};pool.d+=distance;pool.t+=dt;if(pool.t<1/240)return;distance=pool.d;dt=pool.t;pool.d=pool.t=0;
+ const baked=group.userData.tripoAnimation;
+ if(baked){
+  const a=group.userData.action||{},speed=distance/dt/group.scale.y;
+  if(!a.air&&!a.ground){
+   const name=a.sit!==undefined?'sit':speed>2.2?'run':speed>.08?'walk':'idle',next=baked.actions[name];
+   if(next!==baked.current){baked.current?.fadeOut(.2);next.reset().setEffectiveWeight(1).fadeIn(.2).play();baked.current=next;}
+   next.setEffectiveTimeScale(name==='walk'?Math.max(.2,speed/1.4):name==='run'?Math.max(.2,speed/3.5):1);
+   baked.mixer.update(dt);
+   if(name==='sit'){const h=baked.hip;h.bone.position.y=(a.sit/group.scale.y+.1-rig(group).hipY)/h.scale+h.pos.y;}
+   return;
+  }
+  if(baked.current){baked.mixer.stopAllAction();baked.current=null;}
+ }
  const imported=group.userData.importedNPC;
  if(imported){
   const speed=distance/Math.max(dt,1e-4),name=speed<.08?'Idle_Neutral':speed>2.2?'Run':'Walk',next=imported.actions[name];

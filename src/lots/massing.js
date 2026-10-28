@@ -3,9 +3,12 @@
 import * as T from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {TessellateModifier} from 'three/addons/modifiers/TessellateModifier.js';
 import {DATUM,project,sample} from '../alignment.js';
 import {polygonArea,pointInPolygon} from './wand.js';
+import {polygonContains,circleIntersects,rectangle,boundaryDistance} from './geometry.js';
 import {commercialMaterials,commercialPodium,commercialTower} from './commercial.js';
+import {detailMaterials,facadeDetail,nearCorridor} from './detail.js';
 
 // Plot ratios from S/HSK/2A Notes (Annex III). null = no PR control (height/storeys only).
 const PR={'C(1)':9.5,'C(2)':8,'C(3)':5,'C(4)':3,'C(5)':1.5,'R(A)1':6.5,'R(A)2':6,'R(A)3':5.5,'R(A)4':5,'R(A)5':3.8,'R(A)6':6.2,
@@ -24,32 +27,45 @@ export const USE_COLOURS={residential:0xe7a33e,commercial:0xd2463c,mixed:0xc76b9
 export const defaultModel=zone=>['residential','commercial','mixed','gic','logistics','enterprise','open','green'].includes(useOf(zone))?{type:'massing'}:{type:'none'};
 
 // ---------- facade textures (reference renders: white/grey towers with blue glazing, grid-frame retail podiums, green roofs) ----------
-function facade(draw,lit){const make=night=>{const c=document.createElement('canvas');c.width=c.height=256;const g=c.getContext('2d');draw(g,night);const t=new T.CanvasTexture(c);t.wrapS=t.wrapT=T.RepeatWrapping;t.colorSpace=T.SRGBColorSpace;t.anisotropy=4;return t;};
+// Canvases are 512 px drawn in 256-unit coordinates, so wall grain, frames and curtains stay crisp close to the route.
+function facade(draw,lit){const make=night=>{const c=document.createElement('canvas');c.width=c.height=512;const g=c.getContext('2d');g.scale(2,2);draw(g,night);const t=new T.CanvasTexture(c);t.wrapS=t.wrapT=T.RepeatWrapping;t.colorSpace=T.SRGBColorSpace;t.anisotropy=8;return t;};
  panes=[];const map=make(false),glass=panes;panes=null;const m=new T.MeshStandardMaterial({map,emissiveMap:lit?make(true):null,roughness:.8,metalness:0});reflective(m,256,256,glass);m.emissive.set(0);return m;}
 // Glass panes drawn in a day pass are recorded, so each facade gets a matching roughness/metalness map:
 // only the glass is smooth and reflective, walls stay matte.
 let panes=null;const pane=(g,x,y,w,h,fill)=>{g.fillStyle=fill;g.fillRect(x,y,w,h);panes?.push([x,y,w,h]);};
-function reflective(m,w,h,glass){if(!glass.length)return;
- const t=canvasTex(w,h,g=>{g.fillStyle='rgb(0,215,0)';g.fillRect(0,0,w,h);g.fillStyle='rgb(0,14,205)';for(const [x,y,ww,hh] of glass)g.fillRect(x,y,ww,hh);});// G = roughness, B = metalness. Glass is near-mirror: the pane colour tints the sky it reflects.
- t.colorSpace=T.NoColorSpace;Object.assign(m,{roughnessMap:t,metalnessMap:t,roughness:1,metalness:1,envMap:envMap(),envMapIntensity:.9});
+// Each pane gets its own roughness and a slight tilt (normal map), as unitised glazing never sits perfectly flush:
+// the reflected skyline steps and shifts from pane to pane instead of sliding across the facade as one mirror.
+function reflective(m,w,h,glass){if(!glass.length)return;const r=seeded(w*13+glass.length*7),tilt=glass.map(()=>[r()*34|0,(r()-.5)*40|0,(r()-.5)*40|0]);
+ const t=canvasTex(w,h,g=>{g.fillStyle='rgb(0,215,0)';g.fillRect(0,0,w,h);glass.forEach(([x,y,ww,hh],i)=>{g.fillStyle=`rgb(0,${8+tilt[i][0]},${190+tilt[i][0]})`;g.fillRect(x,y,ww,hh);});});// G = roughness, B = metalness. Glass is near-mirror: the pane colour tints the sky it reflects.
+ const n=canvasTex(w,h,g=>{g.fillStyle='rgb(128,128,255)';g.fillRect(0,0,w,h);glass.forEach(([x,y,ww,hh],i)=>{g.fillStyle=`rgb(${128+tilt[i][1]},${128+tilt[i][2]},250)`;g.fillRect(x,y,ww,hh);});});
+ t.colorSpace=n.colorSpace=T.NoColorSpace;Object.assign(m,{roughnessMap:t,metalnessMap:t,normalMap:n,normalScale:new T.Vector2(.6,.6),roughness:1,metalness:1,envMap:envMap(),envMapIntensity:1.05});
  // ponytail: the game's night switch only sets emissiveIntensity on lot materials; it also dims the daytime sky reflection.
- let ei=m.emissiveIntensity;Object.defineProperty(m,'emissiveIntensity',{get:()=>ei,set:v=>{ei=v;m.envMapIntensity=v>0?.1:.9;}});}
+ let ei=m.emissiveIntensity;Object.defineProperty(m,'emissiveIntensity',{get:()=>ei,set:v=>{ei=v;m.envMapIntensity=v>0?.1:1.05;}});}
 // Reflection environment: hazy Hong Kong sky with clouds, green hills and a distant skyline, then ground (equirect; three prefilters it).
 let ENV;function envMap(){return ENV||(ENV=Object.assign(canvasTex(1024,512,g=>{const r=seeded(3),sky=g.createLinearGradient(0,0,0,256);
  sky.addColorStop(0,'#4f86c0');sky.addColorStop(.7,'#a9c3da');sky.addColorStop(1,'#dfe6e8');g.fillStyle=sky;g.fillRect(0,0,1024,256);
  g.fillStyle='rgba(255,255,255,.45)';for(let i=0;i<22;i++){g.beginPath();g.ellipse(r()*1024,30+r()*160,40+r()*110,6+r()*16,0,0,Math.PI*2);g.fill();}
  g.fillStyle='#71877a';g.beginPath();g.moveTo(0,256);for(let x=0;x<=1024;x+=32)g.lineTo(x,236-Math.abs(Math.sin(x*.011)*22+Math.sin(x*.037)*9));g.lineTo(1024,256);g.fill();
- for(let x=0;x<1024;){const w=6+r()*22,h=6+r()*34,v=120+r()*50;g.fillStyle=`rgb(${v},${v+8},${v+16})`;g.fillRect(x,256-h,w,h);x+=w+r()*14;}
+ // two rows of towers (far hazy, near crisper with window grids), so facades reflect a city rather than a smooth gradient
+ for(const [near,top,shadeK] of [[0,70,1.08],[1,110,.82]])for(let x=-10;x<1024;){const w=8+r()*(near?30:20),h=10+r()*top,v=(118+r()*55)*shadeK|0;g.fillStyle=`rgb(${v},${v+8},${v+18})`;g.fillRect(x,256-h,w,h);
+  if(near){g.fillStyle=`rgba(${r()<.5?'40,60,80':'230,240,250'},.35)`;for(let yy=256-h+3;yy<252;yy+=4)for(let xx=x+2;xx<x+w-2;xx+=3)g.fillRect(xx,yy,2,2);}x+=w+r()*(near?18:8);}
  const gr=g.createLinearGradient(0,256,0,512);gr.addColorStop(0,'#7d8475');gr.addColorStop(1,'#3b3f37');g.fillStyle=gr;g.fillRect(0,256,1024,256);},false),{mapping:T.EquirectangularReflectionMapping}));}
 // Precast weathering: speckle, plus faint rain streaks below each ledge row.
 function weather(g,w,h,rows,seed){const r=seeded(seed);for(let i=0;i<w*h/40;i++){g.fillStyle=`rgba(${r()<.5?'0,0,0':'255,255,255'},${r()*.06})`;g.fillRect(r()*w,r()*h,1+r()*2,1+r()*2);}
  for(const y0 of rows)for(let i=0;i<w/14;i++){const x=r()*w,len=8+r()*40,gr=g.createLinearGradient(0,y0,0,y0+len);gr.addColorStop(0,`rgba(45,42,36,${.05+r()*.09})`);gr.addColorStop(1,'rgba(45,42,36,0)');g.fillStyle=gr;g.fillRect(x,y0,1+r()*3,len);}}
 const shade=(hex,k)=>{const n=parseInt(hex.slice(1),16);return `rgb(${[16,8,0].map(s=>Math.min(255,Math.round((n>>s&255)*k))).join(',')})`;};
-function windows(g,night,cols,rows,{wall,glass,frame=0,mullion=null,litColour='#ffd79a',litShare=.45}){
- const w=256/cols,h=256/rows;g.fillStyle=night?'#000':wall;g.fillRect(0,0,256,256);let seed=cols*31+rows;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+// Day pass extras: mosaic/panel grain on the wall (tiles: cell px), per-pane tint, curtains or blinds behind some panes,
+// and weathering streaks below each sill. The night pass keeps its own seeded lit pattern.
+function windows(g,night,cols,rows,{wall,glass,frame=0,mullion=null,litColour='#ffd79a',litShare=.45,tiles=0}){
+ const w=256/cols,h=256/rows;g.fillStyle=night?'#000':wall;g.fillRect(0,0,256,256);let seed=cols*31+rows;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647,d=seeded(cols*7+rows*3+11);
+ if(!night&&tiles){for(let y=0;y<256;y+=tiles)for(let x=0;x<256;x+=tiles){g.fillStyle=`rgba(${d()<.5?'0,0,0':'255,255,255'},${d()*.07})`;g.fillRect(x,y,tiles,tiles);}g.fillStyle='rgba(0,0,0,.07)';for(let k=0;k<256;k+=tiles){g.fillRect(k,0,.5,256);g.fillRect(0,k,256,.5);}}
  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){const x=c*w+frame,y=r*h+frame,ww=w-2*frame,hh=h-2*frame;
   if(night){if(rnd()<litShare){g.fillStyle=litColour;g.fillRect(x,y,ww,hh);}continue;}
-  pane(g,x,y,ww,hh,glass);g.fillStyle='rgba(255,255,255,.06)';g.fillRect(x,y,ww,hh*.3);if(mullion){g.fillStyle=mullion;g.fillRect(x+ww/2-1,y,2,hh);}}
+  pane(g,x,y,ww,hh,glass);g.fillStyle=`rgba(${d()<.5?'0,10,20':'255,255,255'},${d()*.14})`;g.fillRect(x,y,ww,hh);
+  if(d()<.35){const cw=ww*(.2+d()*.3);g.fillStyle=['rgba(236,228,206,.6)','rgba(214,206,190,.6)','rgba(200,214,222,.55)','rgba(240,232,214,.65)'][d()*4|0];g.fillRect(d()<.5?x:x+ww-cw,y+1,cw,hh-1);}
+  else if(d()<.2){g.fillStyle='rgba(230,230,224,.5)';for(let k=y+1;k<y+hh*(.3+d()*.5);k+=2.5)g.fillRect(x,k,ww,1.4);}
+  g.fillStyle='rgba(255,255,255,.06)';g.fillRect(x,y,ww,hh*.3);g.fillStyle='rgba(0,0,0,.18)';g.fillRect(x,y,ww,1.2);g.fillRect(x,y,1.2,hh);if(mullion){g.fillStyle=mullion;g.fillRect(x+ww/2-1,y,2,hh);}}
+ if(!night)weather(g,256,256,Array.from({length:rows},(_,r)=>r*h+h-frame),cols*17+rows);
 }
 // ---------- logistics (HK references: precast grid + spiral ramp drum, curved LED bands, white/orange punched, grey/orange frame) ----------
 // Hypothetical operators. Each has one 1024×256 slot in the sign atlas: bg = backlit board, no bg = channel letters.
@@ -141,13 +157,14 @@ function logisticsMaterials(){return {
 let MATS;
 export function lotMaterials(){return MATS||(MATS={
  // Tile sizes (metres) keep storeys at believable heights on every face.
- tower:Object.assign(facade((g,n)=>{windows(g,n,4,8,{wall:'#e9ecee',glass:'#6f93b3',frame:6,mullion:'#dfe5ea'});if(!n){g.fillStyle='#cfd6dc';for(let x=0;x<256;x+=64)g.fillRect(x,0,5,256);}},true),{userData:{tile:[12,25.2]}}),
- towerAlt:Object.assign(facade((g,n)=>{windows(g,n,6,8,{wall:'#d9dfe2',glass:'#4f7fa6',frame:4});if(!n){g.fillStyle='#7ea88f';g.fillRect(0,0,8,256);}},true),{userData:{tile:[15,25.2]}}),
+ tower:Object.assign(facade((g,n)=>{windows(g,n,4,8,{wall:'#e9ecee',glass:'#6f93b3',frame:6,mullion:'#dfe5ea',tiles:2});if(!n){g.fillStyle='#cfd6dc';for(let x=0;x<256;x+=64)g.fillRect(x,0,5,256);}},true),{userData:{tile:[12,25.2]}}),
+ towerAlt:Object.assign(facade((g,n)=>{windows(g,n,6,8,{wall:'#d9dfe2',glass:'#4f7fa6',frame:4,tiles:2});if(!n){g.fillStyle='#7ea88f';g.fillRect(0,0,8,256);}},true),{userData:{tile:[15,25.2]}}),
  ...commercialMaterials(),
- podium:Object.assign(facade((g,n)=>{windows(g,n,2,2,{wall:'#eceeee',glass:'#b98a55',frame:14,litColour:'#ffcf8a',litShare:.9});},true),{userData:{tile:[16,10]}}),
+ podium:Object.assign(facade((g,n)=>{windows(g,n,2,2,{wall:'#eceeee',glass:'#b98a55',frame:14,litColour:'#ffcf8a',litShare:.9,tiles:8});},true),{userData:{tile:[16,10]}}),
  campus:Object.assign(facade((g,n)=>{windows(g,n,1,4,{wall:'#f1f3f2',glass:'#5aa0a8',frame:0,litShare:.35});if(!n){g.fillStyle='#f1f3f2';for(let y=0;y<256;y+=64)g.fillRect(0,y,256,30);}},true),{userData:{tile:[20,18]}}),
- civic:Object.assign(facade((g,n)=>windows(g,n,3,3,{wall:'#f3f1ec',glass:'#789aab',frame:12,litShare:.5}),true),{userData:{tile:[12,13.5]}}),
- house:Object.assign(facade((g,n)=>windows(g,n,2,3,{wall:'#efe4cf',glass:'#6d7f8a',frame:20,litShare:.4}),true),{userData:{tile:[8,8.2]}}),
+ civic:Object.assign(facade((g,n)=>windows(g,n,3,3,{wall:'#f3f1ec',glass:'#789aab',frame:12,litShare:.5,tiles:6}),true),{userData:{tile:[12,13.5]}}),
+ house:Object.assign(facade((g,n)=>windows(g,n,2,3,{wall:'#efe4cf',glass:'#6d7f8a',frame:20,litShare:.4,tiles:3}),true),{userData:{tile:[8,8.2]}}),
+ ...detailMaterials(),// corridor facade relief (detail.js); listed here so the night switch lights shopfronts and signs
  ...logisticsMaterials(),
  dronePad:new T.MeshStandardMaterial({map:(()=>{const c=document.createElement('canvas');c.width=c.height=256;const g=c.getContext('2d');g.fillStyle='#39414a';g.fillRect(0,0,256,256);g.strokeStyle='#f2c230';g.lineWidth=14;g.beginPath();g.arc(128,128,104,0,Math.PI*2);g.stroke();g.fillStyle='#fff';g.font='bold 150px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText('H',128,136);const t=new T.CanvasTexture(c);t.colorSpace=T.SRGBColorSpace;return t;})(),roughness:.8,polygonOffset:true,polygonOffsetFactor:-2}),
  roofDeck:new T.MeshStandardMaterial({color:0xc9cdcf,roughness:.85}),
@@ -190,7 +207,7 @@ function slots(lot,w,d,gap,setback,ctx,limit=Infinity){
  const r=Math.hypot(w,d)/2;
  for(let u=Math.min(...us)+setback+w/2;u<=Math.max(...us)-setback-w/2;u+=w+gap)for(let v=Math.min(...vs)+setback+d/2;v<=Math.max(...vs)-setback-d/2;v+=d+gap){
   const x=ox+u*c+v*s,z=oz-u*s+v*c,corners=[[-1,-1],[1,-1],[1,1],[-1,1]].map(([a,b])=>[x+(a*w/2)*c+(b*d/2)*s,z-(a*w/2)*s+(b*d/2)*c]);
-  if(!corners.every(p=>pointInPolygon(p,lot.poly)&&edgeDistance(p,lot.poly)>=setback*.5)||!pointInPolygon([x,z],lot.poly))continue;
+  if(!polygonContains(lot.poly,corners,setback*.5))continue;
   out.push({x,z,angle});}
  // With a limit (planting), test scattered candidates only until enough pass: spreads trees and skips most clearance checks.
  if(limit<out.length)for(let i=out.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[out[i],out[j]]=[out[j],out[i]];}
@@ -212,7 +229,8 @@ function bigFootprints(lot,ctx,count){
    const st=[];for(let i=0;i<=nu;i++){const hi=i<nu?h[i]:0;let start=i;while(st.length&&st.at(-1)[1]>=hi){const [k,hk]=st.pop();const w=Math.min(i-k,22),d=Math.min(hk,16);if(!best||w*d>best.a)best={a:w*d,i0:k,i1:k+w,j0:j-d+1,j1:j+1};start=k;}st.push([start,hi]);}}
   if(!best||best.a*cell*cell<2500)break;
   for(let j=Math.max(0,best.j0-3);j<Math.min(nv,best.j1+3);j++)for(let i=Math.max(0,best.i0-3);i<Math.min(nu,best.i1+3);i++)free[j][i]=false;
-  const [x,z]=world(u0+(best.i0+best.i1)/2*cell,v0+(best.j0+best.j1)/2*cell);out.push({x,z,w:(best.i1-best.i0)*cell-4,d:(best.j1-best.j0)*cell-4,angle});}
+  const [x,z]=world(u0+(best.i0+best.i1)/2*cell,v0+(best.j0+best.j1)/2*cell),r={x,z,w:(best.i1-best.i0)*cell-4,d:(best.j1-best.j0)*cell-4,angle};
+  if(polygonContains(lot.poly,rectangle(r,4))&&(!ctx.allowed||ctx.allowed(x,z,Math.hypot(r.w+8,r.d+8)/2)))out.push(r);}
  return out;}
 // Planar 0–1 UVs over a flat decal's own bounds.
 function planarUV(g){g.computeBoundingBox();const b=g.boundingBox,p=g.attributes.position,uv=[];for(let i=0;i<p.count;i++)uv.push((p.getX(i)-b.min.x)/(b.max.x-b.min.x||1),(p.getZ(i)-b.min.z)/(b.max.z-b.min.z||1));g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));return g;}
@@ -245,8 +263,11 @@ function logisticsBuilding(r,i,lot,ctx,parts,ramps,floors,cap,dronePads){
  const solid=(mat,b,top=M.roof)=>{add(mat,b.walls);add(top,b.top);};
  // Paved apron: grows up to 16 m per side while its edge stays inside the lot.
  const reach=(axis,side)=>{for(let e=16;e>6;e-=2){const pts=[-1,0,1].map(k=>axis?at(k*r.w/2,side*(r.d/2+e)):at(side*(r.w/2+e),k*r.d/2));if(pts.every(p=>pointInPolygon(p,lot.poly)))return e;}return 6;};
- const eu=[reach(0,-1),reach(0,1)],ev=[reach(1,-1),reach(1,1)],[ax,az]=at((eu[1]-eu[0])/2,(ev[1]-ev[0])/2);
- add(M.yard,flat(roundedRect(ax,az,r.w+eu[0]+eu[1],r.d+ev[0]+ev[1],r.angle,8),y+.12));
+ let eu=[reach(0,-1),reach(0,1)],ev=[reach(1,-1),reach(1,1)],ax,az,apron;
+ const fit=()=>{[ax,az]=at((eu[1]-eu[0])/2,(ev[1]-ev[0])/2);apron={x:ax,z:az,w:r.w+eu[0]+eu[1],d:r.d+ev[0]+ev[1],angle:r.angle};return polygonContains(lot.poly,rectangle(apron))&&(!ctx.allowed||ctx.allowed(ax,az,Math.hypot(apron.w,apron.d)/2));};
+ while(!fit()&&Math.max(...eu,...ev)>0){eu=eu.map(v=>Math.max(0,v-2));ev=ev.map(v=>Math.max(0,v-2));}
+ if(fit())add(M.yard,flat(roundedRect(ax,az,apron.w,apron.d,r.angle,8),y+.12));
+
  // Dock storey recessed under a projecting canopy (with soffit), then the warehouse floors, slab ledges and parapet.
  add(M.dock,prism(ring(-3),y,DOCK,M.dock.userData.tile).walls);
  solid(M.canopy,prism(ring(5),y+DOCK-.9,.9,[4,4],0));add(M.canopy,flat(ring(5),y+DOCK-.9,.1,true));
@@ -294,25 +315,40 @@ export function massingParts(lot,ctx){
  seed=hashSeed(lot.id);const use=lot.style||useOf(lot.zone),M=lotMaterials(),parts=[],trees=[],ramps=[],area=polygonArea(lot.poly),pr=plotRatio(lot.zone);
  const ground=(x,z)=>ctx.ground?ctx.ground(x,z):0,topY=lot.maxBH!=null?lot.maxBH-DATUM:null;
  const add=(mat,roofMat,b)=>{parts.push({material:mat,geometry:b.walls},{material:roofMat,geometry:b.top});};
- const block=(slot,w,d,h,mat,roofMat=M.greenRoof,base=null)=>{const y=base??ground(slot.x,slot.z);add(mat,roofMat,box(slot.x,y,slot.z,w,h,d,slot.angle,mat.userData.tile));return y+h;};
+ // Buildings near the route also get facade relief (detail.js), keyed by their facade material's grid.
+ const kinds=new Map([[M.tower,'tower'],[M.towerAlt,'towerAlt'],[M.podium,'podium'],[M.civic,'civic'],[M.campus,'campus'],[M.house,'house']]);
+ const block=(slot,w,d,h,mat,roofMat=M.greenRoof,base=null,sink)=>{reserve(slot,w,d);const y=base??ground(slot.x,slot.z);add(mat,roofMat,box(slot.x,y,slot.z,w,h,d,slot.angle,mat.userData.tile,sink));
+  if(kinds.has(mat)&&nearCorridor(slot.x,slot.z))facadeDetail((material,geometry)=>parts.push({material,geometry}),{x:slot.x,z:slot.z,w,d,angle:slot.angle},y,h,kinds.get(mat),{ground:base==null,lot:hashSeed(lot.id)});return y+h;};
  const cap=(y,h)=>topY==null?h:Math.max(6,Math.min(h,topY-y));
- const base=ctx.allowedLow||ctx.allowed,plant=(spacing,limit,keep=()=>true)=>{for(const p of slots(lot,spacing*.5,spacing*.5,spacing*.5,3,{allowed:(x,z,r)=>keep(x,z)&&(!base||base(x,z,r))},limit)){const j=spacing*.3;trees.push({x:p.x+(rnd()-.5)*j,z:p.z+(rnd()-.5)*j,y:ground(p.x,p.z),s:.8+rnd()*.6});}};
+ const footprints=[],surfaces=[];
+ const reserve=(slot,w,d)=>{const poly=rectangle({...slot,w,d});footprints.push(poly);let apron=rectangle({...slot,w,d},2.5);
+  if(!polygonContains(lot.poly,apron)||ctx.allowed&&!ctx.allowed(slot.x,slot.z,Math.hypot(w+5,d+5)/2))apron=poly;
+  surfaces.push(apron);};
+ const base=ctx.allowedLow||ctx.allowed,plant=(spacing,limit,keep=()=>true)=>{
+  for(const p of slots(lot,spacing*.5,spacing*.5,spacing*.5,3,{allowed:(x,z,r)=>!base||base(x,z,r)})){
+   if(trees.length>=limit)break;
+   const j=spacing*.3,x=p.x+(rnd()-.5)*j,z=p.z+(rnd()-.5)*j,scale=.8+rnd()*.6,radius=2.6*scale+.5;
+   if(!pointInPolygon([x,z],lot.poly)||boundaryDistance([x,z],lot.poly)<radius||base&&!base(x,z,radius)||!keep(x,z)||surfaces.some(poly=>circleIntersects(x,z,radius,poly))||footprints.some(poly=>circleIntersects(x,z,radius+1,poly)))continue;
+   trees.push({x,z,y:ground(x,z),s:scale});
+  }
+ };
  if(use==='residential'||use==='mixed'){
-  const podiumH=use==='mixed'?18:12,pod=slots(lot,26,26,0,8,ctx);let roof=0;
-  for(const p of pod)roof=block(p,26,26,podiumH,M.podium);
+  const podiumH=use==='mixed'?18:12,pod=slots(lot,26,26,0,8,ctx);let roof=-Infinity,low=Infinity;
+  for(const p of pod){const r=block(p,26,26,podiumH,M.podium);roof=Math.max(roof,r);low=Math.min(low,r);}
   const storeys=lot.maxStoreys,plate=650,sites=slots(lot,24,26,26,14,ctx);
   const baseY=pod.length?roof:ground(...centroid(lot.poly));
   const towerH=cap(baseY,storeys?storeys*3.15:(topY??baseY+100)-baseY-2),floors=Math.max(1,towerH/3.15);
   const want=Math.max(1,Math.ceil((pr??5)*area*(use==='mixed'?.6:.9)/(plate*floors)));
-  sites.slice(0,want).forEach((p,i)=>{const h=cap(baseY,towerH-(i%3)*6.3),mat=i%2?M.towerAlt:M.tower;block(p,24,26,h,mat,M.roof,pod.length?baseY:null);});
+  // standing on stepped podiums: start at the highest roof, skirt down to the lowest, and stay 0.2 m inside the podium walls so nothing is coplanar (z-fighting)
+  sites.slice(0,want).forEach((p,i)=>{const h=cap(baseY,towerH-(i%3)*6.3),mat=i%2?M.towerAlt:M.tower;block(p,23.6,25.6,h,mat,M.roof,pod.length?baseY:null,pod.length?baseY-low+.5:undefined);});
   plant(18,40);
  }else if(use==='commercial'){
   // Retail podium, then towers cycling through five CBD archetypes (commercial.js) so neighbours differ.
-  const out=(material,geometry)=>parts.push({material,geometry}),pod=slots(lot,30,30,0,8,ctx);let roof=0;for(const p of pod)roof=commercialPodium(p,ground(p.x,p.z),out);
+  const out=(material,geometry)=>parts.push({material,geometry}),pod=slots(lot,33,33,0,8,ctx);let roof=0;for(const p of pod){reserve(p,33,33);roof=commercialPodium(p,ground(p.x,p.z),out);}
   const baseY=pod.length?roof:ground(...centroid(lot.poly)),towerH=cap(baseY,(topY??baseY+120)-baseY-2),floors=towerH/4,want=Math.max(1,Math.ceil((pr??8)*area*.8/(1400*floors)));
   // ponytail: archetype offset from the lot number spreads all five over the four A2 C lots; revisit if lots are added.
   const k0=(parseInt(lot.id.split('-').pop())||hashSeed(lot.id))*3;
-  slots(lot,38,34,30,14,ctx).slice(0,want).forEach((p,i)=>{const y=pod.length?baseY:ground(p.x,p.z);commercialTower((k0+i)%5,p,y,cap(y,towerH-i*16),out);});
+  slots(lot,42,36,30,14,ctx).slice(0,want).forEach((p,i)=>{const y=pod.length?baseY:ground(p.x,p.z);reserve(p,42,36);commercialTower((k0+i)%5,p,y,cap(y,towerH-i*16),out);});
   plant(18,30);
  }else if(use==='gic'){
   const h=Math.min(lot.maxStoreys?lot.maxStoreys*4.2:30,topY!=null?topY-ground(...centroid(lot.poly)):30);
@@ -321,7 +357,8 @@ export function massingParts(lot,ctx){
   // HSK Logistics Cluster study: multi-storey, 6–7 m floors, spiral ramps; PR 5 / 110 mPD are ceilings, not targets.
   const zone=CLUSTER[lot.cluster]||CLUSTER.B,sites=bigFootprints(lot,ctx,zone.buildings);
   const cover=sites.reduce((a,r)=>a+r.w*r.d,0)||1,floors=Math.max(3,Math.min(zone.maxFloors,Math.ceil((pr??5)*area*.6/cover)));
-  const aprons=sites.map((r,i)=>logisticsBuilding(r,i,lot,ctx,parts,ramps,floors,cap,zone.dronePads));
+  const aprons=sites.map((r,i)=>{reserve(r,r.w+5,r.d+6.5);return logisticsBuilding(r,i,lot,ctx,parts,ramps,floors,cap,zone.dronePads);});
+  surfaces.push(...aprons.map(a=>rectangle(a)));
   // Trees stay off the paved aprons and loading yards.
   plant(16,90,(x,z)=>aprons.every(a=>{const dx=x-a.x,dz=z-a.z,c=Math.cos(a.angle),s=Math.sin(a.angle);return Math.abs(dx*c-dz*s)>a.w/2+3||Math.abs(dx*s+dz*c)>a.d/2+3;}));
  }else if(use==='enterprise'){
@@ -332,7 +369,9 @@ export function massingParts(lot,ctx){
  }else if(use==='open')plant(14,220);
  else if(use==='green')plant(12,320);
  else if(use==='utility'){for(const p of slots(lot,30,30,4,8,ctx))block(p,30,30,Math.min(12,topY??12),M.civic,M.roof);}
- return {parts,trees,ramps};
+ // Hardscape belongs to building frontages; open/green parcels keep planting.
+ for(const poly of surfaces)if(polygonContains(lot.poly,poly)){const geometry=new TessellateModifier(4,6).modify(flat(poly,0)),p=geometry.attributes.position;for(let i=0;i<p.count;i++)p.setY(i,ground(p.getX(i),p.getZ(i))+.08);geometry.setIndex(Array.from({length:p.count},(_,i)=>i));geometry.computeVertexNormals();parts.push({material:M.yard,geometry});}
+ return {parts,trees,ramps,footprints,surfaces};
 }
 
 const TREE={trunk:new T.CylinderGeometry(.25,.35,3,6).translate(0,1.5,0),crown:new T.IcosahedronGeometry(2.6,1).scale(1,.85,1).translate(0,4.6,0)};
@@ -362,14 +401,18 @@ export async function buildLot(lot,ctx){const g=new T.Group();g.name='lot:'+lot.
 
 // Game: lots merged by material within 400 m cells, so draw calls stay low while frustum culling and
 // the collision grid (src/collision.js) still get compact bounds. Everything is static.
-export async function buildLots(lots,ctx){const g=new T.Group();g.name='OZP lots';const cells=new Map(),trees=[],ramps=[];
+export async function buildLots(lots,ctx){const g=new T.Group();g.name='OZP lots';const cells=new Map(),trees=[],ramps=[],records=[];
  for(const lot of lots){if(lot.model?.type==='massing'){const r=massingParts(lot,ctx),[x,z]=centroid(lot.poly),k=Math.floor(x/400)+':'+Math.floor(z/400);
+   records.push({lotId:lot.id,footprints:r.footprints,surfaces:r.surfaces,trees:r.trees});
    if(!cells.has(k))cells.set(k,[]);cells.get(k).push(...r.parts);trees.push(...r.trees);ramps.push(...r.ramps);}
   else if(lot.model?.type==='glb'&&lot.model.src)g.add(await buildLot(lot,ctx));}
- for(const parts of cells.values())addAll(g,mergeByMaterial(parts));addAll(g,treeMeshes(trees));
+ for(const parts of cells.values())addAll(g,mergeByMaterial(parts));
+ // one instanced bed per cell: a single map-wide bed has a map-wide bounding sphere and is never culled
+ const beds=new Map();for(const t of trees){const k=Math.floor(t.x/400)+':'+Math.floor(t.z/400);if(!beds.has(k))beds.set(k,[]);beds.get(k).push(t);}
+ for(const bed of beds.values())addAll(g,treeMeshes(bed));
  if(ramps.length)await (ctx.kit?Promise.resolve(ctx.kit):loadModel(ctx.truckUrl||(import.meta.env?.BASE_URL??'/')+'assets/street-kit.glb?v=street-kit-20260928'))// the game passes the kit it already parsed; the editor loads its own
-  .then(kit=>g.add(rampTraffic(ramps,kit.getObjectByName('truck')))).catch(e=>console.warn('Ramp trucks unavailable',e));
- g.updateMatrixWorld(true);g.traverse(n=>n.matrixAutoUpdate=false);return g;}
+  .then(kit=>g.add(...rampTraffic(ramps,kit.getObjectByName('truck')))).catch(e=>console.warn('Ramp trucks unavailable',e));
+ g.userData.cityPlan=records;g.updateMatrixWorld(true);g.traverse(n=>n.matrixAutoUpdate=false);return g;}
 
 // Lorries on the spiral ramps: the street kit's truck, instanced, driving the outer lane up and the inner lane down.
 // Poses are a pure function of time, set once per rendered frame.
@@ -386,17 +429,26 @@ function rampTraffic(ramps,truck){
  truck.updateMatrixWorld(true);const inv=truck.matrixWorld.clone().invert(),meshes=[];truck.traverse(n=>{if(n.isMesh)meshes.push(n);});
  const uv=meshes.every(m=>m.geometry.attributes.uv),geos=meshes.map(m=>{let g=m.geometry.clone().applyMatrix4(inv.clone().multiply(m.matrixWorld));
   for(const k of Object.keys(g.attributes))if(!['position','normal',...(uv?['uv']:[])].includes(k))g.deleteAttribute(k);return g.index?g.toNonIndexed():g;});
- const trucks=ramps.flatMap(ramp=>[0,1].flatMap(lane=>Array.from({length:TRUCKS_PER_LANE},(_,k)=>({ramp,lane,phase:(k+lane*.5)/TRUCKS_PER_LANE}))));
- const mesh=new T.InstancedMesh(mergeGeometries(geos,true),meshes.map(m=>m.material),trucks.length),m=new T.Matrix4();
- mesh.name='ramp trucks';mesh.castShadow=mesh.receiveShadow=true;mesh.frustumCulled=false;// instances move; bounds would go stale
- let frame=-1;const pose=time=>{trucks.forEach((t,i)=>mesh.setMatrixAt(i,rampPose(t.ramp,t.lane,t.phase,time,m)));mesh.instanceMatrix.needsUpdate=true;};pose(0);
- mesh.onBeforeRender=renderer=>{if(renderer.info.render.frame===frame)return;frame=renderer.info.render.frame;pose(performance.now()/1000);};
- return mesh;}
+ const geometry=mergeGeometries(geos,true),materials=meshes.map(m=>m.material),m=new T.Matrix4();
+ // One mesh per ramp with fixed bounds (a truck never leaves its ramp), so a ramp off screen costs nothing.
+ return ramps.map(ramp=>{const trucks=[0,1].flatMap(lane=>Array.from({length:TRUCKS_PER_LANE},(_,k)=>({ramp,lane,phase:(k+lane*.5)/TRUCKS_PER_LANE}))),
+  mesh=new T.InstancedMesh(geometry,materials,trucks.length),reach=Math.max(...ramp.lanes)+12;
+  mesh.name='ramp trucks';mesh.castShadow=mesh.receiveShadow=true;mesh.boundingSphere=new T.Sphere(new T.Vector3(ramp.cx,ramp.y0+ramp.rise/2,ramp.cz),Math.hypot(reach,ramp.rise/2));
+  const pose=time=>{trucks.forEach((t,i)=>mesh.setMatrixAt(i,rampPose(t.ramp,t.lane,t.phase,time,m)));mesh.instanceMatrix.needsUpdate=true;};pose(0);
+  mesh.onBeforeRender=renderer=>{const f=renderer.info.render.frame;if(mesh.userData.frame===f)return;mesh.userData.frame=f;pose(performance.now()/1000);};
+  return mesh;});}
 
 // Lit-window materials for the game's night switch.
 export const nightMaterials=()=>Object.values(lotMaterials()).filter(m=>m.emissiveMap);
-export const occupiedBy=lots=>{const placed=lots.filter(l=>l.model&&l.model.type!=='none'),inside=list=>(x,z)=>list.some(l=>pointInPolygon([x,z],l.poly));
- // .builtPolys: outlines of lots carrying buildings (not open space or green belt); the backdrop hills keep off these.
- return Object.assign(inside(placed),{builtPolys:placed.filter(l=>l.model.type==='glb'||!['open','green'].includes(l.style||useOf(l.zone))).map(l=>l.poly)});};
+export const occupiedBy=lots=>{
+ const polys=lots.map(l=>l.poly),xs=polys.flat().map(p=>p[0]),zs=polys.flat().map(p=>p[1]);
+ const bounds=lots.length?{x0:Math.min(...xs),x1:Math.max(...xs),z0:Math.min(...zs),z1:Math.max(...zs)}:null;
+ // All mapped land belongs to the plan, including model:none and green parcels.
+ const occupied=(x,z,r=0)=>polys.some(poly=>circleIntersects(x,z,r,poly));
+ return Object.assign(occupied,{study:(x,z,r=0)=>!!bounds&&x+r>=bounds.x0&&x-r<=bounds.x1&&z+r>=bounds.z0&&z-r<=bounds.z1,
+  builtPolys:lots.filter(l=>l.model?.type==='glb'||l.model?.type==='massing'&&!['open','green'].includes(l.style||useOf(l.zone))).map(l=>l.poly)});
+};
 // Shared with commercial.js.
 export {flat,canvasTex,seeded,weather};
+// Geometry contract adapter: same slot picker used by production generation.
+export {slots as footprintSlots};

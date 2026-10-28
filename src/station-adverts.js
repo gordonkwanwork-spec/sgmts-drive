@@ -1,4 +1,5 @@
 import * as T from 'three';
+import {PLATFORM_RISE} from './alignment.js';
 
 // Match the poster frames baked into build_assets.py, including A1's flared walls.
 export function stationAdvertGeometry(st, platforms, elevation) {
@@ -10,7 +11,7 @@ export function stationAdvertGeometry(st, platforms, elevation) {
       for(const [u,v] of [[0,0],[1,0],[1,1],[0,1]]){
         const along=-39.8+bay*5+dy-p.side*(u-.5)*.76,z=-along+p.offsetZ;
         const x=p.side*(7.05+p.width-.39+(p.bent?Math.max(0,-along-25)*.42:0));
-        positions.push(x,1.41+v*1.1+elevation(st.s-z)-elevation(st.s),z);uv.push(u,v);
+        positions.push(x,1.41+PLATFORM_RISE+v*1.1+elevation(st.s-z)-elevation(st.s),z);uv.push(u,v);
       }
       groups.push({start:indices.length,material:(first/4+Number(st.id.slice(1))-1)%7});
       indices.push(first,first+1,first+2,first,first+2,first+3);
@@ -61,7 +62,7 @@ export function stationBillboards(st,platforms,material,elevation){
   for(const p of platforms){
     const x=p.side*(7.05+p.width*.5),z=p.offsetZ;
     const grade=offset=>elevation(st.s-offset)-elevation(st.s);
-    const bottom=4.15+Math.max(...[-7.7,0,7.7].map(d=>grade(z+d)));
+    const bottom=4.15+PLATFORM_RISE+Math.max(...[-7.7,0,7.7].map(d=>grade(z+d)));
     const frame=new T.Mesh(new T.BoxGeometry(.32,5.24,15.24),frameMaterial);
     frame.name='Billboard frame';frame.position.set(x,bottom+2.5,z);frame.castShadow=true;frame.receiveShadow=true;group.add(frame);
     for(const side of [-1,1]){
@@ -79,7 +80,7 @@ export function stationBillboards(st,platforms,material,elevation){
       }
     }
     for(const offset of [-6,0,6]){
-      const foot=3.3+grade(z+offset),height=bottom-foot;
+      const foot=3.3+PLATFORM_RISE+grade(z+offset),height=bottom-foot;
       const post=new T.Mesh(new T.BoxGeometry(.22,height,.22),frameMaterial);
       post.name='Billboard roof support';post.position.set(x,foot+height/2,z+offset);post.castShadow=true;group.add(post);
     }
