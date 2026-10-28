@@ -261,7 +261,7 @@ export function staticMotorRider(gltf,scooter=false){
  const actor=tripoPlayer(gltf,1.70,'Motorcycle rider'),r=rig(actor),pose=sitPose(r.hipY,scooter?.76:.79);
  actor.getObjectByName('contact shadow')?.removeFromParent();pose.spine[0]=scooter?-.04:-.17;pose.chest[0]=scooter?-.05:-.20;apply(r,pose);actor.updateMatrixWorld(true);
  const hip=r.bones.hips.bone.getWorldPosition(new T.Vector3());actor.position.z+=.08-hip.z;actor.updateMatrixWorld(true);
- for(const side of [-1,1]){const n=side===1?'R':'L';fitLimb(r,'upperarm_'+n,'forearm_'+n,'hand_'+n,new T.Vector3(side*.30,scooter?1.02:1.02,-.40),new T.Vector3(side,-1,0));fitLimb(r,'thigh_'+n,'shin_'+n,'foot_'+n,new T.Vector3(side*.22,.25,scooter?-.30:.08),new T.Vector3(side,0,-1));}
+ for(const side of [-1,1]){const n=side===1?'R':'L';fitLimb(r,'upperarm_'+n,'forearm_'+n,'hand_'+n,new T.Vector3(side*.30,scooter?1.02:1.02,-.27),new T.Vector3(side,-1,0));fitLimb(r,'thigh_'+n,'shin_'+n,'foot_'+n,new T.Vector3(side*.22,.25,scooter?-.30:.08),new T.Vector3(side,0,-1));}
  actor.updateMatrixWorld(true);actor.traverse(n=>{if(n.isSkinnedMesh)n.skeleton.update();});
  const root=new T.Group();root.name='Baked Tripo rider';root.userData.motorRider=true;const v=new T.Vector3();
  actor.traverse(n=>{if(!n.isMesh)return;const geometry=n.geometry.clone(),p=geometry.attributes.position;for(let i=0;i<p.count;i++){n.getVertexPosition(i,v);v.applyMatrix4(n.matrixWorld);p.setXYZ(i,v.x,v.y,v.z);}geometry.deleteAttribute('skinIndex');geometry.deleteAttribute('skinWeight');geometry.computeVertexNormals();geometry.computeBoundingBox();geometry.computeBoundingSphere();const mesh=new T.Mesh(geometry,n.material);mesh.castShadow=true;root.add(mesh);});

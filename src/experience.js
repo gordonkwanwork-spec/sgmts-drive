@@ -1087,7 +1087,7 @@ const rainGeometry=new T.BufferGeometry();rainGeometry.setAttribute('position',n
 async function boot(){try{let loaded=0;
  // ponytail: every large model starts downloading at once; the sequence below only awaits them in build order.
  const rosterDownload=Promise.all(TRIPO_PEOPLE.map(c=>loader.loadAsync(asset('characters/tripo/'+c.path))));
- const fleetDownload=rosterDownload.then(roster=>loadTripoVehicles(loader,f=>asset('vehicles/tripo/'+f),roster[15]));
+ const fleetDownload=rosterDownload.then(roster=>loadTripoVehicles(loader,f=>asset('vehicles/tripo/'+f),roster[14]));
  const download=Object.fromEntries(['street-kit.glb','tuen-ma-train.glb','art.glb','characters/tripo/schoolboy-white-uniform-blue-backpack-walk.glb','characters/tripo/schoolgirl-blue-uniform-walk.glb',...STOPS.map(st=>`station-${st.id}.glb`)].map(f=>[f,loader.loadAsync(asset(f))]));
 
  [colleagueModels,vehicleModels]=await Promise.all([rosterDownload,fleetDownload]);
