@@ -22,7 +22,7 @@ export const PRESETS={
 export const FOOTWAYS=['red','grey','buff'];
 export const FINISHES={buff:'Paving · buff',grey:'Paving · grey',red:'Paving · red brick',grass:'Grass / planting'};
 export const Y={road:.03,raised:.18,area:.17,grass:.05,line:.04},CORNER=6,STEP=1;
-export const presetOf=r=>({...PRESETS[r.preset]||PRESETS.local,...(r.carriageway?{carriageway:r.carriageway,median:0}:{}),...(r.footpath?{footpath:r.footpath}:{})});
+export const presetOf=r=>({...PRESETS[r.preset]||PRESETS.local,...(r.carriageway?{carriageway:r.carriageway,median:r.median||0}:{}),...(r.footpath?{footpath:r.footpath}:{}),...(r.lines?{lines:r.lines}:{})});
 export function streetLevel(r,d,lat){const P=presetOf(r),h=P.carriageway/2,depth=Math.abs(lat)-h;
  if(r.standard!=='sandbox')return depth>0?Y.raised:Y.road;
  if(depth<=0){const fade=Math.min(1,...(r.junctionDistances||[]).map(at=>Math.abs(d-at)/20));return Y.road+.025*(h-Math.abs(lat))*fade;}

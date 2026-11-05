@@ -401,8 +401,11 @@ export async function buildLot(lot,ctx){const g=new T.Group();g.name='lot:'+lot.
 
 // Game: lots merged by material within 400 m cells, so draw calls stay low while frustum culling and
 // the collision grid (src/collision.js) still get compact bounds. Everything is static.
+export const KEPT_ZONES=/^OU\(Logistics Facility\)$/;
 export async function buildLots(lots,ctx){const g=new T.Group();g.name='OZP lots';const cells=new Map(),trees=[],ramps=[],records=[];
- for(const lot of lots){if(lot.model?.type==='massing'){const r=massingParts(lot,ctx),[x,z]=centroid(lot.poly),k=Math.floor(x/400)+':'+Math.floor(z/400);
+ // Kept buildings (the logistics cluster, Gordon 5 Nov) ignore the street mask: scripts/build-city-network.mjs proves every road stays
+ // at least 2 m clear of their footprints, and their large bounding circles would otherwise reject them near any street.
+ for(const lot of lots){if(lot.model?.type==='massing'){const r=massingParts(lot,ctx.allowedKept&&KEPT_ZONES.test(lot.zone)?{...ctx,allowed:ctx.allowedKept}:ctx),[x,z]=centroid(lot.poly),k=Math.floor(x/400)+':'+Math.floor(z/400);
    records.push({lotId:lot.id,footprints:r.footprints,surfaces:r.surfaces,trees:r.trees});
    if(!cells.has(k))cells.set(k,[]);cells.get(k).push(...r.parts);trees.push(...r.trees);ramps.push(...r.ramps);}
   else if(lot.model?.type==='glb'&&lot.model.src)g.add(await buildLot(lot,ctx));}

@@ -12,7 +12,7 @@ const inRoad=P=>JUNCTIONS.some(j=>{const g=crossingGeometry(j),dx=P.x-g.C.x,dz=P
  if(Math.abs(e)<j.halfWidth+.6&&Math.abs(d)<j.extent)return true;
  return [-1,1].some(σ=>[-1,1].some(τ=>{const k=g.corners[σ][τ];return Math.hypot(P.x-k.O.x,P.z-k.O.z)>k.R-.4&&Math.hypot(P.x-k.O.x,P.z-k.O.z)<k.R+4&&(P.x-k.T1.x)*(k.T2.x-k.T1.x)+(P.z-k.T1.z)*(k.T2.z-k.T1.z)>0&&e*τ>0&&Math.abs(d)<Math.abs(k.d)+.5;}));});
 const before=data.items.length,removed=[];
-data.items=data.items.filter(it=>{if(it.type==='traffic_signal')return false;if(it.road!=='corridor')return true;const keep=!inRoad(pose(it));if(!keep)removed.push(it.id);return keep;});
+data.items=data.items.filter(it=>{if(it.type==='traffic_signal'||/^litter_bin-\d+-[LR]$/.test(it.id))return false;if(it.road!=='corridor')return true;const keep=!inRoad(pose(it));if(!keep)removed.push(it.id);return keep;});
 // Lamp gaps left at the three old junction chainages (1660, 2650, 3970): evenly spaced infill at the typical spacing,
 // unless a new junction mouth sits in the gap (those are lit by the junction's own lamps).
 const lamps=side=>data.items.filter(it=>it.type==='lamp_road'&&it.road==='corridor'&&it.side===side).sort((a,b)=>a.ch-b.ch);
