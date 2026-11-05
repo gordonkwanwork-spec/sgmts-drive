@@ -96,20 +96,21 @@ for(let s=0;s<LENGTH;s+=30){const r=sample(s);assert(!sceneryClear(r.x,r.z,10));
 console.log('Realism checks passed: both traffic directions stop without overshoot; scenery clears the full alignment.');
 
 // Latest layout and service queue regressions.
-const {CHANNELS,JUNCTIONS,DEPOT,L35,cycleCrossing}=await import('./alignment.js');
+const {CHANNELS,JUNCTIONS,DEPOT,cycleCrossing,crossingGeometry}=await import('./alignment.js');
 const {followingStop}=await import('./operating.js');
 assert.equal(JUNCTIONS.length,3);assert(JUNCTIONS.every(j=>Math.abs(toChainage(j.s)-660)>50));
 assert(CHANNELS[0].s<STOPS[1].s&&CHANNELS[1].s>STOPS[1].s&&CHANNELS[1].s<STOPS[2].s);
 assert(JUNCTIONS.find(j=>j.name==='Road D1').s>STOPS[6].s+80);
 assert.equal(DEPOT.opening,30);assert.equal(BRIDGES[1].end,3524.2);
-assert(-cycleOffset((L35.start+L35.end)/2)-2>L35.offset+L35.width/2);
-for(const j of JUNCTIONS)assert.equal(cycleCrossing(j.s),j.halfWidth<=7,'Only at-grade cycle crossings interrupt the surface');
+// L35 was removed in the city rebuild (5 Nov 2026); the cycle track keeps its outboard line along the former L35 strip.
+assert(-cycleOffset(fromChainage(3020))-2>16);
+for(const j of JUNCTIONS)assert.equal(cycleCrossing(crossingGeometry(j).cycleS),j.halfWidth<=7,'Only at-grade cycle crossings interrupt the surface');
 for(const c of CROSSINGS)for(const st of STOPS)assert(Math.abs(c.s-st.s)>st.length/2+20,'Crossing outside platform and bus bay');
 for(const dir of [-1,1]){const leader={s:dir*100,dir,active:true},follower={s:0,v:10,dir,active:true};for(let i=0;i<1200;i++){const m=approachStep(follower.s,follower.v,dir,10,followingStop(follower.s,dir,[leader,follower],follower),1/60);follower.s=m.position;follower.v=m.speed;}assert(Math.abs((leader.s-follower.s)*dir-40)<.001);assert.equal(follower.v,0);leader.s+=dir*20;const m=approachStep(follower.s,follower.v,dir,10,followingStop(follower.s,dir,[leader]),1);assert(m.speed>0);}
-console.log('Latest layout and queue regressions passed: channels, D1, depot opening, L35, crossing positions and both-direction following.');
+console.log('Latest layout and queue regressions passed: channels, D1, depot opening, rebuilt junction crossing positions and both-direction following.');
 
 assert(followingStop(100,1,[{s:120,dir:1,active:true}])<100,'Emergency following stop remains behind an already-too-close follower');
-assert(L35.end>STOPS[5].s+300,'L35 continues past A6 toward VB2');
+// (L35 continuity check retired with L35 in the city rebuild.)
 
 const {laneOffset,curveRadius}=await import('./alignment.js');
 for(let s=0;s<LENGTH;s+=.5){for(const dir of [-1,1]){assert.ok(Math.abs(laneOffset(s,dir))<=roadSection(s).right-1.6+1e-5,'Bay path remains within carriageway');assert.ok(Math.abs(laneOffset(s+.01,dir)-laneOffset(s,dir))<.002,'Continuous distance-based bay path');}}
@@ -123,8 +124,8 @@ assert.equal(returnOffset(CROSSOVER_START),1.9);
 assert.equal(returnOffset(CROSSOVER_START-70),-1.9);
 for(let s=CROSSOVER_START-75;s<LENGTH;s+=.1)assert(Math.abs(returnOffset(s+.01)-returnOffset(s))<.002,'Crossover remains spatially continuous');
 for(const st of STOPS)assert.equal(laneOffset(st.s,1,[st.id]),1.9,'Express branch remains in through lane');
-const {terminalCurve,depotCurve,l35BendCurve,l35TrafficCurve}=await import('./routes.js');
-for(const curve of [terminalCurve,depotCurve,l35BendCurve,l35TrafficCurve])for(let i=0;i<=100;i++){const p=curve.getPointAt(i/100);assert([p.x,p.y,p.z].every(Number.isFinite),'Shared branch route has finite coordinates');}
+const {terminalCurve,depotCurve}=await import('./routes.js');
+for(const curve of [terminalCurve,depotCurve])for(let i=0;i<=100;i++){const p=curve.getPointAt(i/100);assert([p.x,p.y,p.z].every(Number.isFinite),'Shared branch route has finite coordinates');}
 console.log('Express, crossover and shared branch route checks passed.');
 
 assert.equal(ribbon(0,0,-1,1).attributes.position.count,0,'Clipped empty ribbons have no invalid vertices');
@@ -137,7 +138,7 @@ assert(manifest.vehicle.triangles<200000,'Detailed vehicle stays within the geom
 
 const {fenceAllowed,stationAccess}=await import('./environment.js');
 const {CROSSING_HALF}=await import('./environment.js');
-for(const c of [...CROSSINGS.map(c=>({s:c.s,half:CROSSING_HALF+.3})),...JUNCTIONS.flatMap(j=>[-1,1].map(d=>({s:j.s+d*(j.halfWidth+10),half:6})))])for(const side of [-1,1])for(let q=c.s-c.half-2;q<c.s+c.half;q+=.25)if(q+1.5>c.s-c.half)assert(!fenceAllowed(q,q+1.5,side),'Fence must leave the full crossing opening clear');
+for(const c of [...CROSSINGS.map(c=>({s:c.s,half:CROSSING_HALF+.3})),...JUNCTIONS.flatMap(j=>[-1,1].map(d=>({s:crossingGeometry(j).crossS[d],half:6})))])for(const side of [-1,1])for(let q=c.s-c.half-2;q<c.s+c.half;q+=.25)if(q+1.5>c.s-c.half)assert(!fenceAllowed(q,q+1.5,side),'Fence must leave the full crossing opening clear');
 // Station crossings: kerbside railings come right up to the dropped kerb (site photos), not 6 m short of it.
 for(const c of CROSSINGS)for(const side of [-1,1])assert(fenceAllowed(c.s-CROSSING_HALF-1.8,c.s-CROSSING_HALF-.3,side)||!fenceAllowed(c.s-CROSSING_HALF-9,c.s-CROSSING_HALF-7.5,side),'Railing reaches the '+c.station+' crossing');
 for(const st of STOPS)for(const platform of st.platforms)for(const dir of [-1,1]){

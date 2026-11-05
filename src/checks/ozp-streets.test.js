@@ -1,51 +1,41 @@
+// City rebuild (5 Nov 2026). This test used to pin the old illustrative OZP streets (5 ozp- roads, 753 furniture items) and the
+// old shared-junction baseline (scripts/corridor-junction-baseline.json). Gordon asked for every road except the SGMTS corridor to
+// be removed and the network and junctions rebuilt to the OZP, so it now checks the rebuilt network instead:
+// · each corridor crossing sits where an OZP road reserve crosses the corridor, between the viaduct piers when underneath;
+// · every crossing arm continues as a network road; T-junction ends lie on their host; nothing enters the corridor reserve;
+// · no road or junction arm comes within 2 m of a logistics building (Gordon: keep them; roads go around them);
+// · the at-grade junction geometry is ordered: kerb returns inside the kerb gaps, ART stop line before the crossing.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {centreline,frames,halfWidth,networkMask,buildNetwork,reserveClash,presetOf,junctions,streetHeight,streetLevel} from '../street/network.js';
-import {polygonContains,circleIntersects} from '../lots/geometry.js';
-import {cityDiagnostics} from '../city-plan.js';
-import {JUNCTIONS,UNDERPASSES,BRIDGES} from '../alignment.js';
-import crypto from 'node:crypto';
-import {corridorReserve} from '../lots/wand.js';
-const context2d=new Proxy({},{get:(_,k)=>k==='measureText'?()=>({width:0}):k==='createLinearGradient'?()=>({addColorStop(){}}):()=>{},set:()=>true});
+const context2d=new Proxy({},{get:(_,k)=>k==='measureText'?()=>({width:0}):k==='createLinearGradient'||k==='createRadialGradient'?()=>({addColorStop(){}}):()=>{},set:()=>true});
 globalThis.document={createElement:()=>({getContext:()=>context2d,width:0,height:0})};
-const {massingParts}=await import('../lots/massing.js');
-const data=JSON.parse(fs.readFileSync(new URL('../../public/street/furniture.json',import.meta.url))),lots=JSON.parse(fs.readFileSync(new URL('../../public/lots/lots.json',import.meta.url))).lots;
-const network={...data.network,roads:data.network.roads.filter(r=>!r.id.startsWith('city-')).map(r=>({...r,standard:undefined}))},mask=networkMask(network),discs=corridorReserve();
-assert.equal(network.roads.filter(r=>r.id.startsWith('ozp-')).length,5);assert.equal(network.roads.length,6);
-assert.equal(data.items.length,753);assert.equal(data.runs.length,118);
-assert.deepEqual(cityDiagnostics(lots,data),[]);
-const baseline=JSON.parse(fs.readFileSync(new URL('../../scripts/corridor-junction-baseline.json',import.meta.url)));
-assert.deepEqual(JUNCTIONS,baseline.shared);assert.deepEqual(UNDERPASSES,baseline.gradeSeparated);
-assert.deepEqual(BRIDGES.map(b=>b.id),baseline.bridgeIds);
-// Footpath profiles are deliberately updated; the engineering junction arrays above remain locked.
-const graph=junctions(network),components=new Map(network.roads.map(r=>[r.id,new Set([r.id])]));
-for(const {A,B} of graph.joins){const joined=new Set([...components.get(A.r.id),...components.get(B.r.id)]);for(const id of joined)components.set(id,joined);}
-assert.equal(components.values().next().value.size,network.roads.length,'all six roads join into one neighbourhood network');
-assert.equal(graph.joins.length,5,'five local street connections, outside corridor');
-let length=0,samples=0;
-for(const r of network.roads){
- assert.equal(reserveClash(centreline(r.pts),{width:halfWidth(r)}),null,`${r.id} keeps complete street off corridor reserve`);
- const F=frames(r);length+=F.at(-1).d;
- for(const f of F){assert(mask.onRoad(f.x,f.z));assert(mask.buildingBlocked(f.x,f.z,10));samples++;}
- if(r.turningRadius){const p=r.pts.at(-1),P=presetOf(r);assert.equal(reserveClash([p],{width:r.turningRadius+P.footpath}),null);
-  for(let i=0;i<16;i++){const a=i*Math.PI/8,rad=r.turningRadius+P.footpath-1;assert(mask.onStreet(p[0]+Math.cos(a)*rad,p[1]+Math.sin(a)*rad));}
- }
-}
-const built=buildNetwork(network);const relevant=discs.filter(d=>d.z>-850&&d.z<50);let renderedVertices=0,renderedTriangles=0;assert(built.children.length>0);built.traverse(o=>{if(o.isMesh){const ix=o.geometry.index.array,p=o.geometry.attributes.position;for(let k=0;k<ix.length;k+=3){const poly=[ix[k],ix[k+1],ix[k+2]].map(i=>[p.getX(i),p.getZ(i)]),xs=poly.map(p=>p[0]),zs=poly.map(p=>p[1]),minX=Math.min(...xs),maxX=Math.max(...xs),minZ=Math.min(...zs),maxZ=Math.max(...zs);assert(!relevant.some(d=>d.x+d.r>=minX&&d.x-d.r<=maxX&&d.z+d.r>=minZ&&d.z-d.r<=maxZ&&circleIntersects(d.x,d.z,d.r,poly)),'full triangle/junction envelope stays outside corridor');renderedTriangles++;}const a=o.geometry.attributes.position.array;assert(a.every(Number.isFinite));for(let k=0;k<a.length;k+=3){assert(!relevant.some(d=>Math.hypot(a[k]-d.x,a[k+2]-d.z)<d.r),'complete rendered pavement/junction/head stays outside corridor');renderedVertices++;}}});
-for(const r of network.roads){const f=frames(r)[Math.floor(frames(r).length*.45)],P=presetOf(r);assert(streetHeight(f.x,f.z)!==null,'carriageway physically walkable');const lat=P.carriageway/2+P.footpath*.65,y=streetHeight(f.x+f.lx*lat,f.z+f.lz*lat);assert(Math.abs(y-streetLevel(r,f.d,lat))<.002,'walkable pavement matches rendered height');}
-for(const j of graph.joins)assert(streetHeight(j.at.x,j.at.z)!==null,'joined road mouth is walkable');
-assert.equal(streetHeight(10000,10000),null);
-const {renderedGround}=await import('../environment.js'),{groundAt,walkStep}=await import('../onfoot.js');
-buildNetwork(network,{ground:renderedGround});let walkingSteps=0;
-for(const r of network.roads){const F=frames(r,renderedGround),P=presetOf(r),lat=P.carriageway/2+P.footpath*.5;
- const points=F.map(f=>[f.x+f.lx*lat,f.z+f.lz*lat]);let p={x:points[0][0],z:points[0][1],...groundAt(...points[0])};
- for(const [x,z] of points.slice(1)){const next=walkStep(p,x-p.x,z-p.z,[]);assert(!next.blocked,`${r.id} walk continuity at ${x},${z}`);assert(Number.isFinite(next.y));p=next;walkingSteps++;}
-}
-const allowed=(x,z,r=0)=>!mask.buildingBlocked(x,z,r)&&!discs.some(d=>Math.hypot(x-d.x,z-d.z)<d.r+r),allowedLow=(x,z,r=0)=>!mask.blocked(x,z,r)&&!discs.some(d=>Math.hypot(x-d.x,z-d.z)<d.r+r);
-let buildings=0,trees=0;
-for(const lot of lots.filter(l=>l.model?.type==='massing')){const out=massingParts(lot,{ground:()=>0,allowed,allowedLow});
- for(const poly of out.footprints){assert(polygonContains(lot.poly,poly));for(const r of network.roads){for(const f of frames(r))assert(!circleIntersects(f.x,f.z,halfWidth(r),poly),`${lot.id} meets ${r.id}`);if(r.turningRadius){const p=r.pts.at(-1);assert(!circleIntersects(...p,r.turningRadius+presetOf(r).footpath,poly));}}buildings++;}
- for(const t of out.trees){assert(!mask.blocked(t.x,t.z,t.s*2.6+.5));trees++;}
-}
-console.log(`Corridor junctions: shared ${baseline.shared.length} → ${JUNCTIONS.length}; grade-separated ${baseline.gradeSeparated.length} → ${UNDERPASSES.length}; local street network connected (${graph.joins.length} joins); ${renderedVertices} vertices/${renderedTriangles} full rendered triangles clear corridor; walking surfaces match geometry.`);
-console.log(`OZP streets: 5 source-traced roads + western connector, ${Math.round(length)}m, ${samples} samples, turning heads, corridor clearances, ${buildings} building footprints/${trees} canopies, ${walkingSteps} ground-conforming walking steps and all parcel topology passed.`);
+const {centreline,frames,halfWidth,junctions,reserveClash,nearestOn}=await import('../street/network.js');
+const {JUNCTIONS,UNDERPASSES,BRIDGES,crossingGeometry,fromChainage,sample}=await import('../alignment.js');
+const {pointInPolygon}=await import('../lots/wand.js'),{massingParts}=await import('../lots/massing.js'),{sceneryClear}=await import('../environment.js');
+const data=JSON.parse(fs.readFileSync(new URL('../../public/street/furniture.json',import.meta.url))),n=data.network,lots=JSON.parse(fs.readFileSync(new URL('../../public/lots/lots.json',import.meta.url))).lots;
+
+// Crossing positions (chainage) read off the OZP road-reserve centrelines on the project underlay.
+const OZP={'Crossing road':1681,'Ha Tsuen Road':2546,'Road D1':[3971,4398],'Road D3':3400,'Road D8':371};
+for(const j of [...JUNCTIONS,...UNDERPASSES]){const want=[OZP[j.name]].flat(),err=Math.min(...want.map(c=>Math.abs(c-j.c)));assert(err<=(j.name==='Road D8'?16:2),`${j.name} at Ch ${j.c} follows the OZP reserve`);}
+for(const j of UNDERPASSES){const g=crossingGeometry(j),b=BRIDGES.find(b=>b.id===sample(j.s).bridge);assert(b,`${j.name} passes under a viaduct`);
+ for(const c of b.piers){const along=Math.abs(fromChainage(c)-j.s);assert(along>(j.halfWidth+j.footway)/g.cos+1,`${j.name} clears pier at Ch ${c}`);}}
+
+assert(n.roads.length>=20&&n.roads.every(r=>r.id.startsWith('city-')),'only the rebuilt network remains');
+for(const j of [...JUNCTIONS,...UNDERPASSES])for(const side of [-1,1])assert(n.roads.some(r=>[r.tie,r.endTie].some(t=>t?.junction===j.c&&t.side===side)),`${j.name} arm ${side} continues`);
+const graph=junctions(n);assert(graph.joins.length>=11,'side roads join their hosts');
+for(const r of n.roads){const P=centreline(r.pts),skip=(r.tie?2:0),tail=(r.endTie?2:0);assert.equal(reserveClash(P.slice(skip,P.length-tail),{width:halfWidth(r)}),null,`${r.id} clear of the corridor`);
+ for(const p of r.pts)assert(p.every(Number.isFinite));}
+
+// Logistics buildings as the game places them (allowedKept: scenery clearance only), against roads and junction arms + 2 m.
+const keep=lots.filter(l=>/Logistics Facility/.test(l.zone)).flatMap(l=>massingParts(l,{ground:()=>0,allowed:(x,z,r)=>sceneryClear(x,z,r)}).footprints);
+assert(keep.length>=4,'all four logistics warehouses stand');
+const band=(P,hw)=>{const out=[];for(let i=1;i<P.length;i++){const [ax,az]=P[i-1],[bx,bz]=P[i],L=Math.hypot(bx-ax,bz-az)||1,k=Math.max(1,Math.ceil(L/2));for(let t=0;t<=k;t++){const x=ax+(bx-ax)*t/k,z=az+(bz-az)*t/k;for(const e of [-hw,-hw/2,0,hw/2,hw])out.push([x-(bz-az)/L*e,z+(bx-ax)/L*e]);}}return out;};
+let probes=0;
+for(const r of n.roads)for(const p of band(centreline(r.pts),halfWidth(r)+2)){probes++;for(const f of keep)assert(!pointInPolygon(p,f),`${r.id} reaches a logistics building at ${p.map(v=>v.toFixed(0))}`);}
+for(const j of [...JUNCTIONS,...UNDERPASSES]){const g=crossingGeometry(j),A=d=>[g.C.x+g.u.x*d,g.C.z+g.u.z*d];
+ for(const p of band([A(-j.extent),A(j.extent)],j.halfWidth+j.footway+2)){probes++;for(const f of keep)assert(!pointInPolygon(p,f),`${j.name} arm reaches a logistics building`);}}
+
+for(const j of JUNCTIONS){const g=crossingGeometry(j);
+ assert(g.crossS[-1]<j.s&&j.s<g.crossS[1],'corridor crossings either side');assert(j.s-j.stop<g.crossS[-1]-1.6&&j.s+j.stop>g.crossS[1]+1.6,'ART stop lines before the crossings');
+ for(const σ of [-1,1]){assert(Math.abs(g.stopD[σ])>Math.abs(g.crossD[σ])+1.6,'side stop line behind its crossing');assert(Math.abs(g.crossD[σ])<j.extent-5,'crossing on the arm');}}
+console.log(`Rebuilt OZP network: ${n.roads.length} roads, ${graph.joins.length} T-junctions, ${JUNCTIONS.length}+${UNDERPASSES.length} corridor crossings on the OZP reserves; ${probes} probes clear of ${keep.length} logistics buildings.`);

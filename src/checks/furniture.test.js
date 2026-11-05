@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {ROADS,ROAD,pose,record,locate} from '../street/roads.js';
 import {CATALOGUE,runPoints,pavingAt,RAIL,isModel} from '../street/furniture.js';
-import {JUNCTIONS,sample,sideCrossing} from '../alignment.js';
+import {JUNCTIONS,sample,sideCrossing,crossingGeometry} from '../alignment.js';
 
 // Every road: pose → record → pose lands within 1 cm and 0.01°, for kerb and centreline offsets on both sides.
 for(const road of ROADS)for(let i=1;i<10;i++){const ch=road.toCh(road.p0+(road.p1-road.p0)*i/10);
@@ -35,21 +35,22 @@ for(const e of [...data.items,...data.runs]){assert(!ids.has(e.id),'duplicate id
  assert.equal(pavingAt(base,s,1),'grey');assert.equal(pavingAt(base,s,-1),null);}
 console.log(`Street furniture: ${ROADS.length} road frames round-trip, ${data.items.length} items and ${data.runs.length} runs valid, railing bays and paving overrides passed`);
 
-// HK layout (TD diagram): per approach a primary at the stop line and a secondary beyond the junction, both on the driver's left
-// (+lat is left of the corridor direction) facing the approaching traffic; a pedestrian head on the junction side of each crossing end
-// facing across it; the secondaries share their pole with that crossing end's pedestrian head.
-for(const j of JUNCTIONS){const r=sample(j.s),h=j.halfWidth,items=data.items.filter(i=>i.type==='traffic_signal'&&i.params.junction===j.c&&i.id!=='signal-2650-L35'),ends=new Set();
- const frame=(it,turn=0)=>{const p=pose(it),dx=p.x-r.x,dz=p.z-r.z,a=p.yaw+turn,fx=-Math.sin(a),fz=-Math.cos(a);return {lat:dx*r.lx+dz*r.lz,ds:dx*r.tx+dz*r.tz,ft:fx*r.tx+fz*r.tz,fl:fx*r.lx+fz*r.lz};};
- const vehicles=items.filter(i=>i.params.axis!=='pedestrian');assert.equal(vehicles.length,8,`${j.c}: eight vehicle heads`);
- for(const it of vehicles){const f=frame(it),primary=it.id.endsWith('primary');
-  if(it.params.axis==='corridor'){assert(Math.abs(f.ft)>.99,`${it.id}: faces along the corridor`);const d=-Math.sign(f.ft);
-   assert(Math.sign(f.lat)===d,`${it.id}: on the driver's left`);assert(Math.sign(f.ds)===(primary?-d:d)&&(primary?Math.abs(f.ds)>h+11.5:Math.abs(f.ds)<h+8.5),`${it.id}: ${primary?'at the stop line':'beyond the junction'}`);}
-  else{assert(Math.abs(f.fl)>.99,`${it.id}: faces along the side road`);const A=Math.sign(f.fl),C=sideCrossing(j,A);
-   assert(Math.sign(f.ds)===A&&Math.abs(f.ds)<h+2,`${it.id}: on the driver's left`);assert(primary?Math.sign(f.lat)===A&&Math.abs(f.lat)>C+1.5:Math.sign(f.lat)===-A&&Math.abs(f.lat)<sideCrossing(j,-A)-1.5,`${it.id}: ${primary?'at the stop line':'beyond the junction'}`);}}
- const peds=[...items.filter(i=>i.params.axis==='pedestrian').map(i=>[i,0]),...items.filter(i=>Number.isFinite(i.params.pedYaw)).map(i=>[i,i.params.pedYaw*Math.PI/180])];assert.equal(peds.length,8,`${j.c}: eight pedestrian heads`);
+// HK layout (TD diagram), restated for the rebuilt skewed junctions (city rebuild, 5 Nov 2026): every approach has a primary at
+// its stop line and a secondary beyond the junction on the driver's left (keep-left), facing the approaching traffic, plus an
+// offside primary on a central median; every crossing end has a pedestrian head facing across the crossing.
+for(const j of JUNCTIONS){const g=crossingGeometry(j),r=sample(j.s),items=data.items.filter(i=>i.type==='traffic_signal'&&i.params.junction===j.c),ends=new Set();
+ const frame=(it,turn=0)=>{const p=pose(it),a=p.yaw+turn,f={x:-Math.sin(a),z:-Math.cos(a)},dx=p.x-g.C.x,dz=p.z-g.C.z;return {d:dx*g.u.x+dz*g.u.z,e:dx*g.n.x+dz*g.n.z,lat:dx*r.lx+dz*r.lz,ds:dx*r.tx+dz*r.tz,fu:f.x*g.u.x+f.z*g.u.z,fn:f.x*g.n.x+f.z*g.n.z,ft:f.x*r.tx+f.z*r.tz,fl:f.x*r.lx+f.z*r.lz};};
+ const vehicles=items.filter(i=>i.params.axis!=='pedestrian');assert.equal(vehicles.length,8+(j.median>=2?2:0),`${j.c}: vehicle heads`);
+ for(const it of vehicles){const f=frame(it),primary=/primary|median/.test(it.id);
+  if(it.params.axis==='corridor'){assert(Math.abs(f.ft)>.99,`${it.id}: faces along the corridor`);const d=-Math.sign(f.ft);assert(Math.sign(f.lat)===d,`${it.id}: on the driver's left`);
+   const s=j.s+f.ds;assert(primary?(s-j.s)*d<0&&Math.abs(s-j.s)>Math.abs(g.crossS[-d]-j.s):(s-j.s)*d>0&&Math.abs(s-j.s)<Math.abs(g.crossS[d]-j.s),`${it.id}: ${primary?'at the stop line':'beyond the junction'}`);}
+  else{assert(Math.abs(f.fu)>.99,`${it.id}: faces along the side road`);const σ=Math.sign(f.fu);
+   if(it.id.endsWith('median'))assert(Math.abs(f.e)<.05&&f.d*σ>Math.abs(g.crossD[σ]),`${it.id}: on the median at the stop line`);
+   else{assert(Math.sign(f.e)===σ&&Math.abs(f.e)>j.halfWidth,`${it.id}: on the driver's left kerb`);assert(primary?f.d*σ>Math.abs(g.crossD[σ])+1.5:f.d*σ<0&&Math.abs(f.d)<Math.abs(g.crossD[-σ])-1.5,`${it.id}: ${primary?'past the stop line':'beyond the junction'}`);}}}
+ const peds=[...items.filter(i=>i.params.axis==='pedestrian').map(i=>[i,0]),...items.filter(i=>Number.isFinite(i.params.pedYaw)).map(i=>[i,i.params.pedYaw*Math.PI/180])];
  for(const [it,turn] of peds){const f=frame(it,turn);
-  if(it.params.crossing==='side'){const A=Math.sign(f.lat);assert(Math.sign(f.ft)===-Math.sign(f.ds)&&Math.abs(f.ft)>.99,`${it.id}: pedestrian faces across the side crossing`);assert(Math.abs(f.lat)<sideCrossing(j,A)-1.5,`${it.id}: junction side of the crossing`);ends.add(`s${A}${Math.sign(f.ds)}`);}
-  else{assert(Math.sign(f.fl)===-Math.sign(f.lat)&&Math.abs(f.fl)>.99,`${it.id}: pedestrian faces across the corridor crossing`);assert(Math.abs(f.ds)<h+8.5&&Math.abs(f.ds)>h,`${it.id}: junction side of the crossing`);ends.add(`c${Math.sign(f.ds)}${Math.sign(f.lat)}`);}}
+  if(it.params.crossing==='side'){assert(Math.sign(f.fn)===-Math.sign(f.e)&&Math.abs(f.fn)>.99,`${it.id}: pedestrian faces across the side crossing`);ends.add('side'+Math.sign(f.d)+Math.sign(f.e));}
+  else{assert(Math.sign(f.fl)===-Math.sign(f.lat)&&Math.abs(f.fl)>.99,`${it.id}: pedestrian faces across the corridor crossing`);ends.add('corr'+Math.sign(f.ds)+Math.sign(f.lat));}}
  assert.equal(ends.size,8,`${j.c}: every crossing end has its pedestrian head`);
 }
 console.log('Primary/secondary vehicle heads on the left and inside pedestrian heads at every crossing end passed');
@@ -87,10 +88,10 @@ console.log('Smart lamp round columns, E-only housing, retained banners and lant
 console.log('Cycle-track leaf pole passed');
 
 {const {CYCLE_BRIDGES,cycleCanopyAt}=await import('../alignment.js');
- for(const j of CYCLE_BRIDGES){const parts=[],item={id:'covered-cycle-check',type:'lamp_cycle',road:'cycleway',ch:ROAD.cycleway.toCh(j.s),side:'L',off:2.15};
+ for(const j of CYCLE_BRIDGES){const g=crossingGeometry(j),parts=[],item={id:'covered-cycle-check',type:'lamp_cycle',road:'cycleway',ch:ROAD.cycleway.toCh(g.cycleS),side:'L',off:2.15};
   const out=placeFurniture({items:[item]},{batch:(...p)=>parts.push(p),kitParts:()=>[]});
   assert.equal(parts.length,0,'No poles or leaf heads beneath cycle canopies');assert.equal(out.lampPositions.length,0,'No phantom pole light');
-  assert(!cycleCanopyAt(j.s+j.halfWidth+12),'Uncovered ramps retain their lighting');}
+  assert(!cycleCanopyAt(g.cycleS+g.cycleHalf+12),'Uncovered ramps retain their lighting');}// canopies follow the skewed road's crossing of the cycle line
  assert(!data.items.some(i=>i.type==='lamp_cycle'&&i.road==='cycleway'&&cycleCanopyAt(pose(i).s)),'Saved bridge poles removed');}
 console.log('Covered cycle bridges exclude pole furniture and pole light sources');
 

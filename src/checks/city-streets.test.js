@@ -9,13 +9,14 @@ import {panelParts,type2PostParts} from '../street/sandbox/railing-details.js';
 import {sweptKerbs} from '../street/kerbs.js';
 const n=JSON.parse(fs.readFileSync(new URL('../../public/street/furniture.json',import.meta.url))).network;
 const graph=junctions(n,renderedGround),g=buildNetwork(n,{ground:renderedGround});
-assert.equal(n.roads.filter(r=>r.tie).length,12);
-for(const j of [...JUNCTIONS,...UNDERPASSES])for(const side of [-1,1])assert(n.roads.some(r=>r.tie?.junction===j.c&&r.tie.side===side));
+// City rebuild (5 Nov 2026): every arm of every rebuilt crossing continues as an OZP network road (D3 runs on into the VB3 arm).
+assert.equal(n.roads.filter(r=>r.tie).length,11);
+for(const j of [...JUNCTIONS,...UNDERPASSES])for(const side of [-1,1])assert(n.roads.some(r=>[r.tie,r.endTie].some(t=>t?.junction===j.c&&t.side===side)),`${j.name} arm ${side} continues`);
 let tieChecks=0;
 for(const {r,F,P} of graph.roads){
  assert.equal(reserveClash(F.map(f=>[f.x,f.z]),{width:halfWidth(r)}),null,r.id+' clear of dedicated corridor');
  if(!r.tie)continue;const f=tieFrame(r.tie);assert(Math.hypot(F[0].x-f.x,F[0].z-f.z)<1e-6);assert.equal(P.carriageway,f.width);
- for(const d of [.002,.2,1,3])for(const lat of [-P.carriageway/2-1,-P.carriageway/4,0,P.carriageway/4,P.carriageway/2+1]){
+ for(const d of [.002,.2,1,3])for(const lat of [-P.carriageway/2-1,-P.carriageway/4,...(P.median?[]:[0]),P.carriageway/4,P.carriageway/2+1]){// a central median is a raised island (city rebuild distributors)
   const a=frameAt(F,d),x=a.x+a.lx*lat,z=a.z+a.lz*lat,expected=a.y+(a.crossSlope||0)*lat+streetLevel(r,d,lat),actual=streetHeight(x,z);
   assert(actual!==null,`${r.id} has a gap at ${d}/${lat}`);assert(Math.abs(actual-expected)<.04,`${r.id}: surface ${actual} differs from ${expected}`);
   const walk=groundAt(x,z);assert(Math.abs(walk.y-actual)<.04,`${r.id}: walking agrees with mesh`);tieChecks++;

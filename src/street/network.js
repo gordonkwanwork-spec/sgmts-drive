@@ -55,6 +55,8 @@ export function frames(road,ground=()=>0){const P=centreline(road.pts,road.stand
  // Sliding ground average keeps city-scale road preparation linear.
  let lo=0,hi=0,sum=0;for(const f of F){while(hi<F.length&&F[hi].d<=f.d+15)sum+=F[hi++].g;while(F[lo].d<f.d-15)sum-=F[lo++].g;f.y=sum/(hi-lo);}
  if(road.tie){const a=tieFrame(road.tie),delta=a.y-F[0].y;for(const f of F){const t=Math.min(1,f.d/40),u=t*t*(3-2*t);f.y+=delta*(1-u);f.crossSlope=a.slope*(1-u);}}
+ // A closed ring (roundabout) sits level, so every arm meets it at the same height.
+ if(road.loop){const y=F.reduce((s,f)=>s+f.y,0)/F.length;for(const f of F)f.y=y;}
  if(road.turningRadius){const y=F.at(-1).y;for(const f of F){const t=Math.min(1,Math.max(0,(L-f.d-road.turningRadius-3)/15));f.y=y*(1-t)+f.y*t;}}
  return F;}
 export function frameAt(F,d){const L=F.at(-1).d,u=Math.max(0,Math.min(L,d))/L*(F.length-1),i=Math.min(F.length-2,Math.floor(u)),k=u-i,a=F[i],b=F[i+1],m=(p,q)=>p+(q-p)*k;
@@ -155,7 +157,11 @@ export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Gr
  for(const o of roads){const {r,P,F}=o,L=F.at(-1).d,h=P.carriageway/2,fw=M[r.footway||'red'],gap=cuts.get(o)||{1:[],[-1]:[]},s0=starts.get(r.id+':0'),s1=starts.get(r.id+':1');
   const c0=s0?s0.carriageway:0,c1=L-(s1?s1.carriageway:0);
   if(h>0){if(r.standard==='sandbox'){strip(out,M.road,F,c0,c1,-h,0,(d,l)=>streetLevel(r,d,l));strip(out,M.road,F,c0,c1,0,h,(d,l)=>streetLevel(r,d,l));}else strip(out,M.road,F,c0,c1,-h,h,Y.road);
-   if(P.median){strip(out,M.grass,F,c0+3,c1-3,-P.median/2,P.median/2,Y.raised);for(const sd of [-1,1])face(out,M.kerb,F,c0+3,c1-3,sd*P.median/2,Y.road,Y.raised,sd);}
+   // A central median opens where a side road joins (turning gap), so the mouth stays at carriageway level.
+   if(P.median){const gaps=joins.filter(j=>j.B===o).map(j=>{const half=j.A.P.carriageway/2+CORNER+1.5;return [j.at.d-half,j.at.d+half];});
+    // where this road itself joins another, its median nose stands back from the mouth (kerb returns and turning room)
+    for(const [p,q] of minus(c0+(s0?CORNER+6:3),c1-(s1?CORNER+6:3),gaps)){if(q-p<1)continue;strip(out,M.grass,F,p,q,-P.median/2,P.median/2,Y.raised);for(const sd of [-1,1])face(out,M.kerb,F,p,q,sd*P.median/2,Y.road,Y.raised,sd);
+     for(const [d,sg] of [[p,-1],[q,1]]){const f=frameAt(F,d),pos=[],idx=[0,1,2,1,3,2];for(const l of [-P.median/2,P.median/2])for(const y of [Y.road,Y.raised])pos.push(f.x+f.lx*l,f.y+y,f.z+f.lz*l);if(sg<0)idx.reverse();out.raw(M.kerb,pos,idx);}}}
    const lane=(h-P.median/2)/2,marks=P.lines==='centre'?[0]:P.lines==='lanes'?[-(P.median/2+lane),P.median/2+lane]:[];
    for(const l of marks)for(const [a,b] of dashes(c0+2,c1-2))for(const [p,q] of minus(a,b,[...gap[1],...gap[-1],...(r.crossings||[]).map(c=>[c-3,c+3])]))strip(out,M.white,F,p,q,l-.06,l+.06,r.standard==='sandbox'?(d,x)=>streetLevel(r,d,x)+.008:Y.line);}
   for(const sd of [1,-1]){const a=s0?s0.foot[sd*1]??0:0,b=Math.min(L-(s1?s1.foot[-sd]??0:0),r.turningRadius?L-Math.sqrt(Math.max(0,r.turningRadius**2-h**2)):L);// corner c is A's own lateral; at the far end the sides swap

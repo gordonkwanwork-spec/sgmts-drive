@@ -15,7 +15,9 @@ export const RAISED=.18,ROAD=.03,PAINT=.008;
 
 // Height datum of a crossing at (x,z): at grade the corridor profile (so the side road carries the corridor grade and crossfall),
 // under a viaduct the level ground at the crossing centre.
-export function crossingY(j,x,z){return j.underpass?crossingGeometry(j).C.y:sample(projectFrame(x,z,j.s)).y;}
+// The arm then levels across towards its end, so it meets the network road (tieFrame: the corridor profile at the arm axis) flush.
+export function crossingY(j,x,z){const g=crossingGeometry(j);if(j.underpass)return g.C.y;const d=(x-g.C.x)*g.u.x+(z-g.C.z)*g.u.z,near=sample(projectFrame(x,z,j.s)).y,
+ axis=sample(j.s+d*Math.sin(j.skew*Math.PI/180)).y,t=clamp((Math.abs(d)-25)/(j.extent-25),0,1);return near+(axis-near)*t;}
 
 function sink(){const bufs=new Map();
  const get=mat=>{let b=bufs.get(mat);if(!b)bufs.set(mat,b={pos:[],idx:[]});return b;};

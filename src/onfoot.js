@@ -26,7 +26,7 @@ export function groundAt(x,z,sGuess){
  // Rebuilt junctions and under-viaduct roads (src/city/crossings.js): kerb-return rings, arm footways and medians are raised;
  // the side carriageway and the fill between kerb returns sit at road level; land inside a kerb-return circle falls through to terrain.
  for(const j of [...JUNCTIONS,...UNDERPASSES]){const g=crossingGeometry(j),dx=x-g.C.x,dz=z-g.C.z,d=dx*g.u.x+dz*g.u.z,ee=dx*g.n.x+dz*g.n.z,h=j.halfWidth;
-  if(Math.abs(d)>j.extent+.5||Math.abs(ee)>h+(j.underpass?j.footway:(j.R||8)))continue;const base=crossingY(j,x,z);
+  if(Math.abs(d)>j.extent||Math.abs(ee)>h+(j.underpass?j.footway:(j.R||8)))continue;const base=crossingY(j,x,z);
   if(j.underpass){if(Math.abs(ee)<=h+j.footway)return {s,lat,y:base+(Math.abs(ee)>h||Math.abs(ee)<j.median/2?.18:.03)};continue;}
   const pave=junctionPavement(j,x,z);if(pave!==null)return {s,lat,y:base+pave};
   if(Math.abs(lat)<=e.right+.3)break;

@@ -43,8 +43,8 @@ const ROADS=[
  {id:'logistics-south',name:'Logistics access south',...LOCAL,turningRadius:12,join:'roundabout',pts:[[-138,-2455],[-165,-2390],[-180,-2300],[-178,-2150],[-160,-2030],[-118,-1962]]},
  // Road D1: crosses at Ch 3971 (squared to 20° within the 46 m reserve), west to Ha Tsuen, east to the D1/D3/D4 crossroads.
  {id:'d1-west',name:'Road D1',zh:'D1號路',...D(18,3.4),tie:tie(3971,1),pts:[[-405,-3066],[-480,-3016],[-560,-2966],[-640,-2920]]},
- {id:'d1-east',name:'Road D1',zh:'D1號路',...D(18,3.4),tie:tie(3971,-1),join:'d3-d1',pts:[[-230,-3160],[-160,-3184],[-100,-3205]]},
- {id:'d4',name:'Road D4',zh:'D4號路',...D(16.6,2),join:'d3-d1',pts:[[-56,-3217],[40,-3238],[150,-3268],[260,-3320],[360,-3385],[440,-3440],[520,-3500]]},
+ {id:'d1-east',name:'Road D1',zh:'D1號路',...D(18,3.4),tie:tie(3971,-1),join:'d3-d1',at:[-78,-3214],pts:[[-230,-3160],[-160,-3184],[-100,-3205]]},
+ {id:'d4',name:'Road D4',zh:'D4號路',...D(16.6,2),join:'d3-d1',at:[-78,-3214],pts:[[-56,-3217],[40,-3238],[150,-3268],[260,-3320],[360,-3385],[440,-3440],[520,-3500]]},
  {id:'d1-north',name:'Road D1',zh:'D1號路',...D(20,5.4),tie:tie(4398,1),pts:[[0,-3540],[40,-3600],[90,-3680],[140,-3760]]},
  // Road D7 west of A2: the commercial street and its northern loop, both ending in turning heads.
  {id:'d7',name:'Road D7',zh:'D7號路',...LOCAL,carriageway:7.3,turningRadius:12,pts:[[-395,-770],[-330,-731],[-250,-722],[-168,-728]]},
@@ -71,13 +71,14 @@ for(const R of ROADS){let pts=R.pts.map(p=>[...p]);
  if(R.end){const f=tieFrame(R.end);pts=[...pts.filter(p=>(p[0]-f.x)*f.tx+(p[1]-f.z)*f.tz>40),[f.x+f.tx*28,f.z+f.tz*28],[f.x,f.z]];}
  const road={id:'city-'+R.id,name:R.name+(R.zh?' '+R.zh:''),preset:R.preset,footway:'red',standard:'sandbox',source:'OZP S/HSK/2A road reserve, city rebuild 2026-11-05',pts,
   ...(R.carriageway?{carriageway:R.carriageway}:{}),...(R.median?{median:R.median}:{}),...(R.footpath?{footpath:R.footpath}:{}),...(R.turningRadius?{turningRadius:R.turningRadius}:{}),
-  ...(R.lines?{lines:R.lines}:{}),...(R.loop?{loop:true}:{}),...(R.tie?{tie:R.tie}:{})};
+  ...(R.lines?{lines:R.lines}:{}),...(R.loop?{loop:true}:{}),...(R.tie?{tie:R.tie}:{}),...(R.end?{endTie:R.end}:{})};
  if(!R.loop){const keepStart=R.tie?2:R.join?1:0,keepEnd=R.end?2:R.join&&R.tie?1:0;road.pts=centre(resample(pts),halfWidth(road),(i,n)=>i<keepStart||i>=n-keepEnd);}
  byId.set(R.id,{R,road});out.push(road);}
-// T-junctions: snap the joining end exactly onto the host centreline (network.js joins ends within 1 m). A road with a corridor
+// T-junctions (R.at: a shared crossroads point, as D1 and D4 on D3): snap the joining end exactly onto the host centreline (network.js joins ends within 1 m). A road with a corridor
 // tie joins at its far end; any other road is listed from its junction outwards.
-for(const {R,road} of byId.values()){if(!R.join)continue;const host=byId.get(R.join).road,F=frames(host),k=R.tie?road.pts.length-1:0,p=road.pts[k],q=nearestOn(F,...p).f;road.pts[k]=[+q.x.toFixed(3),+q.z.toFixed(3)];}
-for(const r of out)r.pts=r.pts.map(([x,z])=>[+x.toFixed(2),+z.toFixed(2)]);
+for(const {R,road} of byId.values()){if(!R.join)continue;const host=byId.get(R.join).road,F=frames(host),k=R.tie?road.pts.length-1:0,p=R.at||road.pts[k],q=nearestOn(F,...p).f;road.pts[k]=[+q.x.toFixed(3),+q.z.toFixed(3)];}
+// Round to centimetres, except the exact corridor tie points (the arm seams must meet to the micron).
+for(const r of out)r.pts=r.pts.map(([x,z],i,a)=>r.tie&&i===0||r.endTie&&i===a.length-1?[x,z]:[+x.toFixed(2),+z.toFixed(2)]);
 
 // Checks.
 const fails=[],notes=[];

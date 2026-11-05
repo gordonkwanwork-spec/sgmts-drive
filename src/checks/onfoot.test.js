@@ -43,22 +43,19 @@ for(const st of STOPS)for(const platform of st.platforms)for(const dir of [-1,1]
 }
 
 // All four junction corners use the raised slab surface, including the road grade.
-const {JUNCTIONS,sideCrossing}=await import('../alignment.js');
-for(const j of JUNCTIONS){const r=sample(j.s),w=roadSection(j.s).right;
- for(const sx of [-1,1])for(const sz of [-1,1]){
-  if(j.c===2650&&sx===1&&sz===-1)continue; // This corner is the separately checked rounded L35 median nose.
-  const x=sx*(w+6-4/Math.SQRT2),z=sz*(j.halfWidth+6-4/Math.SQRT2),p=junctionPoint(j,x,.18-r.grade*z,z),wx=r.x-r.lx*p.x-r.tx*p.z,wz=r.z-r.lz*p.x-r.tz*p.z;
-  assert(Math.abs(groundAt(wx,wz,j.s-z).y-(r.y+p.y))<.002,`${j.name}: raised corner`);
-  const rx=sx*sideCrossing(j,sx),rz=sz*(j.halfWidth+.65),px=r.x-r.lx*rx-r.tx*rz,pz=r.z-r.lz*rx-r.tz*rz;
-  // The elevated cycle deck takes precedence where it crosses above a side-road ramp.
-  const g=groundAt(px,pz,j.s-rz),ramp=r.y-r.grade*rz+.05+.13*.65/3.75;
-  assert(g.y>=ramp-.002,`${j.name}: ramp does not sink below paving`);
- }
+// Rebuilt junctions (city rebuild, 5 Nov 2026): kerb-return rings are raised at the junction datum, and the dropped kerb at each
+// side-road crossing never sinks below its rendered ramp (the elevated cycle deck takes precedence where it passes above).
+const {JUNCTIONS,crossingGeometry}=await import('../alignment.js'),{crossingY}=await import('../city/crossings.js');
+for(const j of JUNCTIONS){const g=crossingGeometry(j);
+ for(const σ of [-1,1])for(const τ of [-1,1]){const k=g.corners[σ][τ],a=(k.a1+k.a2)/2,x=k.O.x+Math.cos(a)*(k.R-1.5),z=k.O.z+Math.sin(a)*(k.R-1.5);
+  assert(Math.abs(groundAt(x,z,k.s).y-(crossingY(j,x,z)+.18))<.002,`${j.name}: raised corner`);
+  const d=g.crossD[σ],e=τ*(j.halfWidth+.65),px=g.C.x+g.u.x*d+g.n.x*e,pz=g.C.z+g.u.z*d+g.n.z*e;
+  assert(groundAt(px,pz,j.s).y>=crossingY(j,px,pz)+.05+.13*.65/j.footway-.002,`${j.name}: ramp does not sink below paving`);}
 }
 console.log('Raised junction corner and crossing ramp heights passed');
 // Ribbon vertices include every crossing/ramp break, keeping rendered paving flush with walking heights.
 const {ribbon}=await import('../environment.js');
-for(const j of JUNCTIONS){const s=j.s+j.halfWidth+10,w=roadSection(s).right,geo=ribbon(s-8,s+8,w,w+3.75,footpathHeight,true),p=geo.attributes.position;
+for(const j of JUNCTIONS){const s=crossingGeometry(j).crossS[1],w=roadSection(s).right,geo=ribbon(s-8,s+8,w,w+3.75,footpathHeight,true),p=geo.attributes.position;
  for(const d of [-4,-1.5,1.5,4]){const q=sample(s+d),x=q.x+q.lx*w,z=q.z+q.lz*w;let found=false;for(let i=0;i<p.count;i++)if(Math.hypot(p.getX(i)-x,p.getZ(i)-z)<.001){found=true;assert(Math.abs(p.getY(i)-q.groundY-footpathHeight(s+d))<.001);}
   assert(found,'Dropped-kerb boundary vertex is present');}
  geo.dispose();
