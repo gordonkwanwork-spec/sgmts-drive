@@ -23,6 +23,8 @@ import {kitPlots,kitTypes} from './city/kit-lots.js';
 import {renderModernBuildings} from './city/kit/hk-modern.js';
 const kitLot=l=>l.model?.type==='massing'&&!!kitTypes(l.zone);
 import * as T from 'three';
+import {TessellateModifier} from 'three/addons/modifiers/TessellateModifier.js';
+import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {clone as cloneSkinned} from 'three/addons/utils/SkeletonUtils.js';
 import {createAtmosphere,ATMOS} from './atmosphere.js';
@@ -1095,7 +1097,14 @@ async function boot(){try{let loaded=0;
  const drawn=networkMask(furniture.network,renderedGround);// lot buildings and trees keep off streets and paving drawn in the street editor
  const lotGroup=await buildLots(lots.filter(l=>!kitLot(l)),{kit:streetKit,ground:renderedGround,allowed:(x,z,r)=>sceneryClear(x,z,r)&&!drawn.buildingBlocked(x,z,r),allowedKept:(x,z,r)=>sceneryClear(x,z,r),allowedLow:(x,z,r)=>sceneryClear(x,z,r,true)&&!drawn.blocked(x,z,r),modelUrl:src=>import.meta.env.BASE_URL+'lots/models/'+src});scene.add(lotGroup);
  // City rebuild: residential, commercial, mixed-use, industrial, enterprise-park and village lots from the sandbox modern kit.
- const kitCity=renderModernBuildings(lots.filter(kitLot).flatMap(l=>kitPlots(l,(x,z,r)=>sceneryClear(x,z,r)&&!drawn.buildingBlocked(x,z,r),renderedGround)),{near:220});scene.add(kitCity);await kitCity.userData.ready;
+ const kitSites=lots.filter(kitLot).flatMap(l=>kitPlots(l,(x,z,r)=>sceneryClear(x,z,r)&&!drawn.buildingBlocked(x,z,r),renderedGround,(x,z,r)=>drawn.blocked(x,z,r)));
+ const kitCity=renderModernBuildings(kitSites,{near:220});scene.add(kitCity);await kitCity.userData.ready;
+ // Built lots are paved to their boundary (the OZP lot edge meets the road reserve), so blocks read as hardscape out to the
+ // street footway; buildings never stand in open grass. Lots no street reaches stay unbuilt (kitPlots fronts rule).
+ {const built=new Set(kitSites.map(p=>p.id.split(':')[0])),mat=new T.MeshStandardMaterial({color:0xb9b3a4,roughness:.95}),geos=[];
+  for(const l of lots.filter(l=>built.has(l.id))){let geo=new T.ShapeGeometry(new T.Shape(l.poly.map(([x,z])=>new T.Vector2(x,-z))));geo.rotateX(-Math.PI/2);geo=new TessellateModifier(6,6).modify(geo);
+   const p=geo.attributes.position;for(let i=0;i<p.count;i++)p.setY(i,renderedGround(p.getX(i),p.getZ(i))+.07);geo.deleteAttribute('uv');geo.deleteAttribute('normal');geos.push(geo);}
+  if(geos.length){const geo=mergeGeometries(geos);geo.computeVertexNormals();const m=new T.Mesh(geo,mat);m.name='Built lot paving';m.receiveShadow=true;scene.add(m);}}
  let planOverlay=null;
  const planWarnings=cityDiagnostics(lots,furniture),planButton=document.createElement('button');planButton.id='city-plan';planButton.innerHTML='<b>◇</b><small>City plan'+(planWarnings.length?' ⚠':'')+'</small>';planButton.setAttribute('aria-label','City plan');planButton.setAttribute('aria-pressed','false');planButton.title=planWarnings.join('\n')||'Inspect parcel ownership and generated footprints';$('#edge-tools').append(planButton);
  planButton.onclick=()=>{planButton.blur();if(!planOverlay){planOverlay=cityOverlay(lots,lotGroup.userData.cityPlan,renderedGround);scene.add(planOverlay);}planOverlay.visible=!planOverlay.visible;planButton.setAttribute('aria-pressed',String(planOverlay.visible));toast(planOverlay.visible?'City plan: cyan parcels · pink buildings · sand paving · green planting · orange corridor. '+(planWarnings.length?'Plan data needs review; details on the City plan button.':''):'City plan hidden',12);};

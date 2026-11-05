@@ -19,11 +19,12 @@ const hash=s=>{let h=2166136261;for(const c of String(s))h=Math.imul(h^c.charCod
 
 // allowed(x,z,r): the game's scenery/street clearance for a circle.
 // ground(x,z): terrain height; each site stands on the lowest of its corners (no floating plinths).
-export function kitPlots(lot,allowed=()=>true,ground=()=>0){const types=kitTypes(lot.zone);if(!types)return [];const P=lot.poly;
+// fronts(x,z,r): true when a street lies within r (Gordon: buildings are reached from streets, never stand alone in green).
+export function kitPlots(lot,allowed=()=>true,ground=()=>0,fronts=()=>true){const types=kitTypes(lot.zone);if(!types)return [];const P=lot.poly;
  let best=0,ax=1,az=0;for(let i=0;i<P.length;i++){const a=P[i],b=P[(i+1)%P.length],L=Math.hypot(b[0]-a[0],b[1]-a[1]);if(L>best){best=L;ax=(b[0]-a[0])/L;az=(b[1]-a[1])/L;}}
  const bx=-az,bz=ax,us=P.map(p=>p[0]*ax+p[1]*az),vs=P.map(p=>p[0]*bx+p[1]*bz),[u0,u1,v0,v1]=[Math.min(...us),Math.max(...us),Math.min(...vs),Math.max(...vs)];
  const world=(u,v)=>[u*ax+v*bx,u*az+v*bz],gap=types[0]==='village-houses'?6:14,plots=[];let k=0,v=v0+5;
- const fits=(u,v,w,d)=>{for(let i=0;i<=4;i++)for(let j=0;j<=4;j++){const p=world(u-5+(w+10)*i/4,v-5+(d+10)*j/4);if(!pointInPolygon(p,P))return false;}const c=world(u+w/2,v+d/2);return allowed(c[0],c[1],Math.hypot(w,d)/2);};
+ const fits=(u,v,w,d)=>{for(let i=0;i<=4;i++)for(let j=0;j<=4;j++){const p=world(u-5+(w+10)*i/4,v-5+(d+10)*j/4);if(!pointInPolygon(p,P))return false;}const c=world(u+w/2,v+d/2),r=Math.hypot(w,d)/2;return allowed(c[0],c[1],r)&&fronts(c[0],c[1],r+30);};
  while(v<v1-10){let u=u0+5,rowDepth=0;
   while(u<u1-10){const type=types[hash(lot.id+':'+k)%types.length],[w,d]=TYPES[type].span;
    if(fits(u,v,w,d)){const poly=[world(u,v),world(u+w,v),world(u+w,v+d),world(u,v+d)];plots.push({id:`${lot.id}:${k}`,poly:poly.map(([x,z])=>({x,z})),y:Math.min(...poly.map(([x,z])=>ground(x,z)))-.15,modern:type,seed:hash(lot.id)+k});rowDepth=Math.max(rowDepth,d);u+=w+gap;}else u+=8;k++;}
