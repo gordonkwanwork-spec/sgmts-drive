@@ -17,7 +17,8 @@ import {autoFullscreen,toggleFullscreen} from './fullscreen.js';
 import {characterLighting,contactShadow,poseCyclist,posePedestrian,tripoPlayer} from './street-models.js';
 import {journeyTerminus,nextStationIndex,fleetPlan,parkingScore,stationStopTarget,NOSE,announcementText} from './service.js';
 import {terminalCurve,depotCurve,depotExitCurve} from './routes.js';
-import {sideCrossing} from './alignment.js';
+import {sideCrossing,crossingGeometry} from './alignment.js';
+import {crossingRoutes} from './city/traffic-routes.js';
 import * as T from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {clone as cloneSkinned} from 'three/addons/utils/SkeletonUtils.js';
@@ -266,11 +267,16 @@ function giveWay(p,r,dt,reach,width=.55){
  else{p.stuck=0;if(!personNear(p.group,1.6))p.dodgeT=0;}
  p.dodge=(p.dodge||0)+Math.max(-.9*dt,Math.min(.9*dt,(p.dodgeT||0)-(p.dodge||0)));return side===null;}
 function makeTraffic(){
- const routes=[...junctions.flatMap(junction=>[-1,1].flatMap(dir=>Array.from({length:3},(_,n)=>({junction,dir,along:-dir*1.9,start:-dir*(25+n*18)})))),...UNDERPASSES.flatMap(junction=>[-1,1].flatMap(dir=>Array.from({length:6},(_,n)=>({junction,dir,along:-dir*(n%2?6.5:2.2),start:-dir*(100-n*32)}))))];
- const types=TRIPO_VEHICLES;
- for(let i=0;i<routes.length;i++){const route=routes[i],{id:kind,width:w,length,height}=types[i%types.length],group=streetModel(kind);
-  group.name='traffic-'+kind;group.traverse(n=>{if(n.isMesh)n.castShadow=true;});scene.add(group);traffic.push({group,...route,kind,width:w,length,height,lat:route.start,start:route.start,v:0,cross:true});
- }
+ // City rebuild: general traffic follows lane paths through each rebuilt crossing and out along the OZP network
+ // (src/city/traffic-routes.js); at grade it holds at the side-road stop line until the junction's road phase shows green.
+ const types=TRIPO_VEHICLES;let i=0;
+ for(const route of crossingRoutes(environment.network)){const L=route.curve.getLength(),n=route.junction.underpass?2:3,j=route.junction;
+  const signalHold=route.stopAt===null?null:{at:route.stopAt,get sig(){return signalObjects.find(s=>s.c===j.c);}};
+  for(let k=0;k<n;k++,i++){const {id:kind,width:w,length,height}=types[i%types.length],group=streetModel(kind);
+   group.name='traffic-'+kind;group.traverse(m=>{if(m.isMesh)m.castShadow=true;});scene.add(group);
+   traffic.push({group,kind,width:w,length,height,curve:route.curve,routeDistance:L*(k+.35)/n,routeDir:1,v:0,cross:j,dir:route.dir,speed:j.underpass?13:11,signalHold,
+    holds:signalHold?[{at:signalHold.at,go:()=>{const sig=signalHold.sig;return !sig||(state.mode==='control'&&sig.control?aspect(sig.control,'road'):signalAt(sig,true))==='go';}}]:[]});}}
+
  STOPS.forEach((st,i)=>{for(let j=0;j<6;j++){const g=stationPerson(st.s,j+i);if(!g)continue;
   const side=j%2?1:-1,phase=2+Math.floor(j/2)*3,origin=point(stopCentre(st,side)+(phase-6)*4,side*(8.35+(phase%2)*.45));origin.y+=.32+PLATFORM_RISE;g.position.copy(origin);g.rotation.y=sample(st.s).heading;scene.add(g);walkerObjects.push({group:g,station:i,side,origin,phase,progress:0,alight:phase<3,roaming:phase>=9});
  }});
@@ -302,7 +308,7 @@ function makeStreetLife(){
  for(const st of STOPS){const root=stations.find(p=>p.s===st.s).root;seats.push(...stationBenchSeats(root,st,manifest.stations.find(m=>m.id===st.id).platforms));}
  const plaza=STOPS[1];for(const ds of [-80,0,80])for(const dl of [-.8,.8]){const s=plaza.s+ds,r=sample(s),p=point(s,-42+dl);p.y=r.groundY+.32;seats.push({x:p.x,y:p.y,z:p.z,heading:sample(plaza.s).heading+Math.PI,seat:.505,s,station:1,side:0});}
  const occupiedPlatforms=new Set();for(const seat of seats){const key=seat.station+':'+seat.side;if(!seat.side||occupiedPlatforms.has(key))continue;const group=stationPerson(STOPS[seat.station].s,6+seat.station);if(!group)continue;occupiedPlatforms.add(key);group.name='seated-pedestrian';group.position.set(seat.x,seat.y,seat.z);group.rotation.y=seat.heading;group.userData.action={sit:seat.seat};scene.add(group);seat.taken=true;sitters.push({group,s:seat.s,seat});}
- for(const [i,c] of [...CROSSINGS,...JUNCTIONS.map(j=>({s:j.s+j.halfWidth+10,station:j.name,signal:j.c}))].entries()){const group=stationPerson(c.s,i);if(!group)continue;group.name='crossing-pedestrian';scene.add(group);crossers.push({...c,group,dir:i%2?1:-1,wait:5+i%7,active:false});}
+ for(const [i,c] of [...CROSSINGS,...JUNCTIONS.map(j=>({s:crossingGeometry(j).crossS[1],station:j.name,signal:j.c}))].entries()){const group=stationPerson(c.s,i);if(!group)continue;group.name='crossing-pedestrian';scene.add(group);crossers.push({...c,group,dir:i%2?1:-1,wait:5+i%7,active:false});}
  for(let i=0;i<20;i++){const group=streetModel('cyclist'),wheels=['bike_wheel_front','bike_wheel_rear'].map(n=>group.getObjectByName(n)),c={group,wheels,s:LENGTH*(i+.5)/20,dir:i%2?1:-1,v:0,phase:i};poseCyclist(c,0);scene.add(group);cyclists.push(c);}
  const st=STOPS[1];
  // Remaining station identities stroll in the plaza without duplicating platform passengers.
@@ -347,7 +353,7 @@ function updateStreetLife(dt,subjectS){
   if(c.active&&c.group.visible)contact(c.group,.5,.5,1.8,'Pedestrian');
  }
  for(const c of cyclists){let stop=c.s+c.dir*1e6;
-  for(const j of [...JUNCTIONS,...UNDERPASSES].filter(j=>!CYCLE_BRIDGES.includes(j))){const dist=(j.s-c.s)*c.dir,line=j.s-c.dir*(j.halfWidth+2);if(dist>0&&(line-c.s)*c.dir>=0&&traffic.some(t=>t.junction===j&&Math.abs(t.lat-cycleOffset(j.s))<(t.v>.2?25:t.length/2+1)))stop=c.dir===1?Math.min(stop,line):Math.max(stop,line);}
+  for(const j of [...JUNCTIONS,...UNDERPASSES].filter(j=>!CYCLE_BRIDGES.includes(j))){const dist=(j.s-c.s)*c.dir,line=j.s-c.dir*(j.halfWidth+2);if(dist>0&&(line-c.s)*c.dir>=0&&traffic.some(t=>{if(t.cross!==j)return false;const r=sample(j.s),lat=(t.group.position.x-r.x)*r.lx+(t.group.position.z-r.z)*r.lz;return Math.abs(lat-cycleOffset(j.s))<(t.v>.2?25:t.length/2+1);}))stop=c.dir===1?Math.min(stop,line):Math.max(stop,line);}
   const move=approachStep(c.s,c.v,c.dir,4.2,stop,dt);c.s=move.position;c.v=move.speed;c.liftHeight=cycleBridgeHeight(c.s);if(c.s>LENGTH-4||c.s<4){c.dir*=-1;c.v=0;}
   poseCyclist(c,dt);
   const r=cycleSample(c.s);c.group.position.set(r.x+r.lx*c.dir*.85,0,r.z+r.lz*c.dir*.85);c.group.position.y=r.groundY+(c.liftHeight??cycleBridgeHeight(c.s))+.035;c.group.rotation.y=r.heading+(c.dir===1?0:Math.PI);c.group.visible=Math.abs(c.s-subjectS)<400;
@@ -815,16 +821,7 @@ function actors(dt){const subjectS=viewS();
   for(const o of traffic){if(o===c)continue;const d=o.group.position.clone().sub(p),ahead=d.x*t.x+d.z*t.z;if(ahead>0&&ahead<30&&Math.abs(d.x*t.z-d.z*t.x)<2.2&&Math.abs(d.y)<3)stop=Math.min(stop,Math.max(c.routeDistance,c.routeDistance+ahead-(o.length+c.length)/2-3));}
   for(const h of c.holds||[])if(!h.go())hold(h.at);
   if(state.mode!=='control'&&!noCab())for(const body of vehicle.sections){const delta=body.position.clone().sub(p),ahead=delta.x*t.x+delta.z*t.z,cross=Math.abs(delta.x*t.z-delta.z*t.x);if(ahead>0&&cross<4&&Math.abs(delta.y)<4)stop=Math.min(stop,c.routeDistance+Math.max(0,ahead-c.length/2-7));}
-  const move=approachStep(c.routeDistance,c.v,1,c.speed||11,stop,dt);c.routeDistance=move.position;c.v=move.speed;if(c.routeDistance>length){c.routeDistance=0;if(state.mode==='control')c.releaseAt=state.time+controlRoom.arrivalGap;}const v=clamp(c.routeDistance/length,0,1),q=c.curve.getPointAt(v),h=c.curve.getTangentAt(v);c.group.position.copy(q);c.group.position.y+=.08;c.group.rotation.y=Math.atan2(-h.x,-h.z);c.group.visible=Math.abs(project(q.x,q.z)-subjectS)<500;if(c.group.visible)contact(c.group,c.width,c.length,c.height,'Turning traffic');continue;}const j=c.junction,r=sample(j.s),sig=signalObjects.find(sig=>sig.c===j.c),go=j.underpass&&!sig||signalAt(sig,true)==='go';
-  const line=-c.dir*((j.underpass?j.stop:sideCrossing(j,c.dir)+3)+c.length/2),distance=(line-c.lat)*c.dir;let stop=c.lat+c.dir*1e6;
-  if(!go&&distance>=-.01)stop=line;
-  for(const other of traffic)if(other!==c&&other.junction===j&&other.dir===c.dir&&other.along===c.along&&(other.lat-c.lat)*c.dir>0){const limit=other.lat-c.dir*((other.length+c.length)/2+3);if((limit-c.lat)*c.dir<(stop-c.lat)*c.dir)stop=limit;}
-  for(const o of traffic)if(o.curve){const dx=o.group.position.x-r.x,dz=o.group.position.z-r.z,oLat=dx*r.lx+dz*r.lz,ahead=(oLat-c.lat)*c.dir;if(Math.abs(dx*r.tx+dz*r.tz-c.along)<1.6&&Math.abs(o.group.position.y-(r.elevated?r.groundY:r.y))<3.5&&ahead>0&&ahead<40){const limit=oLat-c.dir*((o.length+c.length)/2+3);if((limit-c.lat)*c.dir<(stop-c.lat)*c.dir)stop=limit;}}
-  if(state.mode!=='control'&&!noCab()&&state.mode!=='turnback')for(const g of vehicle.sections){const dx=g.position.x-r.x,dz=g.position.z-r.z,along=dx*r.tx+dz*r.tz,lat=dx*r.lx+dz*r.lz;if(Math.abs(along-c.along)<7&&Math.abs(g.position.y-(r.elevated?r.groundY:r.y))<3.5&&(lat-c.lat)*c.dir> -c.length/2){const blocked=lat-c.dir*(c.length/2+7);if((blocked-stop)*c.dir<0)stop=blocked;}}
-  const move=approachStep(c.lat,c.v,c.dir,j.underpass?11:7,stop,dt);c.lat=move.position;c.v=move.speed;
-  if(c.lat*c.dir>j.extent+c.length){const entry=-c.dir*(j.extent+c.length);if(!traffic.some(o=>o!==c&&o.junction===j&&o.along===c.along&&Math.abs(o.lat-entry)<(o.length+c.length)/2+4)){c.lat=entry;if(state.mode==='control')c.releaseAt=state.time+controlRoom.arrivalGap;}}
-  c.group.position.set(r.x+r.lx*c.lat+r.tx*c.along,(r.elevated?r.groundY:r.y)+c.along*(r.elevated?0:r.grade)+.08,r.z+r.lz*c.lat+r.tz*c.along);c.group.rotation.y=r.heading+c.dir*Math.PI/2;c.group.visible=Math.abs(j.s-subjectS)<450;
-  if(c.group.visible)contact(c.group,c.width,c.length,c.height,'Traffic');
+  const move=approachStep(c.routeDistance,c.v,1,c.speed||11,stop,dt);c.routeDistance=move.position;c.v=move.speed;if(c.routeDistance>length){c.routeDistance=0;if(state.mode==='control')c.releaseAt=state.time+controlRoom.arrivalGap;}const v=clamp(c.routeDistance/length,0,1),q=c.curve.getPointAt(v),h=c.curve.getTangentAt(v);c.group.position.copy(q);c.group.position.y+=.08;c.group.rotation.y=Math.atan2(-h.x,-h.z);c.group.visible=Math.abs(project(q.x,q.z)-subjectS)<500;if(c.group.visible)contact(c.group,c.width,c.length,c.height,'Traffic');continue;}
  }
  for(const c of traffic)if(c.group.visible)animateRoadWheels(c.group,c.v*dt);
  updateStreetLife(dt,subjectS);updateBirds(dt,subjectS);

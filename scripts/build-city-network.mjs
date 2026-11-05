@@ -67,8 +67,8 @@ function centre(P,hw,fixed){for(let it=0;it<5;it++){const next=P.map(p=>[...p]);
  return P;}
 const byId=new Map();const out=[];
 for(const R of ROADS){let pts=R.pts.map(p=>[...p]);
- if(R.tie){const f=tieFrame(R.tie);pts=[[f.x,f.z],[f.x+f.tx*12,f.z+f.tz*12],...pts];}
- if(R.end){const f=tieFrame(R.end);pts=[...pts,[f.x+f.tx*12,f.z+f.tz*12],[f.x,f.z]];}
+ if(R.tie){const f=tieFrame(R.tie);pts=[[f.x,f.z],[f.x+f.tx*28,f.z+f.tz*28],...pts.filter(p=>(p[0]-f.x)*f.tx+(p[1]-f.z)*f.tz>40)];}
+ if(R.end){const f=tieFrame(R.end);pts=[...pts.filter(p=>(p[0]-f.x)*f.tx+(p[1]-f.z)*f.tz>40),[f.x+f.tx*28,f.z+f.tz*28],[f.x,f.z]];}
  const road={id:'city-'+R.id,name:R.name+(R.zh?' '+R.zh:''),preset:R.preset,footway:'red',standard:'sandbox',source:'OZP S/HSK/2A road reserve, city rebuild 2026-11-05',pts,
   ...(R.carriageway?{carriageway:R.carriageway}:{}),...(R.median?{median:R.median}:{}),...(R.footpath?{footpath:R.footpath}:{}),...(R.turningRadius?{turningRadius:R.turningRadius}:{}),
   ...(R.lines?{lines:R.lines}:{}),...(R.loop?{loop:true}:{}),...(R.tie?{tie:R.tie}:{})};

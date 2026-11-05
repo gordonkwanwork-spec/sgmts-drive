@@ -47,7 +47,7 @@ export function buildCrossings(scene,{mats,junctionBox}){
   const armKerb=(τ,d0,d1,dc=null)=>{const s=Math.sign(d1-d0)||1,L=Math.abs(d1-d0);kerb(L,t=>{const d=d0+s*t,p=A(d,τ*h),drop=dc===null?0:.13*clamp(1-(Math.abs(d-dc)-1.5)/1.8,0,1);return {x:p.x,z:p.z,nx:n.x*τ,nz:n.z*τ,y:Y(p)+RAISED-drop,base:Y(p)+ROAD};});};
   const footDy=dc=>(d,e)=>RAISED-(dc===null?0:.13*clamp(1-(Math.abs(d-dc)-1.5)/1.8,0,1)*(1-(Math.abs(e)-h)/fw));
   // Central median island (raised, paved) from d0 to d1 with K1 kerbs; a rounded nose at `nose` (one of d0/d1).
-  const median=(d0,d1,nose)=>{if(!m||Math.abs(d1-d0)<.5)return;band(mats.walkGrey||mats.walk,d0,d1,-m+.12,m-.12,RAISED);
+  const median=(d0,d1,nose,planted=false)=>{if(!m||Math.abs(d1-d0)<.5)return;band(planted?mats.grass:mats.walkGrey||mats.walk,d0,d1,-m+.12,m-.12,RAISED);
    for(const τ of [-1,1])kerb(Math.abs(d1-d0),t=>{const d=Math.min(d0,d1)+t,p=A(d,τ*m);return {x:p.x,z:p.z,nx:-n.x*τ,nz:-n.z*τ,y:Y(p)+RAISED,base:Y(p)+ROAD};});
    const cap=d=>kerb(2*m,t=>{const p=A(d,-m+t);return {x:p.x,z:p.z,nx:-u.x*Math.sign(d-(d0+d1)/2),nz:-u.z*Math.sign(d-(d0+d1)/2),y:Y(p)+RAISED,base:Y(p)+ROAD};});
    for(const d of [d0,d1])if(d!==nose&&Math.abs(d)<ext-.01)cap(d);
@@ -73,7 +73,7 @@ export function buildCrossings(scene,{mats,junctionBox}){
      band(mats.walk,σ*reach(k),σ*ext,τ*h+τ*.12,τ*(h+fw),footDy(dc),[dc-3.3,dc-1.5,dc+1.5,dc+3.3]);armKerb(τ,σ*reach(k),σ*ext,dc);
      band(mats.tactile,dc-1.5,dc+1.5,τ*(h+.3),τ*(h+1.2),(d,e)=>footDy(dc)(d,e)+.012);}
     // Median: refuge nose just junction-side of the crossing, cut through at road level for the crossing, then on to the arm end.
-    if(m){median(σ*(Math.abs(dc)-1.9-1.8),σ*(Math.abs(dc)-1.9),σ*(Math.abs(dc)-1.9-1.8));median(σ*(Math.abs(dc)+1.9),σ*ext);
+    if(m){median(σ*(Math.abs(dc)-1.9-1.8),σ*(Math.abs(dc)-1.9),σ*(Math.abs(dc)-1.9-1.8));median(σ*(Math.abs(dc)+1.9),σ*ext,undefined,true);
      const nose=A(σ*(Math.abs(dc)-1.9-1.8-m*.4),0);records.push({sign:'keep-left',x:nose.x,z:nose.z,y:Y(nose)+RAISED,face:{x:-u.x*σ,z:-u.z*σ},junction:j});}
     // Markings: signal crossing, stop line on the incoming half, warning lane lines, centre line, ahead-only arrows.
     const mk=signalCrossingMarkings({at:dc,width:3.2,roadWidth:2*h,edgeMargin:.5});
@@ -98,7 +98,7 @@ export function buildCrossings(scene,{mats,junctionBox}){
    for(const τ of [-1,1])for(const σ of [-1,1]){const s0=g.crossS[τ]+τ*2.4,p=at(s0,σ*(right(s0)+.6)),r=sample(s0);records.push({sign:'no-entry-sgmts',x:p.x,z:p.z,y:r.y+footpathHeight(s0),face:{x:-r.tx*τ,z:-r.tz*τ},junction:j});}
   }else{
    // Road under the viaduct: straight dual carriageway, central median, footways, lane and edge markings; no conflict with the ART.
-   band(mats.road,-ext,ext,-h,h,ROAD);median(-ext,ext);
+   band(mats.road,-ext,ext,-h,h,ROAD);median(-ext,ext,undefined,true);
    for(const τ of [-1,1]){band(mats.walk,-ext,ext,τ*h+τ*.12,τ*(h+fw),RAISED);armKerb(τ,-ext,ext);}
    for(const σ of [-1,1])laneLines(σ,0,σ*ext,false);
   }
