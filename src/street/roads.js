@@ -2,7 +2,7 @@
 // roads: the corridor distance s; others: metres along the road), a displayed chainage ch, and a frame at p.
 // Placement: side 'L' is +lateral (left in the direction of increasing chainage); off is measured outward from the
 // kerb (ref 'kerb', default) or from the centreline (ref 'centre'); y = road surface at that point + dy.
-import {sample,LENGTH,toChainage,fromChainage,roadSection,footpathHeight,JUNCTIONS,UNDERPASSES,sideCrossing,LOOP,cycleSample,cycleBridgeHeight,project,CYCLE_WIDTH} from '../alignment.js';
+import {sample,LENGTH,toChainage,fromChainage,roadSection,footpathHeight,JUNCTIONS,UNDERPASSES,sideCrossing,crossingAxes,crossingGeometry,LOOP,cycleSample,cycleBridgeHeight,project,CYCLE_WIDTH} from '../alignment.js';
 import {depotCurve} from '../routes.js';
 import {CV_ROAD,CV_ROAD_WIDTH} from '../depot.js';
 import {presetOf,frames as networkFrames,frameAt,junctions as networkJunctions,streetLevel,Y as NET_Y} from './network.js';
@@ -18,10 +18,10 @@ const corridor={id:'corridor',name:'SGMTS corridor',p0:0,p1:LENGTH,toCh:toChaina
 const cycleway={id:'cycleway',name:'Cycle track',p0:0,p1:LENGTH,toCh:toChainage,toParam:fromChainage,frame:s=>{const c=cycleSample(s);return {...c,y:c.groundY+cycleBridgeHeight(s)};},
  kerb:()=>CYCLE_WIDTH/2,surface:s=>cycleSample(s).groundY+cycleBridgeHeight(s)};
 // Crossing roads run straight through each junction/underpass centre along the corridor's lateral axis.
-const crossings=[...JUNCTIONS,...UNDERPASSES].map(j=>{const r=sample(j.s),y0=j.underpass?r.groundY:r.y;
+const crossings=[...JUNCTIONS,...UNDERPASSES].map(j=>{const {r,C,u}=crossingAxes(j),y0=C.y,k=Math.sin(j.skew*Math.PI/180),rise=j.underpass?0:r.grade*k;
  return {id:(j.underpass?'U':'J')+j.c,name:`${j.name} ${j.underpass?'underpass':'junction'} (Ch ${j.c})`,p0:-j.extent,p1:j.extent,toCh:p=>p+j.extent,toParam:ch=>ch-j.extent,
-  frame:d=>frameOf(r.x+r.lx*d,y0,r.z+r.lz*d,r.lx,r.lz),kerb:()=>j.halfWidth,
-  surface:(d,lat)=>y0+(j.underpass?0:-r.grade*lat)+(Math.abs(lat)>j.halfWidth&&Math.abs(lat)<=j.halfWidth+FOOTPATH||Math.abs(lat)<j.median/2?RAISED:.03)};});
+  frame:d=>frameOf(C.x+u.x*d,y0+rise*d,C.z+u.z*d,u.x,u.z),kerb:()=>j.halfWidth,
+  surface:(d,lat)=>y0+rise*d+(j.underpass?0:-r.grade*Math.cos(j.skew*Math.PI/180)*lat)+(Math.abs(lat)>j.halfWidth&&Math.abs(lat)<=j.halfWidth+FOOTPATH||Math.abs(lat)<j.median/2?RAISED:.03)};});
 // Tangents blend between vertices so every nearby point has a unique perpendicular foot (no gaps at the corners).
 function polylineRoad(id,name,pts,half){const run=[0];for(let i=1;i<pts.length;i++)run.push(run[i-1]+Math.hypot(pts[i].x-pts[i-1].x,pts[i].z-pts[i-1].z));
  const tan=pts.map((_,i)=>{const a=pts[Math.max(0,i-1)],b=pts[Math.min(pts.length-1,i+1)],n=Math.hypot(b.x-a.x,b.z-a.z)||1;return {x:(b.x-a.x)/n,z:(b.z-a.z)/n};});
@@ -72,27 +72,28 @@ export function record(roadId,x,y,z,yaw,{ref='kerb',guess}={}){const road=ROAD[r
  const off=ref==='centre'?abs:abs-road.kerb(n.p);let rot=((yaw-n.f.heading)*180/Math.PI)%360;if(rot>180)rot-=360;if(rot<=-180)rot+=360;
  return {road:roadId,ch:round(road.toCh(n.p)),side,ref,off:round(off),rot:round(rot,100),dy:round(y-road.surface(n.p,n.lat))};}
 
-// HK junction signals (after the TD layout diagram), per approach, with left-hand traffic:
-// primary at the stop line on the driver's left kerb and secondary on the left beyond the junction, both facing the approaching
-// traffic; pedestrian heads at both ends of every crossing on its junction side, facing across it. A secondary shares its pole
-// with the pedestrian head at that crossing end (as in the site photo); the other crossing ends get a pedestrian-only pole.
-// Frame: lat is left of the corridor direction, ds = s − junction s. params.hand −1 mirrors the vehicle head so it hangs over the road.
-export function junctionSignalItems(){const items=[];
- for(const j of JUNCTIONS){const r=sample(j.s),w=roadSection(j.s).right,h=j.halfWidth,C=A=>sideCrossing(j,A),k=w+.95,q=h+.95;
-  const F={t:0,'-t':Math.PI,l:Math.PI/2,'-l':-Math.PI/2},RIGHT={t:'-l','-t':'l',l:'t','-l':'-t'};
-  const add=(id,lat,ds,axis,face,{ped,crossing,road}={})=>{const x=-lat,z=-ds,yaw=F[face],wx=r.x-r.lx*x-r.tx*z,wz=r.z-r.lz*x-r.tz*z,y=r.y-r.grade*z+(Math.abs(lat)===k?footpathHeight(j.s+ds):.3);
-   // The head hangs at the pole's local +X, the right of its facing; mirror it (hand −1) so it hangs over the carriageway.
-   const hand=road&&RIGHT[face]!==(road==='corridor'?(lat>0?'-l':'l'):(ds>0?'-t':'t'))?-1:1;
-   const params={junction:j.c,axis,...(axis!=='pedestrian'&&hand<0?{hand}:{}),...(ped?{pedYaw:((F[ped]-yaw)*180/Math.PI+540)%360-180}:{}),...(crossing?{crossing}:{})};
-   items.push({id:`signal-${j.c}-${id}`,type:'traffic_signal',...record('corridor',wx,y,wz,r.heading+yaw,{guess:j.s+ds}),params});};
-  for(const d of [1,-1]){const L=d*k;// corridor approach travelling d·t in the lat·d lane
-   add(`corridor-${d}-primary`,L,-d*(h+12.8),'corridor',d>0?'-t':'t',{road:'corridor'});
-   add(`corridor-${d}-secondary`,L,d*(h+7.9),'corridor',d>0?'-t':'t',{road:'corridor',ped:d>0?'-l':'l'});
-   add(`corridor-${d}-pedestrian`,L,-d*(h+7.9),'pedestrian',d>0?'-l':'l');}
-  for(const A of [1,-1]){// side approach from the arm at lat sign A, travelling −A·l in the ds·A lane
-   add(`side-${A}-primary`,A*(C(A)+2.6),A*q,'side',A>0?'l':'-l',{road:'side'});
-   add(`side-${A}-secondary`,-A*(C(-A)-2.1),A*q,'side',A>0?'l':'-l',{road:'side',ped:A>0?'-t':'t',crossing:'side'});
-   add(`side-${A}-pedestrian`,A*(C(A)-2.1),A*q,'pedestrian',A>0?'-t':'t',{crossing:'side'});}
+// HK junction signals (after the TD layout diagram), per approach, with left-hand traffic: primary just past the stop line on the
+// driver's nearside kerb, an offside primary on a central median, and a secondary beyond the junction on the nearside, all facing
+// the approaching traffic. Pedestrian heads stand at both ends of every crossing on its junction side, facing across it; a
+// secondary carries the pedestrian head of the crossing beside it. World positions follow the solved (skewed) junction geometry.
+export function junctionSignalItems(){const items=[],yawOf=w=>Math.atan2(-w.x,-w.z),norm=a=>((a*180/Math.PI+540)%360)-180;
+ for(const j of JUNCTIONS){const g=crossingGeometry(j),{C,u,n}=g,h=j.halfWidth,k=Math.sin(j.skew*Math.PI/180);
+  const add=(id,p,y,face,toRoad,axis,{ped,crossing}={})=>{const yaw=yawOf(face),X={x:Math.cos(yaw),z:-Math.sin(yaw)},hand=axis!=='pedestrian'&&X.x*toRoad.x+X.z*toRoad.z<0?-1:1;
+   const params={junction:j.c,axis,...(hand<0?{hand}:{}),...(ped?{pedYaw:norm(yawOf(ped)-yaw)}:{}),...(crossing?{crossing}:{})};
+   items.push({id:`signal-${j.c}-${id}`,type:'traffic_signal',...record('corridor',p.x,y,p.z,yaw,{guess:project(p.x,p.z,j.s)}),params});};
+  const kerbPole=(q,lat)=>{const r=sample(q),o=lat*(roadSection(q).right+.95);return [{x:r.x+r.lx*o,z:r.z+r.lz*o},r.y+footpathHeight(q),{x:-lat*r.lx,z:-lat*r.lz},{x:r.lx*lat,z:r.lz*lat}];};
+  const armPole=(d,e)=>[{x:C.x+u.x*d+n.x*e,z:C.z+u.z*d+n.z*e},sample(j.s+d*k).y+.18];
+  for(const τ of [1,-1]){// ART approach travelling τ along s, in the lateral-τ lane
+   const t={x:sample(j.s).tx*τ,z:sample(j.s).tz*τ},face={x:-t.x,z:-t.z};
+   let [p,y,toRoad,across]=kerbPole(g.crossS[-τ]-τ*2.8,τ);add(`corridor-${τ}-primary`,p,y,face,toRoad,'corridor');
+   [p,y,toRoad,across]=kerbPole(g.crossS[τ]-τ*2.1,τ);add(`corridor-${τ}-secondary`,p,y,face,toRoad,'corridor',{ped:{x:-across.x,z:-across.z}});
+   [p,y,toRoad,across]=kerbPole(g.crossS[-τ]+τ*2.1,τ);add(`corridor-${τ}-pedestrian`,p,y,{x:-across.x,z:-across.z},toRoad,'pedestrian');}
+  for(const σ of [1,-1]){// side approach from arm σ travelling −σ·u, keeping left on the σ side of the road
+   const face={x:u.x*σ,z:u.z*σ},near=Math.abs(g.crossD[σ]),far=Math.abs(g.crossD[-σ]),kerbToRoad={x:-n.x*σ,z:-n.z*σ};
+   let [p,y]=armPole(σ*(near+2.3),σ*(h+.95));add(`side-${σ}-primary`,p,y,face,kerbToRoad,'side');
+   if(j.median>=2){[p,y]=armPole(σ*(near+2.3),0);add(`side-${σ}-median`,p,y,face,{x:n.x*σ,z:n.z*σ},'side');}
+   [p,y]=armPole(-σ*(far-2.1),σ*(h+.95));add(`side-${σ}-secondary`,p,y,face,kerbToRoad,'side',{ped:{x:-n.x*σ,z:-n.z*σ},crossing:'side'});
+   [p,y]=armPole(σ*(near-2.1),σ*(h+.95));add(`side-${σ}-pedestrian`,p,y,{x:-n.x*σ,z:-n.z*σ},kerbToRoad,'pedestrian',{crossing:'side'});}
  }
  return items;
 }

@@ -112,33 +112,59 @@ export const CROSSINGS=STOPS.flatMap(st=>[-1,1].map(side=>({s:clamp(st.s+side*(s
 export function footpathHeight(s){
  const distance=Math.min(...STOPS.map(st=>Math.abs(s-st.s)-st.footprintLength/2-st.stagger/2-10));
  const nearStation=clamp(1-Math.max(0,distance)/12,0,1);
- const nearJunction=clamp(1-Math.min(...JUNCTIONS.map(j=>Math.max(0,Math.abs(s-j.s)-j.halfWidth-6)))/8,0,1);
+ const nearJunction=clamp(1-Math.min(...JUNCTIONS.map(j=>{const g=crossingGeometry(j),a=Math.min(g.gaps[1][0],g.gaps[-1][0]),b=Math.max(g.gaps[1][1],g.gaps[-1][1]);return Math.max(0,a-s,s-b);}))/8,0,1);
  const normal=sample(s).elevated?.3:Math.max(.15+.15*nearStation,.15+.03*nearJunction);
- const crossing=Math.min(...CROSSINGS.map(c=>Math.abs(c.s-s))),junction=Math.min(...JUNCTIONS.flatMap(j=>[-1,1].map(d=>Math.abs(s-j.s-d*(j.halfWidth+10)))));
+ const crossing=Math.min(...CROSSINGS.map(c=>Math.abs(c.s-s))),junction=Math.min(...JUNCTIONS.flatMap(j=>[-1,1].map(d=>Math.abs(s-crossingGeometry(j).crossS[d]))));
  return .02+(normal-.02)*clamp(Math.min((crossing-1.5)/3,(junction-1.5)/2.5),0,1);
 }
-// Height of the drawn junction pavement in its local frame (x across, z opposite chainage).
-export function junctionPavementHeight(j,x,z){const w=roadSection(j.s).right,h=j.halfWidth,ax=Math.abs(x),az=Math.abs(z),R=6;
- if(ax>w&&ax<w+R&&az>h&&az<h+R){const d=Math.hypot(ax-w-R,az-h-R);if(d>=R-3.75&&d<=R)return .18;}
- if(ax>=w+R&&ax<=j.extent&&az>=h&&az<=h+3.75){const flare=clamp(1-(Math.abs(x-Math.sign(x)*sideCrossing(j,Math.sign(x)))-1.5)/1.8,0,1);return .18-.13*flare*(1-(az-h)/3.75);}
- return null;
-}
+// Raised pavement of an at-grade junction at world (x,z), above the junction's road datum, or null: kerb-return rings and arm
+// footways, dropped to a 25 mm lip across each side-road crossing.
+export function junctionPavement(j,x,z){const g=crossingGeometry(j),h=j.halfWidth,fw=j.footway,dx=x-g.C.x,dz=z-g.C.z,d=dx*g.u.x+dz*g.u.z,e=dx*g.n.x+dz*g.n.z;
+ for(const σ of [-1,1])for(const τ of [-1,1]){const k=g.corners[σ][τ],r=Math.hypot(x-k.O.x,z-k.O.z);if(r<=k.R&&r>=k.R-fw){let a=Math.atan2(z-k.O.z,x-k.O.x);while(a-k.a1>Math.PI)a-=2*Math.PI;while(a-k.a1<-Math.PI)a+=2*Math.PI;if((a-k.a1)*(k.a2-a)>=0)return .18;}}
+ const σ=Math.sign(d)||1;if(Math.abs(d)>Math.abs(g.corners[σ][Math.sign(e)||1].d)&&Math.abs(d)<=j.extent&&Math.abs(e)>=h&&Math.abs(e)<=h+fw){const flare=clamp(1-(Math.abs(d-g.crossD[σ])-1.5)/1.8,0,1);return .18-.13*flare*(1-(Math.abs(e)-h)/fw);}
+ if(j.median&&Math.abs(e)<j.median/2&&Math.abs(d)>Math.abs(g.stopD[σ])-1&&Math.abs(d)<=j.extent)return .18;
+ return null;}
+// Corridor kerb removed on lateral side `side` at s (the road and its kerb returns occupy it).
+export function junctionGap(s,side){return JUNCTIONS.some(j=>{const [a,b]=crossingGeometry(j).gaps[side];return s>a&&s<b;});}
 
 export const CYCLE_WIDTH=4;
 function baseCycleOffset(s){let offset=roadSection(s).right+3.75+CYCLE_WIDTH/2;for(const st of STOPS){const d=Math.abs(s-st.s)-st.footprintLength/2-st.stagger/2,u=clamp(1-Math.max(0,d)/45,0,1),w=u*u*(3-2*u),flare=st.id==='A1'?Math.max(0,st.s-s-25)*.42:0;offset=Math.max(offset,offset+(7.05+st.width+flare+CYCLE_WIDTH/2-offset)*w);}const u=clamp(Math.min((s-OUTBOARD.start+45)/45,(OUTBOARD.end+50-s)/50),0,1),blend=u*u*(3-2*u);const normal=offset+(Math.max(offset,outboardKerb(s)+3.75+CYCLE_WIDTH/2)-offset)*blend;const d=Math.abs(toChainage(s)-3395),u3=clamp((200-d)/100,0,1);return -Math.max(normal+.6,normal+(52-normal)*u3*u3*(3-2*u3));}
 
 // Volume 1 GA-1103/1105/1110/1113/1115. Unsigned chainages remain scaled game placements.
 export const CHANNELS=[{name:'A2 approach culvert',c:660,width:18,extent:160},{name:'Tin Sam Channel',c:1195,width:24,extent:190}].map(c=>({...c,s:fromChainage(c.c)}));
-// halfWidth = kerb to centreline; lanes per direction (3.65 m) either side of a central median. Network roads continue from each arm end (extent).
-export const JUNCTIONS=[{c:1660,name:'Crossing road',halfWidth:3.65,lanes:1,median:0},{c:2650,name:'Road D6',halfWidth:8.3,lanes:2,median:2},{c:3970,name:'Road D1',halfWidth:9,lanes:2,median:3.4}].map((j,i)=>({...j,s:fromChainage(j.c),offset:i*7,stop:j.halfWidth+14,extent:80}));
-export const UNDERPASSES=[{c:355,name:'Road D8',halfWidth:9,lanes:2,median:3.4},{c:3395,name:'Road D3',halfWidth:10,lanes:2,median:5.4},{c:4395,name:'Road D1',halfWidth:10,lanes:2,median:5.4}].map(j=>({...j,s:fromChainage(j.c),extent:150,offset:0,stop:14,underpass:true}));
+// Corridor crossings where the OZP S/HSK/2A road reserves meet the corridor (city rebuild, 5 Nov 2026). halfWidth = kerb to
+// centreline; lanes per direction (3.65 m) either side of a central median; skew (degrees) turns the road axis u from the
+// corridor lateral: u = cos·l + sin·t. R = kerb-return radius. Network roads continue from each arm end (extent along u).
+export const JUNCTIONS=[{c:1680,name:'Crossing road',zh:'連接路',halfWidth:3.65,lanes:1,median:0,skew:0,R:8},{c:2547,name:'Ha Tsuen Road',zh:'廈村路',halfWidth:8.3,lanes:2,median:2,skew:12.7,R:10},{c:3990,name:'Road D1',zh:'D1號路',halfWidth:9,lanes:2,median:3.4,skew:-28,R:10}].map((j,i)=>({footway:3.75,extent:45,...j,s:fromChainage(j.c),offset:i*7}));
+// Roads under VB1/VB2/VB3: no interaction with the ART; D8 is squared up between the VB1 piers, D3 runs on past the cycle bridge swing.
+export const UNDERPASSES=[{c:356,name:'Road D8',zh:'D8號路',halfWidth:9,lanes:2,median:3.4,skew:-8,footway:3},{c:3400,name:'Road D3',zh:'D3號路',halfWidth:10,lanes:2,median:5.4,skew:0,extent:70},{c:4393,name:'Road D1',zh:'D1號路',halfWidth:10,lanes:2,median:5.4,skew:33}].map(j=>({footway:3.75,extent:40,...j,s:fromChainage(j.c),offset:0,stop:14,underpass:true}));
+// Crossing frame at the corridor centre: u along the road (towards +lateral), n across it (towards +s).
+export function crossingAxes(j){const r=sample(j.s),f=j.skew*Math.PI/180,c=Math.cos(f),k=Math.sin(f);return {r,C:{x:r.x,y:j.underpass?r.groundY:r.y,z:r.z},u:{x:c*r.lx+k*r.tx,z:c*r.lz+k*r.tz},n:{x:-k*r.lx+c*r.tx,z:-k*r.lz+c*r.tz},cos:c,tan:k/c};}
+const memo=new Map();
+// At-grade geometry, solved against the real (curving) corridor kerb. corners[σ][τ]: σ = corridor side (lateral sign, also the arm),
+// τ = side of the road (sign along n). Each kerb return of radius R has centre O at lateral σ(right+R) and road offset τ(h+R).
+// gaps[σ]: corridor kerb removed between the two tangent points on that side. crossS[τ]: corridor crossings (s) clear of both corners;
+// crossD[σ]/stopD[σ]: side-road crossing centre and stop line (distance along u, signed by arm). stop: ART stop line from j.s.
+export function crossingGeometry(j){if(memo.has(j))return memo.get(j);const A=crossingAxes(j),{C,u,n}=A,h=j.halfWidth,R=j.R||8,g={...A,corners:{1:{},[-1]:{}},gaps:{},crossS:{},crossD:{},stopD:{}};
+ const at=(q,lat)=>{const r=sample(q);return {x:r.x+r.lx*lat,z:r.z+r.lz*lat,r};},dn=p=>(p.x-C.x)*n.x+(p.z-C.z)*n.z,du=p=>(p.x-C.x)*u.x+(p.z-C.z)*u.z;
+ if(!j.underpass){for(const σ of [-1,1])for(const τ of [-1,1]){let lo=j.s-120,hi=j.s+120;const f=q=>dn(at(q,σ*(roadSection(q).right+R)))-τ*(h+R);
+   for(let i=0;i<60;i++){const m=(lo+hi)/2;if(f(m)>0)hi=m;else lo=m;}const q=(lo+hi)/2,O=at(q,σ*(roadSection(q).right+R)),T1=at(q,σ*roadSection(q).right),T2={x:O.x-τ*R*n.x,z:O.z-τ*R*n.z};
+   let a1=Math.atan2(T1.z-O.z,T1.x-O.x),a2=Math.atan2(T2.z-O.z,T2.x-O.x);while(a2-a1>Math.PI)a2-=2*Math.PI;while(a2-a1<-Math.PI)a2+=2*Math.PI;
+   g.corners[σ][τ]={s:q,O:{x:O.x,z:O.z},T1:{x:T1.x,z:T1.z},T2,a1,a2,R,d:du(T2)};}
+  for(const σ of [-1,1]){const a=g.corners[σ][-1].s,b=g.corners[σ][1].s;g.gaps[σ]=[Math.min(a,b),Math.max(a,b)];
+   const reach=Math.max(...[-1,1].map(τ=>Math.abs(g.corners[σ][τ].d)));g.crossD[σ]=σ*(reach+2.1);g.stopD[σ]=σ*(reach+2.1+1.6+1.3);}
+  g.crossS[1]=Math.max(g.corners[1][1].s,g.corners[-1][1].s)+2.1;g.crossS[-1]=Math.min(g.corners[1][-1].s,g.corners[-1][-1].s)-2.1;
+  j.stop=Math.max(j.s-g.crossS[-1],g.crossS[1]-j.s)+4;}
+ // Where the road crosses the cycle track (lateral L) and how much chainage its kerbs and footways span there.
+ const L=baseCycleOffset(j.s)-(j.halfWidth>7?12:0);g.cycleS=j.s+L*A.tan;g.cycleHalf=(h+j.footway)/A.cos-j.footway;
+ memo.set(j,g);return g;}
 // The cycle track keeps its outboard line from Ch 2650 to 3395 (the former side-road strip is now planted verge).
 const OUTBOARD={start:fromChainage(2650),end:fromChainage(3395)};
 function outboardKerb(s){const d=Math.abs(s-STOPS[5].s),u=clamp((150-d)/65,0,1);return 16.45+6*u*u*(3-2*u);}
-// Junction-local x (= -lateral) of each side road's signalised pedestrian crossing, just beyond the corridor footpath and cycle track.
-export function sideCrossing(j,side){return roadSection(j.s).right+10;}
-export function cycleCrossing(s){return JUNCTIONS.filter(j=>j.halfWidth<=7).some(j=>Math.abs(s-j.s)<j.halfWidth+.7);}
-export function cycleHeight(s){return .02+.28*clamp(Math.min(...[...JUNCTIONS,...UNDERPASSES].map(j=>(Math.abs(s-j.s)-j.halfWidth-1)/6)),0,1);}
+// Distance along the road axis from the corridor centre to the signalised crossing on arm `side` (its lateral sign).
+export function sideCrossing(j,side){return Math.abs(crossingGeometry(j).crossD[side]);}
+export function cycleCrossing(s){return JUNCTIONS.filter(j=>j.halfWidth<=7).some(j=>{const g=crossingGeometry(j);return Math.abs(s-g.cycleS)<g.cycleHalf+.7;});}
+export function cycleHeight(s){return .02+.28*clamp(Math.min(...[...JUNCTIONS,...UNDERPASSES].map(j=>{const g=crossingGeometry(j);return (Math.abs(s-g.cycleS)-g.cycleHalf-1)/6;})),0,1);}
 export const DEPOT={s:fromChainage(3565),opening:30,lateral:95,width:140,length:160};
 // The 30 m entrance sits 20 m before DEPOT.s so the lead-in runs down the drawing's 40 m vehicle access strip (V1038-DP-2003).
 DEPOT.gate=DEPOT.s-20;
@@ -168,15 +194,18 @@ export function returnOffset(s){const u=clamp((CROSSOVER_START-s)/70,0,1);return
 
 export const CYCLE_BRIDGES=[...UNDERPASSES,...JUNCTIONS.filter(j=>j.halfWidth>7)];
 export const CYCLE_RAMP=140;
-export function cycleCanopyAt(s){return CYCLE_BRIDGES.find(j=>Math.abs(s-j.s)<=j.halfWidth+8.5);}
-export function cycleBridgeAt(s){return CYCLE_BRIDGES.find(j=>Math.abs(s-j.s)<j.halfWidth+8+CYCLE_RAMP);}
-export function cycleOffset(s){const j=cycleBridgeAt(s);if(!j)return baseCycleOffset(s);const u=clamp((j.halfWidth+8+CYCLE_RAMP-Math.abs(s-j.s))/CYCLE_RAMP,0,1);return baseCycleOffset(s)-12*u*u*(3-2*u);}
+const cyc=j=>crossingGeometry(j);
+export function cycleCanopyAt(s){return CYCLE_BRIDGES.find(j=>Math.abs(s-cyc(j).cycleS)<=cyc(j).cycleHalf+8.5);}
+export function cycleBridgeAt(s){return CYCLE_BRIDGES.find(j=>Math.abs(s-cyc(j).cycleS)<cyc(j).cycleHalf+8+CYCLE_RAMP);}
+export function cycleOffset(s){const j=cycleBridgeAt(s);if(!j)return baseCycleOffset(s);const u=clamp((cyc(j).cycleHalf+8+CYCLE_RAMP-Math.abs(s-cyc(j).cycleS))/CYCLE_RAMP,0,1);return baseCycleOffset(s)-12*u*u*(3-2*u);}
 // The route, paint and riders share the same straight bridge deck and eased approaches.
 function cyclePlan(s){
  const r=sample(s),offset=cycleOffset(s);let x=r.x+r.lx*offset,z=r.z+r.lz*offset;
  const j=cycleBridgeAt(s);
- if(j){const d=s-j.s,u=clamp((j.halfWidth+8+55-Math.abs(d))/55,0,1),w=u*u*(3-2*u),c=sample(j.s),lat=cycleOffset(j.s);x+=(c.x+c.lx*lat+c.tx*d-x)*w;z+=(c.z+c.lz*lat+c.tz*d-z)*w;}
+ if(j){const d=s-cyc(j).cycleS,u=clamp((cyc(j).cycleHalf+8+55-Math.abs(d))/55,0,1),w=u*u*(3-2*u),c=sample(cyc(j).cycleS),lat=cycleOffset(cyc(j).cycleS);x+=(c.x+c.lx*lat+c.tx*d-x)*w;z+=(c.z+c.lz*lat+c.tz*d-z)*w;}
  return {...r,x,z};
 }
 export function cycleSample(s){const r=cyclePlan(s),a=cyclePlan(Math.max(0,s-.3)),b=cyclePlan(Math.min(LENGTH,s+.3)),n=Math.hypot(b.x-a.x,b.z-a.z),tx=(b.x-a.x)/n,tz=(b.z-a.z)/n;return {...r,tx,tz,lx:tz,lz:-tx,heading:Math.atan2(-tx,-tz)};}
-export function cycleBridgeHeight(s){const j=cycleBridgeAt(s);if(!j)return cycleHeight(s);const d=Math.abs(s-j.s),u=clamp((j.halfWidth+8+CYCLE_RAMP-d)/CYCLE_RAMP,0,1),w=u*u*(3-2*u),ground=sample(s).groundY;return cycleHeight(s)+(sample(j.s).groundY+6.4-ground-cycleHeight(s))*w;}
+export function cycleBridgeHeight(s){const j=cycleBridgeAt(s);if(!j)return cycleHeight(s);const d=Math.abs(s-cyc(j).cycleS),u=clamp((cyc(j).cycleHalf+8+CYCLE_RAMP-d)/CYCLE_RAMP,0,1),w=u*u*(3-2*u),ground=sample(s).groundY;return cycleHeight(s)+(sample(cyc(j).cycleS).groundY+6.4-ground-cycleHeight(s))*w;}
+// Solve crossing geometry eagerly: junction stop lines feed the signal objects at load.
+for(const j of [...JUNCTIONS,...UNDERPASSES])crossingGeometry(j);

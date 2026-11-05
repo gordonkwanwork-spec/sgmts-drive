@@ -7,7 +7,7 @@ import {zebraStripes,zebraControl} from './sandbox/street-rules.js';
 // both kerbs turn the corner on a 6 m radius. Nothing may be drawn on the SGMTS corridor reserve (reserveClash).
 import * as T from 'three';
 import {sweptKerbs} from './kerbs.js';
-import {sample,JUNCTIONS,UNDERPASSES} from '../alignment.js';
+import {sample,JUNCTIONS,UNDERPASSES,crossingAxes} from '../alignment.js';
 import {TessellateModifier} from 'three/addons/modifiers/TessellateModifier.js';
 import {corridorReserve,pointInPolygon} from '../lots/wand.js';
 import {circleIntersects} from '../lots/geometry.js';
@@ -29,7 +29,8 @@ export function streetLevel(r,d,lat){const P=presetOf(r),h=P.carriageway/2,depth
  let drop=0;for(const c of r.crossings||[]){const flare=Math.max(0,Math.min(1,1-(Math.abs(d-c)-1.5)/1.8));drop=Math.max(drop,.13*flare*Math.max(0,1-depth/1.8));}
  return Y.raised+Math.max(0,depth-.125)*.025*(r.tie?Math.min(1,d/10):1)-drop;
 }
-export function tieFrame(tie){const j=[...JUNCTIONS,...UNDERPASSES].find(j=>j.c===tie.junction);if(!j)throw Error('Unknown street tie-in '+tie.junction);const r=sample(j.s);return {x:r.x+r.lx*j.extent*tie.side,z:r.z+r.lz*j.extent*tie.side,y:j.underpass?r.groundY:r.y,tx:r.lx*tie.side,tz:r.lz*tie.side,slope:j.underpass?0:-r.grade*tie.side,width:j.halfWidth*2};}
+// Arm end of a corridor crossing (side = lateral sign of the arm): the network road continues from here along the skewed road axis.
+export function tieFrame(tie){const j=[...JUNCTIONS,...UNDERPASSES].find(j=>j.c===tie.junction);if(!j)throw Error('Unknown street tie-in '+tie.junction);const {r,C,u}=crossingAxes(j),k=Math.sin(j.skew*Math.PI/180);return {x:C.x+u.x*j.extent*tie.side,z:C.z+u.z*j.extent*tie.side,y:j.underpass?C.y:sample(j.s+tie.side*j.extent*k).y,tx:u.x*tie.side,tz:u.z*tie.side,slope:j.underpass?0:r.grade*k*tie.side,width:j.halfWidth*2};}
 export const halfWidth=r=>{const P=presetOf(r);return P.carriageway/2+P.footpath;};
 
 // Centreline: straight between the clicked points, each corner rounded on a BEND m radius (less where the legs are short).

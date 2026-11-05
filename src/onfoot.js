@@ -1,6 +1,6 @@
-import {junctionPoint,junctionUnproject} from './street/junction-frame.js';
 import * as T from 'three';
-import {sample,roadSection,projectFrame,STOPS,LENGTH,footpathHeight,cycleSample,cycleBridgeHeight,cycleCrossing,JUNCTIONS,UNDERPASSES,junctionPavementHeight,PLATFORM_RISE} from './alignment.js';
+import {crossingY} from './city/crossings.js';
+import {sample,roadSection,projectFrame,STOPS,LENGTH,footpathHeight,cycleSample,cycleBridgeHeight,cycleCrossing,JUNCTIONS,UNDERPASSES,junctionPavement,crossingGeometry,PLATFORM_RISE} from './alignment.js';
 import {streetHeight,surfaceSampler} from './street/network.js';
 import {ROAD,nearest} from './street/roads.js';
 import {renderedGround,terrainLevel,channelDepth,stationAccess,depotKerbHeight} from './environment.js';
@@ -23,15 +23,15 @@ export function groundAt(x,z,sGuess){
  let cs=s;for(let i=0;i<4;i++){const c=cycleSample(cs);cs=clamp(cs+(x-c.x)*c.tx+(z-c.z)*c.tz,0,LENGTH);}
  const c=cycleSample(cs),clat=(x-c.x)*c.lx+(z-c.z)*c.lz;
  if(Math.abs(clat)<=2&&!cycleCrossing(cs))return {s,lat,y:c.groundY+cycleBridgeHeight(cs)};
- // Match raised corner slabs and side-road ramps before the general corridor cross-section.
- for(const j of JUNCTIONS){if(Math.abs(s-j.s)>j.halfWidth+12)continue;const q=sample(j.s),dx=x-q.x,dz=z-q.z,jx=-(dx*q.lx+dz*q.lz),jz=-(dx*q.tx+dz*q.tz),local=junctionUnproject(j,jx,jz),height=junctionPavementHeight(j,local.x,local.z);if(height!==null)return {s,lat,y:q.y+junctionPoint(j,local.x,height-q.grade*local.z,local.z).y};}
- // Crossing-road arms use the same datum and ramps as their rendered geometry,
- // including grade-separated crossings below the ART deck.
- for(const j of [...JUNCTIONS,...UNDERPASSES]){const q=sample(j.s),dx=x-q.x,dz=z-q.z,along=dx*q.lx+dz*q.lz,across=-(dx*q.tx+dz*q.tz);
-  if(Math.abs(along)<=j.extent&&Math.abs(across)<=j.halfWidth+3.75&&(j.underpass||Math.abs(along)>roadSection(j.s).right)){
-   const pavement=j.underpass?(Math.abs(across)>j.halfWidth?.18:null):junctionPavementHeight(j,-along,across);
-   return {s,lat,y:(j.underpass?q.groundY:q.y-q.grade*across)+(pavement??.03)};
-  }
+ // Rebuilt junctions and under-viaduct roads (src/city/crossings.js): kerb-return rings, arm footways and medians are raised;
+ // the side carriageway and the fill between kerb returns sit at road level; land inside a kerb-return circle falls through to terrain.
+ for(const j of [...JUNCTIONS,...UNDERPASSES]){const g=crossingGeometry(j),dx=x-g.C.x,dz=z-g.C.z,d=dx*g.u.x+dz*g.u.z,ee=dx*g.n.x+dz*g.n.z,h=j.halfWidth;
+  if(Math.abs(d)>j.extent+.5||Math.abs(ee)>h+(j.underpass?j.footway:(j.R||8)))continue;const base=crossingY(j,x,z);
+  if(j.underpass){if(Math.abs(ee)<=h+j.footway)return {s,lat,y:base+(Math.abs(ee)>h||Math.abs(ee)<j.median/2?.18:.03)};continue;}
+  const pave=junctionPavement(j,x,z);if(pave!==null)return {s,lat,y:base+pave};
+  if(Math.abs(lat)<=e.right+.3)break;
+  if([-1,1].some(σ=>[-1,1].some(τ=>Math.hypot(x-g.corners[σ][τ].O.x,z-g.corners[σ][τ].O.z)<g.corners[σ][τ].R)))break;
+  if(Math.abs(ee)<=h||Math.abs(ee)<h+.9*(j.R||8))return {s,lat,y:base+.03};
  }
  if(lat>e.left-.3&&lat<e.right+.3)return {s,lat,y:r.y};
  const access=accessHeight(x,z);if(access!==null)return {s,lat,y:access};

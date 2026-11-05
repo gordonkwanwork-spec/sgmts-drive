@@ -16,36 +16,45 @@ import * as T from 'three';
 let sceneryScale=1;export const setSceneryScale=k=>{sceneryScale=k;};// the governor sheds distance under load
 const PHONE=typeof matchMedia!=='undefined'&&matchMedia('(pointer:coarse)').matches;
 import {buildCycleAids} from './street/cycle-aids.js';
+import {buildCrossings,crossingY} from './city/crossings.js';
 import {placeFurniture,kitLibrary,furnitureMaterials,railingBuilder,pavingAt,pavingBreaks,EMPTY as NO_FURNITURE} from './street/furniture.js';
 import {setKitNight} from './street/operator-kit.js';
 import {CV_FRAME,setNetwork,ROAD} from './street/roads.js';
 import {buildNetwork,networkMask,streetTerrain,frames,halfWidth} from './street/network.js';
 import {hillMesh} from './street/hills.js';
 import {treeTemplates} from './street/trees.js';
-import {LENGTH,STOPS,sample,LOOP,roadSection,fromChainage,project,PATH,BRIDGES,CROSSINGS,footpathHeight,cycleOffset,CYCLE_WIDTH,CHANNELS,JUNCTIONS,UNDERPASSES,DEPOT,RAILWAY,railSample,cycleCrossing,cycleHeight,sideCrossing,laneOffset,curveRadius,returnOffset,CROSSOVER_START,END_STOP,CYCLE_BRIDGES,CYCLE_RAMP,cycleBridgeAt,cycleBridgeHeight,cycleSample,PLATFORM_RISE} from './alignment.js';
+import {LENGTH,STOPS,sample,LOOP,roadSection,fromChainage,project,PATH,BRIDGES,CROSSINGS,footpathHeight,cycleOffset,CYCLE_WIDTH,CHANNELS,JUNCTIONS,UNDERPASSES,DEPOT,RAILWAY,railSample,cycleCrossing,cycleHeight,sideCrossing,crossingGeometry,junctionGap,laneOffset,curveRadius,returnOffset,CROSSOVER_START,END_STOP,CYCLE_BRIDGES,CYCLE_RAMP,cycleBridgeAt,cycleBridgeHeight,cycleSample,PLATFORM_RISE} from './alignment.js';
 export {JUNCTIONS,UNDERPASSES} from './alignment.js';
-const inJunction=s=>JUNCTIONS.some(j=>Math.abs(s-j.s)<j.halfWidth+6);
+// The corridor kerb opens where a junction's road and kerb returns meet it, per lateral side (skewed roads open each side differently).
+const inJunction=(s,side)=>side?junctionGap(s,side):junctionGap(s,1)||junctionGap(s,-1);
 const inDepot=s=>Math.abs(s-DEPOT.gate)<DEPOT.opening/2;
 export const depotKerbHeight=(s,side)=>side===1&&Math.abs(s-DEPOT.gate)<DEPOT.opening/2+3?Math.min(footpathHeight(s),.02+.13*Math.max(0,Math.min(1,(Math.abs(s-DEPOT.gate)-DEPOT.opening/2)/3))):footpathHeight(s);
 const positiveFootpathHeight=s=>depotKerbHeight(s,1);
-const groundCrossing=s=>inJunction(s)||UNDERPASSES.some(j=>Math.abs(j.s-s)<j.halfWidth+.5);
+// Ground-level corridor footpaths also stop where a road passes under the viaduct (shifted along the skewed road).
+const underRoad=(s,side)=>UNDERPASSES.some(j=>{const g=crossingGeometry(j),lat=side*(roadSection(j.s).right+1.9);return Math.abs(s-j.s-lat*g.tan)<(j.halfWidth+.5)/g.cos;});
+const groundCrossing=(s,side)=>side?inJunction(s,side)||underRoad(s,side):inJunction(s)||underRoad(s,1)||underRoad(s,-1);
 // Any fence line opens 6 m either side of a pedestrian crossing.
 export const crossingGap=(start,end)=>CROSSINGS.some(c=>start<c.s+6&&end>c.s-6);
 // Dropped kerb / tactile width of a station crossing; kerbside railings stop 0.3 m short of it (site photos 18.01.42 (1), (3)).
 export const CROSSING_HALF=2,railGap=(start,end)=>CROSSINGS.some(c=>start<c.s+CROSSING_HALF+.3&&end>c.s-CROSSING_HALF-.3);
 // Corridor lines stop at the outer edge of each junction's corridor crossings; the yellow box replaces them inside.
-const inBox=s=>JUNCTIONS.some(j=>Math.abs(s-j.s)<j.halfWidth+11.5);
+// Near a corridor crossing: at grade, the span between the two corridor crossings widened by m−10 (the old |s−j.s|<halfWidth+m);
+// under a viaduct, the skewed road footprint across the corridor plus m.
+const nearCrossing=(s,m,list=[...JUNCTIONS,...UNDERPASSES])=>list.some(j=>{const g=crossingGeometry(j);return j.underpass?Math.abs(s-j.s)<(j.halfWidth+m)/g.cos+Math.abs(g.tan)*12:s>g.crossS[-1]-(m-10)&&s<g.crossS[1]+(m-10);});
+const inBox=s=>JUNCTIONS.some(j=>{const g=crossingGeometry(j);return s>g.crossS[-1]-1.6&&s<g.crossS[1]+1.6;});
 // Yellow box stays within the dedicated corridor, between its two pedestrian crossings.
-export function junctionBox(j){const w=roadSection(j.s).right-.15,zc=j.halfWidth+8.25;
- const poly=[[-w,zc],[w,zc],[w,-zc],[-w,-zc]];
+// Junction-local frame: x across (= −lateral), z = −(s − j.s).
+export function junctionBox(j){const w=roadSection(j.s).right-.15,g=crossingGeometry(j),z0=-(g.crossS[1]-1.75-j.s),z1=-(g.crossS[-1]+1.75-j.s);
+ const poly=[[-w,z1],[w,z1],[w,z0],[-w,z0]];
  const lattice=[],step=2.2*Math.SQRT2;for(const sign of [-1,1]){const ks=poly.map(([x,z])=>z-sign*x);for(let k=Math.ceil(Math.min(...ks)/step)*step+.37;k<Math.max(...ks);k+=step){const xs=[];poly.forEach((a,i)=>{const b=poly[(i+1)%poly.length],fa=a[1]-sign*a[0]-k,fb=b[1]-sign*b[0]-k;if((fa>0)!==(fb>0))xs.push(a[0]+(b[0]-a[0])*fa/(fa-fb));});xs.sort((a,b)=>a-b);for(let i=0;i+1<xs.length;i+=2)lattice.push([[xs[i],sign*xs[i]+k],[xs[i+1],sign*xs[i+1]+k]]);}}
  return {poly,lattice};}
 // Test the whole panel, including the junction zebras beyond the corner returns.
 export function fenceAllowed(start,end,side){
  const overlaps=(centre,half)=>start<centre+half&&end>centre-half;
- return !sample(start).elevated&&!sample(end).elevated&&!groundCrossing(start)&&!groundCrossing(end)
+ const lat=side===1||side===-1?side:0;
+ return !sample(start).elevated&&!sample(end).elevated&&!groundCrossing(start,lat)&&!groundCrossing(end,lat)
   &&!railGap(start,end)
-  &&!JUNCTIONS.some(j=>[-1,1].some(d=>overlaps(j.s+d*(j.halfWidth+10),6)))
+  &&!JUNCTIONS.some(j=>[-1,1].some(d=>overlaps(crossingGeometry(j).crossS[d],6)))
   &&!stationFenceSpans.some(p=>p.side===side&&start<p.end&&end>p.start)
   &&!(side===1&&overlaps(DEPOT.gate,22));
 }
@@ -100,9 +109,9 @@ function nearDepotSite(x,z,radius){if(!nearDepotBounds(x,z,radius+CV_ROAD_WIDTH/
 export function sceneryClear(x,z,radius,low=false){
  const ps=project(x,z),r=sample(ps),lat=(x-r.x)*r.lx+(z-r.z)*r.lz;if((r.c>680&&r.c<980&&lat< -12+radius&&lat> -145-radius)||nearDepotSite(x,z,radius)||channelDepth(x,z)>0)return false;
  if(RAILWAY.distance(x,z)<9+radius||cycleClearance(x,z)<CYCLE_WIDTH/2+radius+(low?.2:1.5))return false;
- if(!low)for(const j of CYCLE_BRIDGES){const c=sample(j.s),dx=x-c.x,dz=z-c.z,along=dx*c.tx+dz*c.tz,lat=dx*c.lx+dz*c.lz;if(Math.abs(along)<j.halfWidth+35+radius&&Math.abs(lat-(cycleOffset(j.s)-6))<12+radius)return false;}
+ if(!low)for(const j of CYCLE_BRIDGES){const g=crossingGeometry(j),c=sample(g.cycleS),dx=x-c.x,dz=z-c.z,along=dx*c.tx+dz*c.tz,lat=dx*c.lx+dz*c.lz;if(Math.abs(along)<g.cycleHalf+35+radius&&Math.abs(lat-(cycleOffset(g.cycleS)-6))<12+radius)return false;}
  if(Math.hypot(x-r.x,z-r.z)<roadSection(ps).right+3.75+radius)return false;
- return [...JUNCTIONS,...UNDERPASSES].every(j=>{const p=sample(j.s),dx=x-p.x,dz=z-p.z;return Math.abs(dx*p.tx+dz*p.tz)>j.halfWidth+5+radius||Math.abs(dx*p.lx+dz*p.lz)>j.extent+radius;});
+ return [...JUNCTIONS,...UNDERPASSES].every(j=>{const g=crossingGeometry(j),dx=x-g.C.x,dz=z-g.C.z;return Math.abs(dx*g.n.x+dz*g.n.z)>j.halfWidth+j.footway+1.25+radius||Math.abs(dx*g.u.x+dz*g.u.z)>j.extent+radius;});
 }
 const V=new T.Vector3(), Q=new T.Quaternion(), S=new T.Vector3(), M=new T.Matrix4();
 let seed=9173;const rnd=()=>{seed=(1664525*seed+1013904223)>>>0;return seed/4294967296;};
@@ -135,8 +144,8 @@ export function ribbon(start,end,left,right,yOffset=0,terrain=false,cut=false,sa
  if(end<=start)return new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute([],3));
  const p=[],uv=[],idx=[],steps=Math.ceil((end-start)/2),stations=Array.from({length:steps+1},(_,i)=>start+(end-start)*i/steps);
  // Include each dropped-kerb break explicitly so coarse ribbon triangles cannot cover tactile pads or bury feet.
- if(yOffset===footpathHeight||yOffset===positiveFootpathHeight){for(const j of JUNCTIONS)for(const side of [-1,1])for(const d of [6,8.5,11.5,14]){const s=j.s+side*(j.halfWidth+d);if(s>start&&s<end)stations.push(s);}for(const c of CROSSINGS)for(const d of [-7.5,-1.5,1.5,7.5])if(c.s+d>start&&c.s+d<end)stations.push(c.s+d);stations.sort((a,b)=>a-b);}
- for(const j of JUNCTIONS)for(const sign of [-1,1]){const q=j.s+sign*(j.halfWidth+6);if(q>start&&q<end)stations.push(q);}
+ if(yOffset===footpathHeight||yOffset===positiveFootpathHeight){for(const j of JUNCTIONS){const g=crossingGeometry(j);for(const s of [...g.gaps[1],...g.gaps[-1],...[-1,1].flatMap(t=>[-4,-1.5,1.5,4].map(d=>g.crossS[t]+d))])if(s>start&&s<end)stations.push(s);}for(const c of CROSSINGS)for(const d of [-7.5,-1.5,1.5,7.5])if(c.s+d>start&&c.s+d<end)stations.push(c.s+d);stations.sort((a,b)=>a-b);}
+ for(const j of JUNCTIONS){const g=crossingGeometry(j);for(const q of [...g.gaps[1],...g.gaps[-1]])if(q>start&&q<end)stations.push(q);}
  for(const sign of [-1,1])for(const d of [DEPOT.opening/2,DEPOT.opening/2+3]){const q=DEPOT.gate+sign*d;if(q>start&&q<end)stations.push(q);}
  stations.sort((a,b)=>a-b);for(let i=stations.length-1;i>0;i--)if(stations[i]-stations[i-1]<1e-7)stations.splice(i,1);
  const n=stations.length-1;
@@ -148,7 +157,7 @@ export function ribbon(start,end,left,right,yOffset=0,terrain=false,cut=false,sa
  for(let i=0;i<n;i++){const j=i*2,a=sample(stations[i]),b=sample(stations[i+1]),forward=k=>(p[(k+2)*3]-p[k*3])*(b.x-a.x)+(p[(k+2)*3+2]-p[k*3+2])*(b.z-a.z);if(!(cut&&(typeof cut==='function'?cut:inJunction)((stations[i]+stations[i+1])/2))&&up(j,j+2,j+1)>1e-8&&up(j+1,j+2,j+3)>1e-8&&forward(j)>0&&forward(j+1)>0)idx.push(j,j+2,j+1,j+1,j+2,j+3);}
  let g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(p,3));g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();return g;
 }
-export function terrainLevel(x,z,s){for(const j of [...JUNCTIONS,...UNDERPASSES]){const r=sample(j.s),dx=x-r.x,dz=z-r.z;if(Math.abs(dx*r.lx+dz*r.lz)<j.extent+1&&Math.abs(dx*r.tx+dz*r.tz)<j.halfWidth+4)return j.underpass?r.groundY:r.y;}const d=sample(DEPOT.s),lat=(x-d.x)*d.lx+(z-d.z)*d.lz,along=(x-d.x)*d.tx+(z-d.z)*d.tz;if(lat>0&&lat<55&&Math.abs(along+DEPOT.s-DEPOT.gate)<20)return Math.min(d.y,sample(DEPOT.gate-18).y,sample(DEPOT.gate+18).y)-.3;if(nearDepotBounds(x,z)&&pointInPolygon([x,z],DEPOT_SITE))return d.y-.8;/* under the yard: deep enough that offset night overlays never bleed through */const road=nearServiceRoad(x,z,5);if(road!=null)return road-.1;return sample(s).groundY;}
+export function terrainLevel(x,z,s){for(const j of [...JUNCTIONS,...UNDERPASSES]){const g=crossingGeometry(j),dx=x-g.C.x,dz=z-g.C.z;if(Math.abs(dx*g.u.x+dz*g.u.z)<j.extent+1&&Math.abs(dx*g.n.x+dz*g.n.z)<j.halfWidth+j.footway+.5)return crossingY(j,x,z);}const d=sample(DEPOT.s),lat=(x-d.x)*d.lx+(z-d.z)*d.lz,along=(x-d.x)*d.tx+(z-d.z)*d.tz;if(lat>0&&lat<55&&Math.abs(along+DEPOT.s-DEPOT.gate)<20)return Math.min(d.y,sample(DEPOT.gate-18).y,sample(DEPOT.gate+18).y)-.3;if(nearDepotBounds(x,z)&&pointInPolygon([x,z],DEPOT_SITE))return d.y-.8;/* under the yard: deep enough that offset night overlays never bleed through */const road=nearServiceRoad(x,z,5);if(road!=null)return road-.1;return sample(s).groundY;}
 // Fixed world grid prevents the folded wide-offset ribbons that left terrain holes.
 // Terrain extends beneath the surrounding city and eases down to the backdrop.
 export const CITY_TERRAIN_RADIUS=550;
@@ -217,7 +226,7 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
  // H3105A gullies against the kerb every 25 m (clear of junctions, crossings, platforms and structures); every third has an overflow weir kerb.
  const GULLIES=[],WEIRS=[];
  for(let q=20.5,i=0;q<LENGTH-20;q+=25,i++)for(const side of [-1,1]){const r=sample(q);
-  if(r.elevated||sample(q-1).elevated||sample(q+1).elevated||[...JUNCTIONS,...UNDERPASSES].some(j=>Math.abs(q-j.s)<j.halfWidth+14)||crossingGap(q-3,q+3)||STOPS.some(st=>Math.abs(st.s-q)<st.footprintLength/2+st.stagger/2+30)||side===1&&Math.abs(q-DEPOT.gate)<DEPOT.opening/2+6||q>CROSSOVER_START-80)continue;
+  if(r.elevated||sample(q-1).elevated||sample(q+1).elevated||nearCrossing(q,14)||crossingGap(q-3,q+3)||STOPS.some(st=>Math.abs(st.s-q)<st.footprintLength/2+st.stagger/2+30)||side===1&&Math.abs(q-DEPOT.gate)<DEPOT.opening/2+6||q>CROSSOVER_START-80)continue;
   const g={s:q,side};GULLIES.push(g);if((i+(side>0?1:0))%3===0&&footpathHeight(q-.5)>.29&&footpathHeight(q+.5)>.29)WEIRS.push(g);}
  // Parapet run per bridge (distance along the route); VB3 runs off the end of the line, so it has no far ramped end.
  const PARAPET_SPANS=BRIDGES.map(b=>[fromChainage(b.start),b.end>=4526?Infinity:fromChainage(b.end)]),parapetSpan=q=>PARAPET_SPANS.find(([a,b])=>q>a-3&&q<b+3)||[-Infinity,Infinity];
@@ -231,27 +240,27 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
  for(let start=0;start<LENGTH;start+=240){let end=Math.min(start+240,LENGTH),ch=Math.floor(start/240),group=new T.Group();group.userData.s=(start+end)/2;scene.add(group);groups.push(group);
   const ground=new T.Mesh(terrainPatch(start,end,grade,terrainGrid),mats.grass);ground.userData.cityTerrain=true;ground.receiveShadow=true;group.add(ground);
   for(const [left,right,offset,mat,terrain] of [[s=>roadSection(s).left,s=>roadSection(s).right,0,mats.road,false],[s=>roadSection(s).left-3.75,s=>roadSection(s).left-.125,footpathHeight,mats.walk,true],[s=>roadSection(s).right+.125,s=>roadSection(s).right+3.75,footpathHeight,mats.walk,true]]){
-   const cut=mat===mats.walk?(s=>groundCrossing(s)||left(DEPOT.s)>0&&inDepot(s)):false;if(mat!==mats.walk){const mesh=new T.Mesh(ribbon(start,end,left,right,offset,terrain,cut),mat);mesh.receiveShadow=true;group.add(mesh);continue;}
+   const bank=left(start)>0?1:-1,cut=mat===mats.walk?(s=>groundCrossing(s,bank)||left(DEPOT.s)>0&&inDepot(s)):false;if(mat!==mats.walk){const mesh=new T.Mesh(ribbon(start,end,left,right,offset,terrain,cut),mat);mesh.receiveShadow=true;group.add(mesh);continue;}
    // Footpath paving: furniture.json paving runs per side, else the chunk's default colour; one ribbon per stretch.
-   const side=left(start)>0?1:-1,fallback=[mats.walk,mats.walkGrey,mats.walkBuff][(ch+(side>0?1:0))%3],cuts=[start,...[...pavingBreaks(furniture),...JUNCTIONS.flatMap(j=>[-1,1].map(d=>j.s+d*(j.halfWidth+18)))].filter(q=>q>start+.01&&q<end-.01).sort((a,b)=>a-b),end];
-   for(let i=1;i<cuts.length;i++){const mid=(cuts[i-1]+cuts[i])/2,pattern=JUNCTIONS.some(j=>Math.abs(mid-j.s)<j.halfWidth+18)?'red':pavingAt(furniture,mid,side),mesh=new T.Mesh(ribbon(cuts[i-1],cuts[i],left,right,side===1?positiveFootpathHeight:offset,terrain,cut),pattern?PAVING[pattern]:fallback);mesh.receiveShadow=true;group.add(mesh);}
+   const side=left(start)>0?1:-1,fallback=[mats.walk,mats.walkGrey,mats.walkBuff][(ch+(side>0?1:0))%3],cuts=[start,...[...pavingBreaks(furniture),...JUNCTIONS.flatMap(j=>[-1,1].map(d=>crossingGeometry(j).crossS[d]+d*8))].filter(q=>q>start+.01&&q<end-.01).sort((a,b)=>a-b),end];
+   for(let i=1;i<cuts.length;i++){const mid=(cuts[i-1]+cuts[i])/2,pattern=nearCrossing(mid,18,JUNCTIONS)?'red':pavingAt(furniture,mid,side),mesh=new T.Mesh(ribbon(cuts[i-1],cuts[i],left,right,side===1?positiveFootpathHeight:offset,terrain,cut),pattern?PAVING[pattern]:fallback);mesh.receiveShadow=true;group.add(mesh);}
   }
   for(const edge of [s=>roadSection(s).left,s=>roadSection(s).right]){const line=new T.Mesh(ribbon(start,end,s=>edge(s)-.05,s=>edge(s)+.05,.025,false,inBox),mats.white);group.add(line);}
   // 300 mm concrete channel along each kerb face, with the dark open joint at the kerb seen in the reference photo.
-  for(const side of [-1,1]){const edge=q=>side*(roadSection(q).right-.075),cut=q=>inJunction(q)||sample(q).elevated||side===1&&inDepot(q);
+  for(const side of [-1,1]){const edge=q=>side*(roadSection(q).right-.075),cut=q=>inJunction(q,side)||sample(q).elevated||side===1&&inDepot(q);
    const strip=new T.Mesh(ribbon(start,end,q=>Math.min(edge(q),edge(q)-side*.3),q=>Math.max(edge(q),edge(q)-side*.3),.012,false,cut),mats.channel);strip.name='kerb channel';strip.receiveShadow=true;group.add(strip);
    const joint=new T.Mesh(ribbon(start,end,q=>Math.min(edge(q),edge(q)-side*.025),q=>Math.max(edge(q),edge(q)-side*.025),.014,false,cut),mats.kerbJoint);joint.name='kerb joint';group.add(joint);}
-  for(const lat of [-.14,.14]){const line=new T.Mesh(ribbon(Math.max(35,start),Math.min(end,CROSSOVER_START-75),lat-.055,lat+.055,.028,false,q=>JUNCTIONS.some(j=>Math.abs(q-j.s)<j.halfWidth+13)||inDepot(q)),mats.white);line.name='Double centre line';if(start<CROSSOVER_START-75)group.add(line);}
+  for(const lat of [-.14,.14]){const line=new T.Mesh(ribbon(Math.max(35,start),Math.min(end,CROSSOVER_START-75),lat-.055,lat+.055,.028,false,q=>nearCrossing(q,13,JUNCTIONS)||inDepot(q)),mats.white);line.name='Double centre line';if(start<CROSSOVER_START-75)group.add(line);}
   for(let q=Math.max(start,DEPOT.gate-15);q<Math.min(end,DEPOT.gate+15);q+=5)group.add(new T.Mesh(ribbon(q,Math.min(q+2,end),-.055,.055,.03),mats.white));
   for(let s=Math.max(start,CROSSOVER_START-75);s<end;s+=7)group.add(new T.Mesh(ribbon(s,Math.min(s+3,end),-.05,.05,.029),mats.white));
-  for(let s=Math.ceil(Math.max(start,35)/1.5)*1.5;s<end;s+=1.5)for(const dir of [-1,1])for(const branch of [0,...(Math.abs(laneOffset(s,dir))>1.91?[1]:[])])for(const track of [-.24,.24]){const offset=q=>branch?dir*1.9:dir===-1?returnOffset(q):laneOffset(q),guide=new T.Mesh(ribbon(s,Math.min(s+.55,end),q=>offset(q)+track-.085,q=>offset(q)+track+.085,.035,false,q=>JUNCTIONS.some(j=>Math.abs(q-j.s)<j.halfWidth+11.7)),mats.white);guide.name='ART guidance marks';group.add(guide);}
+  for(let s=Math.ceil(Math.max(start,35)/1.5)*1.5;s<end;s+=1.5)for(const dir of [-1,1])for(const branch of [0,...(Math.abs(laneOffset(s,dir))>1.91?[1]:[])])for(const track of [-.24,.24]){const offset=q=>branch?dir*1.9:dir===-1?returnOffset(q):laneOffset(q),guide=new T.Mesh(ribbon(s,Math.min(s+.55,end),q=>offset(q)+track-.085,q=>offset(q)+track+.085,.035,false,q=>nearCrossing(q,11.7,JUNCTIONS)),mats.white);guide.name='ART guidance marks';group.add(guide);}
   const marks=group.children.filter(m=>m.name==='ART guidance marks'),positions=[],indices=[];for(const m of marks){const offset=positions.length/3;positions.push(...m.geometry.attributes.position.array);indices.push(...Array.from(m.geometry.index.array,i=>i+offset));m.geometry.dispose();group.remove(m);}const guideGeo=new T.BufferGeometry();guideGeo.setAttribute('position',new T.Float32BufferAttribute(positions,3));guideGeo.setIndex(indices);guideGeo.computeVertexNormals();const guides=new T.Mesh(guideGeo,mats.white);guides.name='ART guidance marks';group.add(guides);
   const kerbCuts=[start,end];for(let q=start+2;q<end;q+=2)kerbCuts.push(q);
-  for(const j of JUNCTIONS)for(const sign of [-1,1]){const q=j.s+sign*(j.halfWidth+6);if(q>start&&q<end)kerbCuts.push(q);}
+  for(const j of JUNCTIONS){const g=crossingGeometry(j);for(const q of [...g.gaps[1],...g.gaps[-1]])if(q>start&&q<end)kerbCuts.push(q);}
   for(const span of stationFenceSpans)for(const q of [span.start,span.end])if(q>start&&q<end)kerbCuts.push(q);
   kerbCuts.sort((a,b)=>a-b);
   for(let ki=1;ki<kerbCuts.length;ki++){const s=kerbCuts[ki-1],e=kerbCuts[ki];if(e-s<1e-6)continue;const r=sample((s+e)/2),a=sample(s),b=sample(e);
-   for(const side of [-1,1]){if(inJunction((s+e)/2)||stationFenceSpans.some(p=>p.side===side&&(s+e)/2>p.start&&(s+e)/2<p.end))continue;const la=side*(roadSection(s).right+(r.elevated?.21:0)),lb=side*(roadSection(e).right+(r.elevated?.21:0)),ax=a.x+a.lx*la,az=a.z+a.lz*la,bx=b.x+b.lx*lb,bz=b.z+b.lz*lb,len=Math.hypot(bx-ax,bz-az)+.03,heading=Math.atan2(ax-bx,az-bz),x=(ax+bx)/2,z=(az+bz)/2,y=(a.y+b.y)/2;
+   for(const side of [-1,1]){if(inJunction((s+e)/2,side)||stationFenceSpans.some(p=>p.side===side&&(s+e)/2>p.start&&(s+e)/2<p.end))continue;const la=side*(roadSection(s).right+(r.elevated?.21:0)),lb=side*(roadSection(e).right+(r.elevated?.21:0)),ax=a.x+a.lx*la,az=a.z+a.lz*la,bx=b.x+b.lx*lb,bz=b.z+b.lz*lb,len=Math.hypot(bx-ax,bz-az)+.03,heading=Math.atan2(ax-bx,az-bz),x=(ax+bx)/2,z=(az+bz)/2,y=(a.y+b.y)/2;
     if(r.elevated){const [A,B]=parapetSpan((s+e)/2),gap=q=>Math.min(q-A,B-q);
      // Inset lamps sit on the battered face at 560 mm; none on the ramped ends.
      if(Math.floor(s/2)%3===0&&gap((s+e)/2)>3.4){box('parapet-light-housing',mats.metal,x-r.lx*side*.133,y+.56,z-r.lz*side*.133,.09,.19,1.35,heading,ch);box('parapet-light',mats.lamp,x-r.lx*side*.193,y+.56,z-r.lz*side*.193,.035,.11,1.15,heading,ch);}if(Math.floor(s)%12<2)lampPositions.push({s,x:x-r.lx*side*1.8,y:y+.6,z:z-r.lz*side*1.8,kind:'deck'});const swept=(name,mat,width,bottom,top)=>{const l=q=>side*(roadSection(q).right+.21),m=new T.Mesh(structureGeometry(s,e,[[q=>l(q)-width/2,bottom],[q=>l(q)+width/2,bottom],[q=>l(q)+width/2,top],[q=>l(q)-width/2,top]]),mat);m.name=name;group.add(m);};
@@ -264,7 +273,7 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
    }
   }
   for(const name of ['parapet','parapet-rail','retained-ramp','continuous-kerb','K1 recessed metre joints']){const list=group.children.filter(m=>m.name===name);if(list.length){const mesh=new T.Mesh(mergeGeometries(list.map(m=>m.geometry)),list[0].material);mesh.name=name;mesh.castShadow=true;mesh.receiveShadow=true;for(const m of list){group.remove(m);m.geometry.dispose();}group.add(mesh);}}
-  for(let s=start+5;s<end;s+=11){const r=sample(s);if([...JUNCTIONS,...UNDERPASSES].some(j=>Math.abs(j.s-s)<j.halfWidth+12)||crossingGap(s-10,s+10))continue;for(let side of [-1,1]){
+  for(let s=start+5;s<end;s+=11){const r=sample(s);if(nearCrossing(s,12)||crossingGap(s-10,s+10))continue;for(let side of [-1,1]){
    const stationNearby=STOPS.some(st=>Math.abs(st.s-s)<60);
    let lat=side*((side===-1?17:stationNearby?20:18)+rnd()*7),p=at(s,lat),hr=rnd();if(!sceneryClear(p.x,p.z,3))continue;
    // ponytail: draws 97 rnd() per tree like the old 16 leaf cards did, so every later scenery placement (buildings) stays put.
@@ -277,7 +286,7 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
    // Young trees (under 6.5 m) keep their bamboo tripod; some older ones stand in a green steel guard (site photos). Hash, not rnd(): the scenery sequence stays put.
    {const u=kerbTone(s*3.1+side);if(h<6.5)kit('tree_stakes',p,u*6.28,new T.Vector3(tr/.22,1,tr/.22),ch);else if(u<.2){trees.at(-1).guard=true;kit('tree_guard',p,u*31,new T.Vector3((tr+.18)/.4,1,(tr+.18)/.4),ch);}}
   }}
-  for(let s=start+15;s<end;s+=52){if([...JUNCTIONS,...UNDERPASSES].some(j=>Math.abs(j.s-s)<j.halfWidth+25))continue;for(let side of [-1,1]){
+  for(let s=start+15;s<end;s+=52){if(nearCrossing(s,25))continue;for(let side of [-1,1]){
     const r=sample(s),lat=side*(48+rnd()*40),p=at(s,lat),zone=r.c<650?'residential':r.c<1250?'logistics':r.c<1900?'tech':r.c<2550?'village':r.c<3200?'boulevard':'construction',h=zone==='village'?6+rnd()*4:zone==='logistics'?8+rnd()*5:zone==='tech'?16+rnd()*18:18+rnd()*66,w=15+rnd()*15,d=16+rnd()*16,k=Math.floor(rnd()*4),radius=Math.hypot(w,d)/2+2;
     if(occupied.study?.(p.x,p.z,radius)||occupied(p.x,p.z,radius)||net.buildingBlocked(p.x,p.z,radius)||!sceneryClear(p.x,p.z,radius)||plots.some(q=>Math.hypot(q.x-p.x,q.z-p.z)<q.radius+radius+3))continue;plots.push({x:p.x,z:p.z,radius,zone,w,d,angle:r.heading});
     if(zone==='construction'){
@@ -316,6 +325,8 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
  const terminal=sample(LENGTH-3),endGroup=new T.Group();endGroup.name='northern-route-end';endGroup.position.set(terminal.x,terminal.y,terminal.z);endGroup.rotation.y=terminal.heading;scene.add(endGroup);
  const boardCanvas=document.createElement('canvas');boardCanvas.width=1024;boardCanvas.height=256;const bc=boardCanvas.getContext('2d');bc.fillStyle='#173d35';bc.fillRect(0,0,1024,256);bc.fillStyle='#fff3cd';bc.textAlign='center';bc.font='bold 62px sans-serif';bc.fillText('END OF LINE · 路線終點',512,110);bc.font='36px sans-serif';bc.fillText('Stop here · 請停車',512,185);const board=new T.Mesh(new T.PlaneGeometry(7,1.75),new T.MeshBasicMaterial({map:new T.CanvasTexture(boardCanvas),side:T.DoubleSide}));board.position.set(0,3,0);endGroup.add(board);
  for(const x of [-3.4,3.4]){const post=new T.Mesh(new T.BoxGeometry(.15,3.8,.15),mats.metal);post.position.set(x,1.9,0);endGroup.add(post);}for(let x=-3.5;x<3.5;x+=.7){const bar=new T.Mesh(new T.BoxGeometry(.7,.45,.35),new T.MeshStandardMaterial({color:Math.round((x+3.5)/.7)%2?0xf0c55b:0x283a37}));bar.position.set(x+.35,.8,0);endGroup.add(bar);}
+ // Rebuilt corridor junctions and the roads under the viaducts (src/city/crossings.js).
+ buildCrossings(scene,{mats,junctionBox});
  // Unsignalised station crossings after the site photo (18.01.42 (2)), without the refuge island: no stripes; LOOK RIGHT 望右 /
  // LOOK LEFT 望左 only beside each footpath, read from the kerb it faces; dropped kerb with existing footpath paving and yellow blister tactile.
  for(const crossing of CROSSINGS){const s=crossing.s,r=sample(s),edge=roadSection(s),g=new T.Group();g.name='unsignalised-crossing-'+crossing.station+'-'+Math.round(s);scene.add(g);
@@ -483,10 +494,10 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
  for(let z=-length/2+2;name.startsWith('Cycle footbridge')&&z<length/2;z+=6){const fixture=part(width-.6,.08,1,0,8.84,z,mats.lamp);fixture.name='Cycle bridge canopy light';lampAt(g,0,8.78,z);}
  return g;
  }
- for(const j of CYCLE_BRIDGES){const r=sample(j.s),p=at(j.s,cycleOffset(j.s)),length=j.halfWidth*2+16,g=footbridge('Cycle footbridge '+j.name,p,r.heading,length);
+ for(const j of CYCLE_BRIDGES){const cs=crossingGeometry(j).cycleS,ch=crossingGeometry(j).cycleHalf,r=sample(cs),p=at(cs,cycleOffset(cs)),length=ch*2+16,g=footbridge('Cycle footbridge '+j.name,p,r.heading,length);
   // Only the upper route crosses the road. Riders climb the same ramp surface as the paint.
   for(const side of [-1,1]){
-   const begin=j.s+side*(j.halfWidth+8),end=j.s+side*(j.halfWidth+8+CYCLE_RAMP),a=Math.min(begin,end),b=Math.max(begin,end);
+   const begin=cs+side*(ch+8),end=cs+side*(ch+8+CYCLE_RAMP),a=Math.min(begin,end),b=Math.max(begin,end);
    const top=q=>sample(q).groundY+cycleBridgeHeight(q)-sample(q).y-.025;
    const slab=new T.Mesh(structureGeometry(a,b,[[-2.15,q=>top(q)-.42],[2.15,q=>top(q)-.42],[2.15,top],[-2.15,top]],cycleSample),mats.concrete);slab.name='Cycle bridge approach ramp';slab.castShadow=slab.receiveShadow=true;scene.add(slab);
    for(let q=begin+side*3;side*(end-q)>4;q+=side*16){const c=cycleSample(q),h=cycleBridgeHeight(q)-.445;if(h<.65)continue;const ch=Math.floor(q/240);box('cycle-ramp-pier',mats.concrete,c.x,c.groundY+h/2,c.z,.8,h,1.2,c.heading,ch);box('cycle-ramp-cap',mats.concrete,c.x,c.groundY+h-.16,c.z,3.9,.32,1.3,c.heading,ch);}
@@ -494,7 +505,7 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
    for(const edge of [-2.12,2.12]){const rail=cycleRibbon(a,b,edge-.035,edge+.035,1.15),mesh=new T.Mesh(rail,mats.galvanised);mesh.name='Cycle ramp handrail';scene.add(mesh);}
    for(let q=a;q<=b;q+=5){const c=cycleSample(q),height=cycleBridgeHeight(q);for(const edge of [-2.12,2.12])box('cycle-ramp-post',mats.galvanised,c.x+c.lx*edge,c.groundY+height+.57,c.z+c.lz*edge,.06,1.14,.06,c.heading,Math.floor(q/240));}
    // Ground-level spur skirts the staircase and arrives at the lift entrance.
-   const along=side*(length/2+24),q=j.s+along,road=sample(q),outer=-(roadSection(q).right+3.75),start=new T.Vector3(road.x+road.lx*outer,road.groundY+.30,road.z+road.lz*outer),finish=g.localToWorld(new T.Vector3(9, .30,-along));
+   const along=side*(length/2+24),q=cs+along,road=sample(q),outer=-(roadSection(q).right+3.75),start=new T.Vector3(road.x+road.lx*outer,road.groundY+.30,road.z+road.lz*outer),finish=g.localToWorld(new T.Vector3(9, .30,-along));
    const path=new T.LineCurve3(start,finish),link=new T.Mesh(curveRibbon(path,-1.5,1.5,.015),mats.walk);link.name='Footbridge pedestrian approach';scene.add(link);
    const landing=new T.Mesh(new T.BoxGeometry(7,.15,26),mats.walk);landing.position.set(6.7,.225,side*(length/2+14));g.add(landing);
   }
@@ -523,11 +534,11 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
 
  const plazaDecor=plazaAssets.build(scene,{fences,lampPositions,kit,batch,mats});
  // LED strips under the corridor bridges over each underpass road.
- for(const j of UNDERPASSES){const r=sample(j.s);
+ for(const j of UNDERPASSES){const g=crossingGeometry(j),{u,n}=g;
   for(const d of [-3.6,3.6])for(const side of [-1,1]){
-   const x=r.x+r.lx*d+r.tx*side*j.halfWidth*.55,z=r.z+r.lz*d+r.tz*side*j.halfWidth*.55,y=sample(j.s+side*j.halfWidth*.55).y-.45;
-   box('underbridge-LED',mats.lamp,x,y,z,.35,.12,2,r.heading+Math.PI/2,Math.floor(j.s/240));
-   lampPositions.push({s:j.s,x,y,z,kind:'underbridge',axis:{tx:r.lx,tz:r.lz,lx:r.tx,lz:r.tz}});
+   const r=sample(j.s+d*g.tan+side*j.halfWidth*.55/g.cos),x=r.x+r.lx*d,z=r.z+r.lz*d,y=r.y-.45;
+   box('underbridge-LED',mats.lamp,x,y,z,.35,.12,2,Math.atan2(-n.x,-n.z),Math.floor(j.s/240));
+   lampPositions.push({s:j.s,x,y,z,kind:'underbridge',axis:{tx:u.x,tz:u.z,lx:n.x,lz:n.z}});
   }
  }
  // Open verge drainage channels behind the footpath, 10 m on an 18 m rhythm.
@@ -544,7 +555,7 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
  const plants=['grass','meadow','fern','shrub','flowering'].map(kind=>{const parts=[];streetKit.getObjectByName('vegetation_'+kind).traverse(n=>{if(n.isMesh)parts.push({geometry:n.geometry.clone().applyMatrix4(n.matrixWorld),material:windMaterial(n.material,windTime),low:streetKit.getObjectByName(n.name+'_lod')?.geometry.clone().applyMatrix4(n.matrixWorld)});});for(const part of parts)part.geometry.userData.low=part.low;return {kind,parts};});
  for(const tree of trees){if(tree.guard||plots.some(p=>Math.hypot(p.x-tree.x,p.z-tree.z)<p.radius+3))continue;const plant=plants[3];for(let i=0;i<6;i++){const angle=i*Math.PI/3,p=new T.Vector3(tree.x+Math.cos(angle)*1.05,tree.y-.15,tree.z+Math.sin(angle)*1.05);for(const part of plant.parts)batch('tree-shrub-'+part.material.name+'-cell'+Math.floor(tree.s/40),part.geometry,part.material,p,new T.Vector3(.85,.9,.85),new T.Euler(0,angle,0),Math.floor(tree.s/240));}}
  for(let s=8;s<LENGTH-8;s+=1.7)for(const side of [-1,1])for(let row=0;row<3;row++){
-  if(UNDERPASSES.some(j=>Math.abs(j.s-s)<j.halfWidth+35)||crossingGap(s-9,s+9)||channelDepth(at(s,0).x,at(s,0).z)>0)continue;
+  if(nearCrossing(s,35,UNDERPASSES)||crossingGap(s-9,s+9)||channelDepth(at(s,0).x,at(s,0).z)>0)continue;
   const edge=side===-1?-cycleOffset(s)+2:Math.max(roadSection(s).right+3.75,...STOPS.filter(st=>Math.abs(st.s-s)<st.footprintLength/2+8).map(st=>7.05+st.width));
   const lat=side*(edge+1.0+row*.8),p=at(s+(rnd()-.5)*.6,lat),plant=plants[row===0?Math.floor(rnd()*2):2+Math.floor(rnd()*3)],scale=1.3+rnd()*.45;
   if(side===-1){const c=cycleSample(s),offset=-3-row*.8;p.x=c.x+c.lx*offset;p.z=c.z+c.lz*offset;}
@@ -560,7 +571,7 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
  // corners between main-road and side-road footpaths: dense grass near paving, mixed low planting further out.
  const stationZone=(ps,lat)=>STOPS.some(st=>Math.abs(ps-st.s)<st.footprintLength/2+14&&Math.abs(lat)<st.platformLateral+st.width+3);
  for(let s=6;s<LENGTH-6;s+=1.3)for(const side of [-1,1]){
-  const walk=roadSection(s).right+3.75+.3,corner=JUNCTIONS.some(j=>Math.abs(j.s-s)<j.halfWidth+40);
+  const walk=roadSection(s).right+3.75+.3,corner=nearCrossing(s,40,JUNCTIONS);
   const far=side===-1?Math.min(45,-(cycleOffset(s)+2)-.35):corner?walk+14:0;
   for(let lat=walk;lat<=Math.max(walk,far);lat+=lat-walk<6?1.1:2.3){const p=at(s+(rnd()-.5)*.8,side*(lat+(rnd()-.5)*.1)),ps=project(p.x,p.z),r=sample(ps);
    const out=lat-walk>6,plant=plants[out&&rnd()<.35?2+Math.floor(rnd()*3):Math.floor(rnd()*2)],low=plant.kind==='grass'||plant.kind==='meadow';
