@@ -1,4 +1,3 @@
-import {junctionPoint} from './street/junction-frame.js';
 import {signalCrossingMarkings} from './street/sandbox/street-rules.js';
 import {cityDetails} from './street/city-details.js';
 import {streetPaving} from './street/paving.js';
@@ -8,7 +7,7 @@ import {createPlazaAssets} from './plaza.js';
 import {windMaterial,PLANT_NIGHT} from './street-models.js';
 import {TessellateModifier} from 'three/addons/modifiers/TessellateModifier.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
-import {terminalCurve,depotCurve,depotExitCurve,depotInner,l35BendCurve,l35Mouth,l35D6} from './routes.js';
+import {terminalCurve,depotCurve,depotExitCurve,depotInner} from './routes.js';
 import {SITE as DEPOT_SITE,paved as depotPaved,corridorClear,BUILDINGS as DEPOT_BUILDINGS,BAYS as DEPOT_BAYS,CV_STALLS,CV_FENCE,CV_PARK,CV_ROAD,CV_ROAD_WIDTH,nearServiceRoad,nearDepotBounds,MASTS,MAST_HEIGHT} from './depot.js';
 import {pointInPolygon} from './lots/wand.js';
 import {lotMaterials} from './lots/massing.js';
@@ -23,20 +22,19 @@ import {CV_FRAME,setNetwork,ROAD} from './street/roads.js';
 import {buildNetwork,networkMask,streetTerrain,frames,halfWidth} from './street/network.js';
 import {hillMesh} from './street/hills.js';
 import {treeTemplates} from './street/trees.js';
-import {LENGTH,STOPS,sample,LOOP,roadSection,fromChainage,project,PATH,BRIDGES,CROSSINGS,footpathHeight,cycleOffset,CYCLE_WIDTH,CHANNELS,JUNCTIONS,UNDERPASSES,L35,l35Offset,DEPOT,RAILWAY,railSample,cycleCrossing,cycleHeight,sideCrossing,D1ROAD,laneOffset,curveRadius,returnOffset,CROSSOVER_START,END_STOP,CYCLE_BRIDGES,CYCLE_RAMP,cycleBridgeAt,cycleBridgeHeight,cycleSample,PLATFORM_RISE} from './alignment.js';
+import {LENGTH,STOPS,sample,LOOP,roadSection,fromChainage,project,PATH,BRIDGES,CROSSINGS,footpathHeight,cycleOffset,CYCLE_WIDTH,CHANNELS,JUNCTIONS,UNDERPASSES,DEPOT,RAILWAY,railSample,cycleCrossing,cycleHeight,sideCrossing,laneOffset,curveRadius,returnOffset,CROSSOVER_START,END_STOP,CYCLE_BRIDGES,CYCLE_RAMP,cycleBridgeAt,cycleBridgeHeight,cycleSample,PLATFORM_RISE} from './alignment.js';
 export {JUNCTIONS,UNDERPASSES} from './alignment.js';
 const inJunction=s=>JUNCTIONS.some(j=>Math.abs(s-j.s)<j.halfWidth+6);
 const inDepot=s=>Math.abs(s-DEPOT.gate)<DEPOT.opening/2;
 export const depotKerbHeight=(s,side)=>side===1&&Math.abs(s-DEPOT.gate)<DEPOT.opening/2+3?Math.min(footpathHeight(s),.02+.13*Math.max(0,Math.min(1,(Math.abs(s-DEPOT.gate)-DEPOT.opening/2)/3))):footpathHeight(s);
 const positiveFootpathHeight=s=>depotKerbHeight(s,1);
 const groundCrossing=s=>inJunction(s)||UNDERPASSES.some(j=>Math.abs(j.s-s)<j.halfWidth+.5);
-// Any fence line (corridor or L35) opens 6 m either side of a pedestrian crossing.
+// Any fence line opens 6 m either side of a pedestrian crossing.
 export const crossingGap=(start,end)=>CROSSINGS.some(c=>start<c.s+6&&end>c.s-6);
 // Dropped kerb / tactile width of a station crossing; kerbside railings stop 0.3 m short of it (site photos 18.01.42 (1), (3)).
 export const CROSSING_HALF=2,railGap=(start,end)=>CROSSINGS.some(c=>start<c.s+CROSSING_HALF+.3&&end>c.s-CROSSING_HALF-.3);
 // Corridor lines stop at the outer edge of each junction's corridor crossings; the yellow box replaces them inside.
 const inBox=s=>JUNCTIONS.some(j=>Math.abs(s-j.s)<j.halfWidth+11.5);
-const arcPts=(cx,cz,r,a0,a1,n=8)=>Array.from({length:n+1},(_,i)=>{const a=a0+(a1-a0)*i/n;return [cx+r*Math.cos(a),cz+r*Math.sin(a)];});
 // Yellow box stays within the dedicated corridor, between its two pedestrian crossings.
 export function junctionBox(j){const w=roadSection(j.s).right-.15,zc=j.halfWidth+8.25;
  const poly=[[-w,zc],[w,zc],[w,-zc],[-w,-zc]];
@@ -100,10 +98,9 @@ export function cycleClearance(x,z){let nearest=Infinity;for(let i=1;i<cycleLine
 // Scenery keeps out of the depot site (lot 41B) and a radius around its boundary.
 function nearDepotSite(x,z,radius){if(!nearDepotBounds(x,z,radius+CV_ROAD_WIDTH/2+16))return false;if(pointInPolygon([x,z],DEPOT_SITE)||nearServiceRoad(x,z,radius+CV_ROAD_WIDTH/2+14)!=null)return true;for(let i=0;i<DEPOT_SITE.length;i++){const [ax,az]=DEPOT_SITE[i],[bx,bz]=DEPOT_SITE[(i+1)%DEPOT_SITE.length],dx=bx-ax,dz=bz-az,t=Math.max(0,Math.min(1,((x-ax)*dx+(z-az)*dz)/(dx*dx+dz*dz)));if(Math.hypot(x-ax-t*dx,z-az-t*dz)<radius+2)return true;}return false;}
 export function sceneryClear(x,z,radius,low=false){
- const ps=project(x,z),r=sample(ps),lat=(x-r.x)*r.lx+(z-r.z)*r.lz;if((r.c>680&&r.c<980&&lat< -12+radius&&lat> -145-radius)||nearDepotSite(x,z,radius)||ps>=L35.start-30&&ps<=L35.end+40&&lat<0&&(ps<L35.start||ps>fromChainage(3300)?lat> -35-radius:Math.abs(lat+l35Offset(ps))<L35.width/2+3.75+radius)||channelDepth(x,z)>0)return false;
+ const ps=project(x,z),r=sample(ps),lat=(x-r.x)*r.lx+(z-r.z)*r.lz;if((r.c>680&&r.c<980&&lat< -12+radius&&lat> -145-radius)||nearDepotSite(x,z,radius)||channelDepth(x,z)>0)return false;
  if(RAILWAY.distance(x,z)<9+radius||cycleClearance(x,z)<CYCLE_WIDTH/2+radius+(low?.2:1.5))return false;
  if(!low)for(const j of CYCLE_BRIDGES){const c=sample(j.s),dx=x-c.x,dz=z-c.z,along=dx*c.tx+dz*c.tz,lat=dx*c.lx+dz*c.lz;if(Math.abs(along)<j.halfWidth+35+radius&&Math.abs(lat-(cycleOffset(j.s)-6))<12+radius)return false;}
- if(D1ROAD.some(p=>Math.hypot(x-p.x,z-p.z)<14+radius))return false;
  if(Math.hypot(x-r.x,z-r.z)<roadSection(ps).right+3.75+radius)return false;
  return [...JUNCTIONS,...UNDERPASSES].every(j=>{const p=sample(j.s),dx=x-p.x,dz=z-p.z;return Math.abs(dx*p.tx+dz*p.tz)>j.halfWidth+5+radius||Math.abs(dx*p.lx+dz*p.lz)>j.extent+radius;});
 }
@@ -319,63 +316,6 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
  const terminal=sample(LENGTH-3),endGroup=new T.Group();endGroup.name='northern-route-end';endGroup.position.set(terminal.x,terminal.y,terminal.z);endGroup.rotation.y=terminal.heading;scene.add(endGroup);
  const boardCanvas=document.createElement('canvas');boardCanvas.width=1024;boardCanvas.height=256;const bc=boardCanvas.getContext('2d');bc.fillStyle='#173d35';bc.fillRect(0,0,1024,256);bc.fillStyle='#fff3cd';bc.textAlign='center';bc.font='bold 62px sans-serif';bc.fillText('END OF LINE · 路線終點',512,110);bc.font='36px sans-serif';bc.fillText('Stop here · 請停車',512,185);const board=new T.Mesh(new T.PlaneGeometry(7,1.75),new T.MeshBasicMaterial({map:new T.CanvasTexture(boardCanvas),side:T.DoubleSide}));board.position.set(0,3,0);endGroup.add(board);
  for(const x of [-3.4,3.4]){const post=new T.Mesh(new T.BoxGeometry(.15,3.8,.15),mats.metal);post.position.set(x,1.9,0);endGroup.add(post);}for(let x=-3.5;x<3.5;x+=.7){const bar=new T.Mesh(new T.BoxGeometry(.7,.45,.35),new T.MeshStandardMaterial({color:Math.round((x+3.5)/.7)%2?0xf0c55b:0x283a37}));bar.position.set(x+.35,.8,0);endGroup.add(bar);}
- // Merged marking strips, flat kerb-return fills and corner footpaths in a junction group's local frame; y follows the road grade.
- const strips=(segs,width,y,mat,grade=0)=>{const p=[],idx=[];for(const [a,b] of segs){const dx=b[0]-a[0],dz=b[1]-a[1],n=Math.hypot(dx,dz)||1,nx=-dz/n*width/2,nz=dx/n*width/2,steps=Math.max(1,Math.ceil(n/.5));for(let i=0;i<steps;i++){const aa=[a[0]+dx*i/steps,a[1]+dz*i/steps],bb=[a[0]+dx*(i+1)/steps,a[1]+dz*(i+1)/steps],k=p.length/3;for(const [x,z] of [[aa[0]+nx,aa[1]+nz],[aa[0]-nx,aa[1]-nz],[bb[0]+nx,bb[1]+nz],[bb[0]-nx,bb[1]-nz]])p.push(x,y-grade*z,z);idx.push(k,k+2,k+1,k+1,k+2,k+3);}}const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(p,3));geo.setIndex(idx);geo.computeVertexNormals();const m=new T.Mesh(geo,mat);m.receiveShadow=true;return m;};
- const flat=(pts,y,mat,grade=0)=>{const geo=new T.ShapeGeometry(new T.Shape(pts.map(([x,z])=>new T.Vector2(x,-z))));geo.rotateX(-Math.PI/2);const p=geo.attributes.position;for(let i=0;i<p.count;i++)p.setY(i,(typeof y==='function'?y(p.getZ(i)):y)-grade*p.getZ(i));geo.setAttribute('uv',new T.Float32BufferAttribute(Array.from({length:p.count},(_,i)=>[p.getX(i)/5,p.getZ(i)/5]).flat(),2));geo.computeVertexNormals();const m=new T.Mesh(geo,mat);m.receiveShadow=true;return m;};
- const cornerMat=new T.MeshStandardMaterial({map:paverTex,side:T.DoubleSide,roughness:.96}),annulus=(cx,cz,r0,r1,a0,a1,y,grade=0)=>{const pos=[],ids=[];for(let i=0;i<=12;i++)for(const rad of [r1,r0]){const a=a0+(a1-a0)*i/12,x=cx+rad*Math.cos(a),z=cz+rad*Math.sin(a);pos.push(x,y-grade*z,z);}for(let i=0;i<12;i++){const k=i*2;ids.push(k,k+2,k+1,k+1,k+2,k+3);}const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(pos,3));geo.setIndex(ids);geo.setAttribute('uv',new T.Float32BufferAttribute(pos.flatMap((v,i)=>i%3===0?[v/5,pos[i+2]/5]:[]),2));geo.computeVertexNormals();const m=new T.Mesh(geo,cornerMat);m.name='connected-corner-footpath';return m;};
- const beaconMat=new T.MeshStandardMaterial({color:0xe7c752}),dashes=(x0,x1,z,dash,gap)=>{const out=[];for(let x=x0;x<x1-.01;x+=dash+gap)out.push([[x,z],[Math.min(x+dash,x1),z]]);return out;};
- // Continuous corner footpaths join the corridor and crossing-road approaches.
- for(const j of [...JUNCTIONS,...UNDERPASSES]){const r=sample(j.s),g=new T.Group(),w=roadSection(j.s).right,h=j.halfWidth,R=6;g.name=(j.underpass?'underpass-':'junction-')+j.c;g.position.set(r.x,j.underpass?r.groundY:r.y,r.z);g.rotation.y=r.heading;scene.add(g);
-  const slab=(width,depth,x,z,mat,y=.03)=>{if(mat===mats.walk&&Math.abs(depth-3.75)<.001){depth-=.125;z+=Math.sign(z)*.0625;}const m=new T.Mesh(new T.BoxGeometry(width,.05,depth,Math.max(1,Math.ceil(width/6)),1,Math.max(1,Math.ceil(depth/6))),mat);m.position.set(x,y-.025,z);if(!j.underpass){const p=m.geometry.attributes.position;for(let i=0;i<p.count;i++)p.setY(i,p.getY(i)-r.grade*(p.getZ(i)+z));m.geometry.computeVertexNormals();}if(mat===mats.walk){const p=m.geometry.attributes.position,uv=m.geometry.attributes.uv;for(let i=0;i<p.count;i++)uv.setXY(i,(p.getX(i)+x)/5,(p.getZ(i)+z)/5);}m.receiveShadow=true;g.add(m);return m;};
-  slab(j.extent*2,h*2,0,0,mats.road);
-  for(const side of [-1,1]){if(!(j.c===3395&&side===1))slab(j.extent*2,3.75,0,side*(h+1.875),mats.walk,.18);for(let x=-j.extent;x<j.extent;x+=7){if(j.underpass?j.c===3395&&Math.abs(Math.abs(x)-30)<3.2:Math.abs(x)<sideCrossing(j,Math.sign(x)||1)+4.5)continue;for(const lane of j.underpass?[-h/2,0,h/2]:[0])slab(3,.09,x,lane,mats.white,.079);}}
-  // D3 priority T: R6 kerb returns at the L35 mouth, a 25 m tapered merge downstream, give-way markings and zebras clear of the mouth.
-  if(j.c===3395){const M=l35Mouth,dk=M.x-M.half,uk=M.x+M.half,t0=dk-M.R,t1=t0-M.taperLength,zt=h+M.taper,zeb=[-30,30],clear=segs=>segs.flatMap(([a,b])=>{let out=[[a,b]];for(const x of zeb)out=out.flatMap(([p,q])=>{const lo=Math.min(p[0],q[0]),hi=Math.max(p[0],q[0]);return hi<x-1.7||lo>x+1.7?[[p,q]]:[...(lo<x-1.7?[[[lo,p[1]],[x-1.7,p[1]]]]:[]),...(hi>x+1.7?[[[x+1.7,p[1]],[hi,p[1]]]]:[])];});return out;});
-   g.add(flat([[dk,h],...arcPts(t0,zt+M.R,M.R,0,-Math.PI/2),[t1,h]],.07,mats.road),flat([[uk,h],...arcPts(uk+M.R,h+M.R,M.R,-Math.PI/2,-Math.PI)],.07,mats.road),flat([[t0,zt],[t1,h],[t1,h+3.75],[t0,zt+3.75]] ,.18,mats.walk),annulus(uk+M.R,h+M.R,M.R-3.75,M.R,-Math.PI/2 ,-Math.PI,.18),annulus(t0,zt+M.R,M.R-3.75,M.R,0,-Math.PI/2,.18));
-   slab(j.extent-uk-M.R,3.75,(j.extent+uk+M.R)/2,h+1.875,mats.walk,.18);slab(j.extent+t1,3.75,(t1-j.extent)/2,h+1.875,mats.walk,.18);
-   const tri=[[M.x-1.8-.75,zt+M.R+2],[M.x-1.8+.75,zt+M.R+2],[M.x-1.8,zt+M.R+7]];
-   g.add(strips([...clear([[[-j.extent,-h+.25],[j.extent,-h+.25]],[[-j.extent,h-.25],[t1,h-.25]],[[uk+M.R,h-.25],[j.extent,h-.25]]]),[[t0,zt-.25],[t1,h-.25]],...dashes(t1,uk+M.R,h-.25,1,1),...[.35,.75].flatMap(dz=>dashes(t0+Math.sqrt(M.R*M.R-(M.R-dz)**2)+.1,M.x,zt+dz,.6,.3)),...tri.map((p,i)=>[p,tri[(i+1)%3]])],.15,.11,mats.white));
-   g.add(strips(zeb.flatMap(x=>Array.from({length:Math.ceil((2*h-.4)/1.1)},(_,i)=>[[x-1.5,-h+.4+i*1.1],[x+1.5,-h+.4+i*1.1]])),.55,.085,mats.white));
-   for(const x of zeb)for(const side of [-1,1]){slab(2.9,.6,x,side*(h+.65),beaconMat,.31);const post=new T.Mesh(new T.CylinderGeometry(.06,.06,2.6,8),mats.metal),globe=new T.Mesh(new T.SphereGeometry(.2,12,8),new T.MeshStandardMaterial({color:0xffa31a,emissive:0xff8800,emissiveIntensity:.8}));post.position.set(x+2.1,1.6,side*(h+.7));globe.position.set(x+2.1,3,side*(h+.7));globe.name='zebra-beacon';g.add(post,globe);}}
-
-  if(!j.underpass){
-   const box=junctionBox(j);g.add(strips(box.poly.map((p,i)=>[p,box.poly[(i+1)%box.poly.length]]),.2,.1,mats.yellow,r.grade),strips(box.lattice,.12,.1,mats.yellow,r.grade));
-   // Remove the two continuous sidewalk slabs just created and rebuild with four corner returns.
-   for(const child of [...g.children])if(child.material===mats.walk){g.remove(child);child.geometry.dispose();}
-   for(const side of [-1,1])for(const bank of [-1,1])for(const [a,b] of [[w+R,sideCrossing(j,side)-3.3],[sideCrossing(j,side)+3.3,j.extent]]){if(b>a)slab(b-a,3.75,side*(a+b)/2,bank*(h+1.875),mats.walk,.18);}
-   const shape=new T.Shape();shape.moveTo(-w,h+R);shape.lineTo(w,h+R);shape.lineTo(w,h+R);shape.absarc(w+R,h+R,R,Math.PI,Math.PI*1.5,false);shape.lineTo(w+R,-h);shape.absarc(w+R,-h-R,R,Math.PI/2,Math.PI,false);shape.lineTo(-w,-h-R);shape.absarc(-w-R,-h-R,R,0,Math.PI/2,false);shape.lineTo(-w-R,h);shape.absarc(-w-R,h+R,R,-Math.PI/2,0,false);shape.closePath();const roadGeo=new T.ShapeGeometry(shape,16);roadGeo.rotateX(-Math.PI/2);for(let i=0,p=roadGeo.attributes.position;i<p.count;i++)p.setY(i,.03-r.grade*p.getZ(i));const road=new T.Mesh(roadGeo,mats.road);g.add(road);
-   for(const sx of [-1,1])for(const sz of [-1,1]){if(j.c===2650&&sx===1&&sz===-1)continue;const pos=[],ids=[];for(let i=0;i<=16;i++)for(const rad of [R-.125,R-3.75]){const a=i*Math.PI/32,x=sx*(w+R-rad*Math.cos(a)),z=sz*(h+R-rad*Math.sin(a));pos.push(x,.18-r.grade*z,z);}for(let i=0;i<16;i++){const a=i*2;ids.push(a,a+2,a+1,a+1,a+2,a+3);}const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(pos,3));geo.setIndex(ids);geo.setAttribute('uv',new T.Float32BufferAttribute(pos.flatMap((v,i)=>i%3===0?[v/5,pos[i+2]/5]:[]),2));geo.computeVertexNormals();const m=new T.Mesh(geo,new T.MeshStandardMaterial({map:paverTex,side:T.DoubleSide,roughness:.96}));m.name='connected-corner-footpath';g.add(m);
-    const point=t=>{const a=t/R,x=sx*(w+R-R*Math.cos(a)),z=sz*(h+R-R*Math.sin(a));return {x,z,nx:sx*Math.cos(a),nz:sz*Math.sin(a),y:.18-r.grade*z,base:.03-r.grade*z};};
-    sweptKerbs(R*Math.PI/2,point,{step:.25}).forEach((geo,i)=>{const m=new T.Mesh(geo,i?mats.kerbJoint:mats.concrete);m.name=i?'Recessed corner kerb joints':'raised-corner-kerb';m.castShadow=m.receiveShadow=true;g.add(m);});}
-   for(const side of [-1,1]){slab(w-.15,.2,-side*w/2,side*j.stop,mats.white,.09);slab(.2,h-.15,side*(sideCrossing(j,side)+3),side*h/2,mats.white,.09);
-    const corridor=signalCrossingMarkings({at:side*(h+10),width:3.2,roadWidth:w*2,edgeMargin:.5}),cross=signalCrossingMarkings({at:side*sideCrossing(j,side),width:3.2,roadWidth:h*2,edgeMargin:.5});
-    const bars=[...corridor.bars.map(b=>[[b.z,b.x-b.w/2],[b.z,b.x+b.w/2]]),...cross.bars.map(b=>[[b.x-b.w/2,b.z],[b.x+b.w/2,b.z]])];
-    const zebra=strips(bars,.3,.075,mats.yellow,r.grade);zebra.name='Full-width yellow crossings';g.add(zebra);
-    const studs=[...corridor.studs.map(b=>[[b.z-.05,b.x],[b.z+.05,b.x]]),...cross.studs.map(b=>[[b.x-.05,b.z],[b.x+.05,b.z]])];
-    const studMesh=strips(studs,.1,.078,mats.white,r.grade);studMesh.name='Independent crossing stud rows';g.add(studMesh);
-    for(const bank of [-1,1]){
-     const pad=(x,z,width,depth,height)=>{const geo=new T.PlaneGeometry(width,depth,6,6);geo.rotateX(-Math.PI/2);const p=geo.attributes.position;for(let i=0;i<p.count;i++){const xx=p.getX(i)+x,zz=p.getZ(i)+z;p.setXYZ(i,xx,height(xx,zz)+.012-r.grade*zz,zz);}geo.setAttribute('uv',new T.Float32BufferAttribute(Array.from({length:p.count},(_,i)=>[p.getX(i)/5,p.getZ(i)/5]).flat(),2));geo.computeVertexNormals();const m=new T.Mesh(geo,mats.tactile);m.name='junction-tactile-paving';g.add(m);};
-     const cs=j.s-side*(h+10),lat=-bank,geo=ribbon(cs-1.5,cs+1.5,q=>lat*roadSection(q).right+(lat>0?.35:-.95),q=>lat*roadSection(q).right+(lat>0?.95:-.35),q=>footpathHeight(q)+.025,true);
-     g.updateMatrixWorld(true);geo.applyMatrix4(g.matrixWorld.clone().invert());const tactile=new T.Mesh(geo,mats.tactile);tactile.name='junction-tactile-paving';tactile.userData.corridorAligned=true;g.add(tactile);
-     pad(side*sideCrossing(j,side),bank*(h+.65),3,.6,(x,z)=>.05+.13*(Math.abs(z)-h)/3.75);
-    }
-    // Crossing-road kerb ramps replace the flat sidewalk within a 3 m wheelchair route.
-    for(const bank of [-1,1]){const centre=side*sideCrossing(j,side),pos=[],uv=[],idx=[];
-     for(const dx of [-3.3,-1.5,1.5,3.3])for(const d of [.125,3.75]){const x=centre+dx,z=bank*(h+d),flare=Math.max(0,Math.min(1,1-(Math.abs(dx)-1.5)/1.8));pos.push(x,.18-.13*flare*(1-d/3.75)-r.grade*z,z);uv.push(x/5,z/5);}
-     for(let i=0;i<3;i++){const k=i*2;idx.push(k,k+1,k+2,k+1,k+3,k+2);}const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(pos,3));geo.setAttribute('uv',new T.Float32BufferAttribute(uv,2));geo.setIndex(bank>0?idx:idx.reduce((a,v,i)=>{if(i%3===0)a.push(idx[i],idx[i+2],idx[i+1]);return a;},[]));geo.computeVertexNormals();const ramp=new T.Mesh(geo,cornerMat);ramp.name='junction-wheelchair-ramp';g.add(ramp);}
-
-   }
-  }
- }
- // Profiled K1 units along the existing crossing-road arms meet the city kerbs
- // at exactly the same footprint and height; crossing units drop with the ramps.
- for(const j of [...JUNCTIONS,...UNDERPASSES]){const g=scene.getObjectByName((j.underpass?'underpass-':'junction-')+j.c),r=sample(j.s),start=roadSection(j.s).right+6;
-  for(const side of [-1,1])for(const bank of [-1,1]){if(j.c===3395&&bank===1||j.c===2650&&side===1&&bank===-1)continue;
-   const point=t=>{const x=side*(start+t),z=bank*j.halfWidth,drop=j.underpass?0:.13*Math.max(0,Math.min(1,1-(Math.abs(x-side*sideCrossing(j,side))-1.5)/1.8)),grade=j.underpass?0:r.grade;
-    return {x,z,nx:0,nz:bank,y:.18-drop-grade*z,base:.03-grade*z};};
-   sweptKerbs(j.extent-start,point).forEach((geo,i)=>{const m=new T.Mesh(geo,i?mats.kerbJoint:mats.concrete);m.name=i?'Side-road kerb joints':'Side-road K1 kerbs';m.castShadow=m.receiveShadow=true;g.add(m);});
-  }
- }
  // Unsignalised station crossings after the site photo (18.01.42 (2)), without the refuge island: no stripes; LOOK RIGHT 望右 /
  // LOOK LEFT 望左 only beside each footpath, read from the kerb it faces; dropped kerb with existing footpath paving and yellow blister tactile.
  for(const crossing of CROSSINGS){const s=crossing.s,r=sample(s),edge=roadSection(s),g=new T.Group();g.name='unsignalised-crossing-'+crossing.station+'-'+Math.round(s);scene.add(g);
@@ -408,52 +348,6 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
   // Same HyD parapet as the viaducts on the footpath edge and just outside the 4 m cycle track.
   hydParapet(g,start,end,q=>roadSection(q).right+3.33,1,footpathHeight,start,end,Math.floor(c.s/240));hydParapet(g,start,end,q=>cycleOffset(q)-CYCLE_WIDTH/2,-1,cycleHeight,start,end,Math.floor(c.s/240));
   for(const name of ['parapet','parapet-rail']){const list=g.children.filter(m=>m.name===name),m=new T.Mesh(mergeGeometries(list.map(m=>m.geometry)),list[0].material);m.name=name;m.castShadow=m.receiveShadow=true;list.forEach(m=>{g.remove(m);m.geometry.dispose();});g.add(m);}}
- // L35 begins at D6 beside the dedicated corridor; the 4 m cycleway lies outboard.
- const bendStart=fromChainage(3310),join=sample(L35.end),bend=sample(bendStart),bp=at(bendStart,-l35Offset(bendStart));
- const bendCurve=l35BendCurve;
- for(const [side,mat,y] of [[0,mats.road,.03],[1,mats.walk,s=>.03+footpathHeight(s)],[-1,mats.walk,s=>.03+footpathHeight(s)]]){const w=side?3.625:L35.width,offset=s=>-l35Offset(s)+side*(L35.width/2+1.9375),m=new T.Mesh(ribbon(L35.start,bendStart,s=>offset(s)-w/2,s=>offset(s)+w/2,y,true,side?s=>s<L35.start+JUNCTIONS.find(j=>j.name==='Road D6').halfWidth+l35D6.R:false),mat);m.name=side?'L35 footpath':'Road L35';m.receiveShadow=true;scene.add(m);}
- for(const side of [-1,1]){scene.add(new T.Mesh(ribbon(L35.start+JUNCTIONS[1].halfWidth+11.5,bendStart,q=>-l35Offset(q)+side*(L35.width/2-.18)-.06,q=>-l35Offset(q)+side*(L35.width/2-.18)+.06,.105,true),mats.white));scene.add(new T.Mesh(curveRibbon(bendCurve,side*(L35.width/2-.18)-.06,side*(L35.width/2-.18)+.06,.105,0,bendCurve.getLength()-l35Mouth.R-(side>0?l35Mouth.taper:0)),mats.white));}
- for(let s=L35.start+JUNCTIONS[1].halfWidth+14;s<bendStart;s+=7){const m=new T.Mesh(ribbon(s,Math.min(s+3,bendStart),s=>-l35Offset(s)-.05,s=>-l35Offset(s)+.05,.1,true),mats.white);scene.add(m);}
- for(const [offset,width,mat,y] of [[0,L35.width,mats.road,.03],[-5.5875,3.625,mats.walk,.18],[5.5875,3.625,mats.walk,.18],[0,.12,mats.white,.105]]){const end=bendCurve.getLength()-(mat===mats.walk?l35Mouth.R+(offset>0?l35Mouth.taper:0):mat===mats.white?l35Mouth.taper:0),m=new T.Mesh(curveRibbon(bendCurve,offset-width/2,offset+width/2,y,0,end),mat);m.name='L35 turn beneath VB2';m.receiveShadow=true;scene.add(m);}
- // Apply the same K1 units to retained city-road alignments and their bends.
- for(const id of ['D1','L35','L35-bend']){const road=ROAD[id];for(const side of [-1,1]){const start=id==='L35'?road.p0+JUNCTIONS[1].halfWidth+l35D6.R:road.p0,end=road.p1-(id==='L35-bend'?l35Mouth.R+(side>0?l35Mouth.taper:0):0);
-  for(let a=start;a<end;a+=60){const point=t=>{const d=a+t,f=road.frame(d),h=road.kerb(d);return {x:f.x+f.lx*h*side,z:f.z+f.lz*h*side,nx:f.lx*side,nz:f.lz*side,y:road.surface(d,side*(h+.01)),base:f.y+.03};};
-   for(const [i,geo] of sweptKerbs(Math.min(60,end-a),point).entries()){const mesh=new T.Mesh(geo,i?mats.channel:mats.concrete);mesh.name='Retained city-road K1 kerbs';mesh.receiveShadow=true;scene.add(mesh);}
-  }
- }}
- // Open the D6 sidewalk across the connected L35 mouth.
- const d6=scene.getObjectByName('junction-2650');if(d6)for(const child of [...d6.children]){if(!child.isMesh||!pavers.includes(child.material.map)||child.name==='junction-wheelchair-ramp')continue;child.updateMatrix();const original=child.geometry.index?child.geometry.toNonIndexed():child.geometry.clone(),p=original.attributes.position,points=[];for(let i=0;i<p.count;i++)points.push(new T.Vector3().fromBufferAttribute(p,i).applyMatrix4(child.matrix));if(!points.some(p=>p.x>0&&p.z<0))continue;
-  const out=[],uv=[],lo=L35.offset-L35.width/2,hi=l35D6.kerb+l35D6.R;
-  const clip=(poly,bound,sign)=>{const result=[];for(let i=0;i<poly.length;i++){const a=poly[i],b=poly[(i+1)%poly.length],inside=sign*(a.x-bound)>=0,next=sign*(b.x-bound)>=0;if(inside)result.push(a);if(inside!==next)result.push(a.clone().lerp(b,(bound-a.x)/(b.x-a.x)));}return result;};
-  for(let i=0;i<points.length;i+=3){const tri=points.slice(i,i+3),parts=tri.every(p=>p.z<0)?[clip(tri,lo,-1),clip(tri,hi,1)]:[tri];for(const poly of parts)for(let n=1;n<poly.length-1;n++)for(const v of [poly[0],poly[n],poly[n+1]]){out.push(v.x,v.y,v.z);uv.push(v.x/5,v.z/5);}}
-  const geometry=new T.BufferGeometry();geometry.setAttribute('position',new T.Float32BufferAttribute(out,3));geometry.setAttribute('uv',new T.Float32BufferAttribute(uv,2));geometry.computeVertexNormals();const replacement=new T.Mesh(geometry,child.material);replacement.name=child.name;d6.remove(child);d6.add(replacement);original.dispose();}
- // L35's outer kerb returns into D6 at R6 (shared with the turning path); signalised yellow crossing and stop line on the L35 arm.
- {const J=JUNCTIONS[1],grade=sample(J.s).grade,{kerb,R}=l35D6,h=J.halfWidth,edge=flat([[kerb,-h],...arcPts(kerb+R,-h-R,R,Math.PI/2,Math.PI)],.07,mats.road,grade),ret=annulus(kerb+R,-h-R,R-3.75,R-.125,Math.PI/2,Math.PI,.18,grade);ret.name='l35-kerb-return';const w=roadSection(J.s).right,lo=L35.offset-L35.width/2,island=flat([[w+3.75,-h-R-.05],[lo,-h-R-.05],[lo,-h-R+2.3],[w+3.75,-h-R+2.3]],.18,mats.walk,grade),apron=flat([[w,-h-R-2.1],[lo,-h-R-2.1],[lo,-h-R],[w,-h-R]],z=>footpathHeight(J.s-z)+.005,mats.walk,grade);island.name=apron.name='l35-corner-island';if(d6){d6.add(edge,ret,flat([[w,-h],[lo,-h],[lo,-h-R],[w,-h-R]],.035,mats.road,grade));island.geometry.dispose();apron.geometry.dispose();const point=t=>{const a=Math.PI/2+t/R,x=kerb+R+R*Math.cos(a),z=-h-R+R*Math.sin(a);return {x,z,y:.18-grade*z,base:.03-grade*z,nx:-Math.cos(a),nz:-Math.sin(a)};};sweptKerbs(R*Math.PI/2,point,{step:.25}).forEach((geo,i)=>{const m=new T.Mesh(geo,i?mats.kerbJoint:mats.concrete);m.name='L35 K1 corner return';d6.add(m);});}
-  const s=J.s+h+10,mid=-l35Offset(s),markings=signalCrossingMarkings({at:s,width:3.2,roadWidth:L35.width,edgeMargin:.5}),bars=markings.bars.map(b=>ribbon(b.x-b.w/2,b.x+b.w/2,q=>-l35Offset(q)+b.z-b.d/2,q=>-l35Offset(q)+b.z+b.d/2,.065,true));for(const b of markings.studs)scene.add(new T.Mesh(ribbon(b.x-b.w/2,b.x+b.w/2,q=>-l35Offset(q)+b.z-b.d/2,q=>-l35Offset(q)+b.z+b.d/2,.068,true),mats.white));const yb=new T.Mesh(mergeGeometries(bars),mats.yellow);yb.name='L35 signalised crossing';scene.add(yb,new T.Mesh(ribbon(s+2.875,s+3.125,mid-L35.width/2+.15,mid,.1,true),mats.white));}
- // Rounded median nose between the corridor and L35: one closed kerb,
- // meeting both actual approach edges instead of two intersecting R6 returns.
- {const j=JUNCTIONS[1],s=j.s+j.halfWidth+6,q=sample(s),a=roadSection(s).right,b=l35Offset(s)-L35.width/2,mid=(a+b)/2,R=(b-a)/2,g=new T.Group();g.name='D6 rounded pedestrian island';g.position.set(q.x,q.y,q.z);g.rotation.y=q.heading;scene.add(g);
-  const pavement=flat(arcPts(mid,0,R-.125,Math.PI,0,24),footpathHeight(s),mats.walk);g.add(pavement);
-  const point=t=>{const angle=Math.PI-t/R;return {x:mid+R*Math.cos(angle),z:R*Math.sin(angle),nx:-Math.cos(angle),nz:-Math.sin(angle),y:footpathHeight(s),base:.03};};
-  sweptKerbs(Math.PI*R,point,{step:.25}).forEach((geo,i)=>{const m=new T.Mesh(geo,i?mats.kerbJoint:mats.concrete);m.name='D6 island K1 nose';g.add(m);});
-  const link=new T.Mesh(ribbon(s,s+2.1,q=>-l35Offset(q)+L35.width/2+.125,q=>-roadSection(q).right-.125,footpathHeight,true),mats.walk);link.name='D6 island ramp connection';scene.add(link);
- }
- // Stitch each corner and its paint to the same changing corridor frame.
- const cornerRails=[];
- for(const j of JUNCTIONS){const g=scene.getObjectByName('junction-'+j.c),w=roadSection(j.s).right,r=sample(j.s);
-  for(const m of g.children){if(!m.isMesh||m.userData.corridorAligned)continue;m.updateMatrix();m.geometry=m.geometry.clone().applyMatrix4(m.matrix);m.position.set(0,0,0);m.rotation.set(0,0,0);m.scale.set(1,1,1);
-   const pos=m.geometry.attributes.position;for(let i=0;i<pos.count;i++){const x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);let p=junctionPoint(j,x,y,z);
-    if(j.c===2650&&(m.name==='l35-kerb-return'||m.name==='L35 K1 corner return')){const t=Math.max(0,Math.min(1,(-z-j.halfWidth)/6)),q=sample(j.s-z),lat=-(l35Offset(j.s-z)+L35.width/2+x-l35D6.kerb),wx=q.x+q.lx*lat-r.x,wz=q.z+q.lz*lat-r.z,xx=-(wx*r.lx+wz*r.lz),zz=-(wx*r.tx+wz*r.tz);p={x:x+(xx-x)*t,z:z+(zz-z)*t,y:y+(q.y-r.y+r.grade*z+.03+footpathHeight(j.s-z)-.18)*t};}
-    pos.setXYZ(i,p.x,p.y,p.z);}pos.needsUpdate=true;m.geometry.computeVertexNormals();m.geometry.computeBoundingSphere();
-  }
-  g.updateMatrixWorld(true);
-  for(const sx of [-1,1])for(const sz of [-1,1]){if(j.c===2650&&sx===1&&sz===-1)continue;
-   const points=Array.from({length:21},(_,i)=>{const a=i*Math.PI/40,x=sx*(w+6-5.65*Math.cos(a)),z=sz*(j.halfWidth+6-5.65*Math.sin(a)),p=junctionPoint(j,x,.18-r.grade*z,z);return new T.Vector3(p.x,p.y,p.z).applyMatrix4(g.matrixWorld);});cornerRails.push({points,s:j.s});
-  }
- }
- // Zebras continue the A6 station crossings over L35; paved links cross the verge so the route is unbroken from corridor to cycleway.
- for(const c of CROSSINGS.filter(c=>c.s>L35.start&&c.s<bendStart)){const s=c.s,mid=-l35Offset(s),e=L35.width/2,bars=[];for(let lat=mid-e+.35;lat<mid+e-.2;lat+=1.1)bars.push(ribbon(s-1.5,s+1.5,lat,Math.min(lat+.55,mid+e),.1,true));const zebra=new T.Mesh(mergeGeometries(bars),mats.white);zebra.name='L35 zebra crossing '+c.station;scene.add(zebra);
-  for(const [a,b] of [[mid+e+.35,mid+e+.95],[mid-e-.95,mid-e-.35]])scene.add(new T.Mesh(ribbon(s-1.45,s+1.45,a,b,q=>footpathHeight(q)+.01,true),beaconMat));const link=new T.Mesh(ribbon(s-1.5,s+1.5,mid+e+3.75,-(roadSection(s).right+3.75),footpathHeight,true),mats.walk);link.name='L35 crossing verge link';link.receiveShadow=true;scene.add(link);}
  // Broad paved interchange plaza between A2 and the elevated railway station.
  const a2=STOPS[1],plaza=new T.Mesh(ribbon(a2.s-115,a2.s+125,-84,-17,.31,true),mats.walk);plaza.name='Hung Shui Kiu regional plaza';plaza.receiveShadow=true;scene.add(plaza);
  function landmarkBoard(text,p,heading,width=12){const c=document.createElement('canvas');c.width=1024;c.height=160;const x=c.getContext('2d');x.fillStyle='#173d35';x.fillRect(0,0,1024,160);x.fillStyle='#fff3d0';x.textAlign='center';x.font='bold 56px sans-serif';x.fillText(text,512,101);const m=new T.Mesh(new T.PlaneGeometry(width,width/6.4),new T.MeshBasicMaterial({map:new T.CanvasTexture(c),side:T.DoubleSide}));m.position.copy(p);m.rotation.y=heading;scene.add(m);return m;}
@@ -580,14 +474,6 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
    box('depot-fence',mats.galvanised,x,dy+1.2,z,3,2.4,.06,heading,dch);box('depot-fence-post',mats.galvanised,x-(bx-ax)/len*1.5,dy+1.25,z-(bz-az)/len*1.5,.12,2.5,.12,0,dch);}}
  // Emergency vehicular access: a 13 m clear ring inside the boundary fence, unmarked (it's just the yard's own
  // asphalt) — the buildings and the fence line all sit well clear of it, so it needs no geometry.
- // Road D1 connects the at-grade junction after A7 to its northern bridge crossing.
- for(let i=1;i<D1ROAD.length;i++){const a=D1ROAD[i-1],b=D1ROAD[i],n=Math.hypot(b.x-a.x,b.z-a.z),heading=Math.atan2(a.x-b.x,a.z-b.z);for(const [offset,w,mat,y] of [[0,18,mats.road,-.02],[-10.9375,3.625,mats.walk,.13],[10.9375,3.625,mats.walk,.13],...(i%2?[[0,.1,mats.white,.09]]:[])]){const m=new T.Mesh(new T.BoxGeometry(w,.1,n+.3),mat);m.name='Road D1 connecting alignment';m.position.set((a.x+b.x)/2+Math.cos(heading)*offset,(a.y+b.y)/2+y,(a.z+b.z)/2-Math.sin(heading)*offset);m.rotation.set(Math.atan2(b.y-a.y,n),heading,0,'YXZ');m.receiveShadow=true;scene.add(m);}}
-
-
-
- for(const j of [...JUNCTIONS,...UNDERPASSES])for(let lat=-135;lat<=135;lat+=35){if(Math.abs(lat)<30)continue;const r=sample(j.s),p=at(j.s,lat);p.x+=r.tx*(j.halfWidth+4.1);p.z+=r.tz*(j.halfWidth+4.1);if(net.onRoad(p.x,p.z,.3))continue;const ch=Math.floor(j.s/240);box('side-road-lamp',mats.galvanised,p.x,p.y+6,p.z,.16,12,.16,0,ch);box('side-road-fixture',mats.lamp,p.x,p.y+12,p.z,.5,.12,1,0,ch);lampPositions.push({s:j.s,x:p.x,y:p.y+12,z:p.z,kind:'distributor',height:12});}
- for(let q=L35.start+35;q<L35.end-45;q+=35){const p=at(q,-l35Offset(q)-7.7),ch=Math.floor(q/240);box('L35-lamp',mats.galvanised,p.x,p.y+5,p.z,.16,10,.16,0,ch);box('L35-light',mats.lamp,p.x,p.y+10,p.z,.5,.12,1,0,ch);lampPositions.push({s:q,x:p.x,y:p.y+10,z:p.z,kind:'L35',height:10});}
- for(const j of [JUNCTIONS.find(j=>j.c===2650),UNDERPASSES.find(j=>j.c===3395)]){const p=at(j.s-25,-l35Offset(j.s)-6),ch=Math.floor(j.s/240);box('L35-direction-post',mats.metal,p.x,p.y+1.5,p.z,.12,3,.12,0,ch);p.y+=3;landmarkBoard('L35  →  '+j.name,p,sample(j.s).heading,6);}
  // Covered footbridges, straight lift towers and external stair flights.
  function footbridge(name,centre,heading,length,width=4.5){const g=new T.Group();g.name=name;g.position.copy(centre);g.rotation.y=heading;scene.add(g);const part=(w,h,d,x,y,z,mat)=>{const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);m.castShadow=m.receiveShadow=true;g.add(m);return m;};
  part(width,.45,length,0,6.15,0,mats.concrete);for(const side of [-1,1]){const pier=part(.9,5.9,1.2,0,2.95,side*(length/2-.6),mats.concrete);pier.name='Cycle bridge abutment pier';part(width,.35,1.4,0,5.78,side*(length/2-.6),mats.concrete);}part(width+.8,.22,length+1,0,9,0,mats.teal);
@@ -608,7 +494,7 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
    for(const edge of [-2.12,2.12]){const rail=cycleRibbon(a,b,edge-.035,edge+.035,1.15),mesh=new T.Mesh(rail,mats.galvanised);mesh.name='Cycle ramp handrail';scene.add(mesh);}
    for(let q=a;q<=b;q+=5){const c=cycleSample(q),height=cycleBridgeHeight(q);for(const edge of [-2.12,2.12])box('cycle-ramp-post',mats.galvanised,c.x+c.lx*edge,c.groundY+height+.57,c.z+c.lz*edge,.06,1.14,.06,c.heading,Math.floor(q/240));}
    // Ground-level spur skirts the staircase and arrives at the lift entrance.
-   const along=side*(length/2+24),q=j.s+along,road=sample(q),outer=q>L35.start&&q<L35.end?-(l35Offset(q)+L35.width/2+3.75):-(roadSection(q).right+3.75),start=new T.Vector3(road.x+road.lx*outer,road.groundY+.30,road.z+road.lz*outer),finish=g.localToWorld(new T.Vector3(9, .30,-along));
+   const along=side*(length/2+24),q=j.s+along,road=sample(q),outer=-(roadSection(q).right+3.75),start=new T.Vector3(road.x+road.lx*outer,road.groundY+.30,road.z+road.lz*outer),finish=g.localToWorld(new T.Vector3(9, .30,-along));
    const path=new T.LineCurve3(start,finish),link=new T.Mesh(curveRibbon(path,-1.5,1.5,.015),mats.walk);link.name='Footbridge pedestrian approach';scene.add(link);
    const landing=new T.Mesh(new T.BoxGeometry(7,.15,26),mats.walk);landing.position.set(6.7,.225,side*(length/2+14));g.add(landing);
   }
@@ -626,7 +512,6 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
  const furnished=placeFurniture(furniture,{batch:drawFurniture?batch:()=>{},kitParts,railAllowed:(run,a,b)=>run.road!=='corridor'||fenceAllowed(Math.min(a.s,b.s)-.12,Math.max(a.s,b.s)+.12,a.lat>0?1:-1)});lampPositions.push(...furnished.lampPositions);fences.push(...furnished.fences);const bins=furnished.bins;
  // Station ramp railings follow the station access geometry and stay generated here (HyD Type 2, 1.5 m bays).
  const RAIL=1.5,{railRun}=railingBuilder({batch,kitParts,fences});
- for(const {points,s} of cornerRails)railRun(points,()=>Math.floor(s/240),[true,true]);
  // Continue the roadside barrier along each ramp, without fencing across its entrance.
  for(const st of STOPS)for(const platform of st.platforms)for(const dir of [-1,1]){
   if(st.id==='A1'&&dir===-1)continue;
@@ -647,7 +532,7 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
  }
  // Open verge drainage channels behind the footpath, 10 m on an 18 m rhythm.
  for(let q=35;q<LENGTH-25;q+=18)for(const side of [-1,1]){
-  if(groundCrossing(q-5)||groundCrossing(q)||groundCrossing(q+5)||side===-1&&q>L35.start-5&&q<L35.end+5||crossingGap(q-5,q+5)||STOPS.some(st=>Math.abs(st.s-q)<st.footprintLength/2+12)||side===1&&inDepot(q))continue;
+  if(groundCrossing(q-5)||groundCrossing(q)||groundCrossing(q+5)||crossingGap(q-5,q+5)||STOPS.some(st=>Math.abs(st.s-q)<st.footprintLength/2+12)||side===1&&inDepot(q))continue;
   const r=sample(q),edge=roadSection(q).right,ch=Math.floor(q/240);
   if(!r.elevated){const a=q-5,b=q+5,outer=side*(edge+3.95);for(const dx of [-.21,.21]){const m=new T.Mesh(ribbon(a,b,outer+dx-.055,outer+dx+.055,.06,true),mats.concrete);m.name='Open verge drainage channel';groups[ch].add(m);}const m=new T.Mesh(ribbon(a,b,outer-.15,outer+.15,-.06,true),FM.iron);m.name='Drainage channel invert';groups[ch].add(m);}
  }
@@ -664,7 +549,7 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
   const lat=side*(edge+1.0+row*.8),p=at(s+(rnd()-.5)*.6,lat),plant=plants[row===0?Math.floor(rnd()*2):2+Math.floor(rnd()*3)],scale=1.3+rnd()*.45;
   if(side===-1){const c=cycleSample(s),offset=-3-row*.8;p.x=c.x+c.lx*offset;p.z=c.z+c.lz*offset;}
   const nearestS=project(p.x,p.z),nearest=sample(nearestS);
-  if(!sceneryClear(p.x,p.z,.3,true)||Math.hypot(p.x-nearest.x,p.z-nearest.z)<roadSection(nearestS).right+4.2||cycleClearance(p.x,p.z)<2.7||channelDepth(p.x,p.z)>0||D1ROAD.some(q=>Math.hypot(q.x-p.x,q.z-p.z)<14.5)||plots.some(q=>Math.hypot(q.x-p.x,q.z-p.z)<q.radius+.5)||RAILWAY.distance(p.x,p.z)<8||side===1&&Math.abs(s-DEPOT.s)<DEPOT.opening/2+12)continue;
+  if(!sceneryClear(p.x,p.z,.3,true)||Math.hypot(p.x-nearest.x,p.z-nearest.z)<roadSection(nearestS).right+4.2||cycleClearance(p.x,p.z)<2.7||channelDepth(p.x,p.z)>0||plots.some(q=>Math.hypot(q.x-p.x,q.z-p.z)<q.radius+.5)||RAILWAY.distance(p.x,p.z)<8||side===1&&Math.abs(s-DEPOT.s)<DEPOT.opening/2+12)continue;
   p.y-=.18;plantings.push({x:p.x,z:p.z,kind:plant.kind,s,lat,heightScale:scale});
   const rotation=new T.Euler(0,rnd()*Math.PI*2,0);
   plant.parts.forEach((part,i)=>batch('vegetation-'+plant.kind+'-'+i+'-cell'+Math.floor(s/40),part.geometry,part.material,p,new T.Vector3(scale*.75,scale,scale*.75),rotation,Math.floor(s/240)));

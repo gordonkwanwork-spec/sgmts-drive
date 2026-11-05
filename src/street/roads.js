@@ -2,8 +2,8 @@
 // roads: the corridor distance s; others: metres along the road), a displayed chainage ch, and a frame at p.
 // Placement: side 'L' is +lateral (left in the direction of increasing chainage); off is measured outward from the
 // kerb (ref 'kerb', default) or from the centreline (ref 'centre'); y = road surface at that point + dy.
-import {sample,LENGTH,toChainage,fromChainage,roadSection,footpathHeight,JUNCTIONS,UNDERPASSES,sideCrossing,L35,l35Offset,l35Ground,D1ROAD,LOOP,cycleSample,cycleBridgeHeight,project,CYCLE_WIDTH} from '../alignment.js';
-import {l35BendCurve,depotCurve} from '../routes.js';
+import {sample,LENGTH,toChainage,fromChainage,roadSection,footpathHeight,JUNCTIONS,UNDERPASSES,sideCrossing,LOOP,cycleSample,cycleBridgeHeight,project,CYCLE_WIDTH} from '../alignment.js';
+import {depotCurve} from '../routes.js';
 import {CV_ROAD,CV_ROAD_WIDTH} from '../depot.js';
 import {presetOf,frames as networkFrames,frameAt,junctions as networkJunctions,streetLevel,Y as NET_Y} from './network.js';
 
@@ -17,16 +17,11 @@ const corridor={id:'corridor',name:'SGMTS corridor',p0:0,p1:LENGTH,toCh:toChaina
  surface(s,lat){const r=sample(s);if(r.elevated||Math.abs(lat)<=roadSection(s).right)return r.y;return r.groundY+(Math.abs(lat)<=roadSection(s).right+FOOTPATH?footpathHeight(s):0);}};
 const cycleway={id:'cycleway',name:'Cycle track',p0:0,p1:LENGTH,toCh:toChainage,toParam:fromChainage,frame:s=>{const c=cycleSample(s);return {...c,y:c.groundY+cycleBridgeHeight(s)};},
  kerb:()=>CYCLE_WIDTH/2,surface:s=>cycleSample(s).groundY+cycleBridgeHeight(s)};
-// L35 runs beside the corridor (same chainage) up to its bend towards D3; its frame keeps the corridor's axes.
-const L35_BEND=fromChainage(3310);
-const l35={id:'L35',name:'Road L35',p0:L35.start,p1:L35_BEND,toCh:toChainage,toParam:fromChainage,
- frame(s){const r=sample(s),o=-l35Offset(s),y=l35Ground(s);return {...r,x:r.x+r.lx*o,z:r.z+r.lz*o,y,groundY:y};},
- kerb:()=>L35.width/2,surface:(s,lat)=>l35Ground(s)+(Math.abs(lat)>L35.width/2&&Math.abs(lat)<=L35.width/2+FOOTPATH?.03+footpathHeight(s):.03)};
 // Crossing roads run straight through each junction/underpass centre along the corridor's lateral axis.
 const crossings=[...JUNCTIONS,...UNDERPASSES].map(j=>{const r=sample(j.s),y0=j.underpass?r.groundY:r.y;
  return {id:(j.underpass?'U':'J')+j.c,name:`${j.name} ${j.underpass?'underpass':'junction'} (Ch ${j.c})`,p0:-j.extent,p1:j.extent,toCh:p=>p+j.extent,toParam:ch=>ch-j.extent,
   frame:d=>frameOf(r.x+r.lx*d,y0,r.z+r.lz*d,r.lx,r.lz),kerb:()=>j.halfWidth,
-  surface:(d,lat)=>y0+(j.underpass?0:-r.grade*lat)+(Math.abs(lat)>j.halfWidth&&Math.abs(lat)<=j.halfWidth+FOOTPATH?RAISED:.03)};});
+  surface:(d,lat)=>y0+(j.underpass?0:-r.grade*lat)+(Math.abs(lat)>j.halfWidth&&Math.abs(lat)<=j.halfWidth+FOOTPATH||Math.abs(lat)<j.median/2?RAISED:.03)};});
 // Tangents blend between vertices so every nearby point has a unique perpendicular foot (no gaps at the corners).
 function polylineRoad(id,name,pts,half){const run=[0];for(let i=1;i<pts.length;i++)run.push(run[i-1]+Math.hypot(pts[i].x-pts[i-1].x,pts[i].z-pts[i-1].z));
  const tan=pts.map((_,i)=>{const a=pts[Math.max(0,i-1)],b=pts[Math.min(pts.length-1,i+1)],n=Math.hypot(b.x-a.x,b.z-a.z)||1;return {x:(b.x-a.x)/n,z:(b.z-a.z)/n};});
@@ -41,7 +36,7 @@ const loop={id:'loop',name:'A1 terminal loop',p0:0,p1:LOOP.length,toCh:same,toPa
 export const CV_FRAME=(()=>{const pts=[];for(let i=1;i<CV_ROAD.length;i++){const a=CV_ROAD[i-1],b=CV_ROAD[i],n=Math.max(1,Math.ceil(Math.hypot(b.x-a.x,b.z-a.z)/2));for(let j=i>1?1:0;j<=n;j++){const t=j/n;pts.push({x:a.x+(b.x-a.x)*t,z:a.z+(b.z-a.z)*t,y:a.y+(b.y-a.y)*t});}}
  const smooth=pts.map((p,i)=>{if(!i||i===pts.length-1)return p;let x=0,z=0,w=0;for(let k=Math.max(0,i-4);k<=Math.min(pts.length-1,i+4);k++){x+=pts[k].x;z+=pts[k].z;w++;}return {...p,x:x/w,z:z/w};});
  return smooth.map((p,i)=>{const a=smooth[Math.max(0,i-1)],b=smooth[Math.min(smooth.length-1,i+1)],dx=b.x-a.x,dz=b.z-a.z,n=Math.hypot(dx,dz)||1;return {...p,tx:dx/n,tz:dz/n,lx:dz/n,lz:-dx/n};});})();
-export const ROADS=[corridor,cycleway,l35,...crossings,polylineRoad('D1','Road D1',D1ROAD,9),curveRoad('L35-bend','Road L35 bend',l35BendCurve,L35.width/2),curveRoad('depot','Depot approach',depotCurve,3.5),polylineRoad('service','Depot service road',CV_FRAME,CV_ROAD_WIDTH/2),loop];
+export const ROADS=[corridor,cycleway,...crossings,curveRoad('depot','Depot approach',depotCurve,3.5),polylineRoad('service','Depot service road',CV_FRAME,CV_ROAD_WIDTH/2),loop];
 export const ROAD=Object.fromEntries(ROADS.map(r=>[r.id,r]));
 const clampP=(road,p)=>Math.min(road.p1,Math.max(road.p0,p));
 
@@ -50,7 +45,7 @@ export function lateralOf(road,p,side,ref,off){const s=side==='R'?-1:1;return s*
 // World pose of an item (or a run point at chainage ch): position, yaw (radians) and the road frame.
 export function pose(item,ch=item.ch){const road=ROAD[item.road];if(!road)throw Error('Unknown road '+item.road);return poseAt(item,road.toParam(ch));}
 export function poseAt(item,param){const road=ROAD[item.road],p=clampP(road,param),f=road.frame(p),lat=lateralOf(road,p,item.side,item.ref,item.off||0);
- return {x:f.x+f.lx*lat,y:road.surface(p,lat)+(item.dy||0),z:f.z+f.lz*lat,yaw:f.heading+(item.rot||0)*Math.PI/180,f,p,lat,road,s:road.id==='corridor'||road.id==='cycleway'||road.id==='L35'?p:project(f.x+f.lx*lat,f.z+f.lz*lat)};}
+ return {x:f.x+f.lx*lat,y:road.surface(p,lat)+(item.dy||0),z:f.z+f.lz*lat,yaw:f.heading+(item.rot||0)*Math.PI/180,f,p,lat,road,s:road.id==='corridor'||road.id==='cycleway'?p:project(f.x+f.lx*lat,f.z+f.lz*lat)};}
 
 // Nearest parameter on one road to (x,z): coarse table then Newton steps along the tangent.
 const tables=new Map();
@@ -98,8 +93,6 @@ export function junctionSignalItems(){const items=[];
    add(`side-${A}-primary`,A*(C(A)+2.6),A*q,'side',A>0?'l':'-l',{road:'side'});
    add(`side-${A}-secondary`,-A*(C(-A)-2.1),A*q,'side',A>0?'l':'-l',{road:'side',ped:A>0?'-t':'t',crossing:'side'});
    add(`side-${A}-pedestrian`,A*(C(A)-2.1),A*q,'pedestrian',A>0?'-t':'t',{crossing:'side'});}
-  if(j.c===2650){const x=L35.offset+L35.width/2+.8,z=-(h+13.5),wx=r.x-r.lx*x-r.tx*z,wz=r.z-r.lz*x-r.tz*z;
-   items.push({id:'signal-2650-L35',type:'traffic_signal',...record('corridor',wx,r.y-r.grade*z+.3,wz,r.heading,{guess:j.s-z}),params:{junction:j.c,axis:'side'}});}
  }
  return items;
 }

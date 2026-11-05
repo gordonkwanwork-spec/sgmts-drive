@@ -1,6 +1,6 @@
 import {junctionPoint,junctionUnproject} from './street/junction-frame.js';
 import * as T from 'three';
-import {sample,roadSection,projectFrame,STOPS,LENGTH,footpathHeight,cycleSample,cycleBridgeHeight,cycleCrossing,JUNCTIONS,UNDERPASSES,L35,l35Offset,junctionPavementHeight,PLATFORM_RISE} from './alignment.js';
+import {sample,roadSection,projectFrame,STOPS,LENGTH,footpathHeight,cycleSample,cycleBridgeHeight,cycleCrossing,JUNCTIONS,UNDERPASSES,junctionPavementHeight,PLATFORM_RISE} from './alignment.js';
 import {streetHeight,surfaceSampler} from './street/network.js';
 import {ROAD,nearest} from './street/roads.js';
 import {renderedGround,terrainLevel,channelDepth,stationAccess,depotKerbHeight} from './environment.js';
@@ -23,11 +23,6 @@ export function groundAt(x,z,sGuess){
  let cs=s;for(let i=0;i<4;i++){const c=cycleSample(cs);cs=clamp(cs+(x-c.x)*c.tx+(z-c.z)*c.tz,0,LENGTH);}
  const c=cycleSample(cs),clat=(x-c.x)*c.lx+(z-c.z)*c.lz;
  if(Math.abs(clat)<=2&&!cycleCrossing(cs))return {s,lat,y:c.groundY+cycleBridgeHeight(cs)};
- // D6's rounded median nose joins the corridor and L35 inner footpaths.
- {const j=JUNCTIONS[1],s0=j.s+j.halfWidth+6,q=sample(s0),a=roadSection(s0).right,b=l35Offset(s0)-L35.width/2,mid=(a+b)/2,R=(b-a)/2,xx=-((x-q.x)*q.lx+(z-q.z)*q.lz),zz=-((x-q.x)*q.tx+(z-q.z)*q.tz);
-  if(zz>=0&&Math.hypot(xx-mid,zz)<=R)return {s,lat,y:q.y+footpathHeight(s0)};
-  if(s>=s0&&s<=s0+2.1&&lat>-l35Offset(s)+L35.width/2&&lat<-e.right)return {s,lat,y:r.groundY+footpathHeight(s)};
- }
  // Match raised corner slabs and side-road ramps before the general corridor cross-section.
  for(const j of JUNCTIONS){if(Math.abs(s-j.s)>j.halfWidth+12)continue;const q=sample(j.s),dx=x-q.x,dz=z-q.z,jx=-(dx*q.lx+dz*q.lz),jz=-(dx*q.tx+dz*q.tz),local=junctionUnproject(j,jx,jz),height=junctionPavementHeight(j,local.x,local.z);if(height!==null)return {s,lat,y:q.y+junctionPoint(j,local.x,height-q.grade*local.z,local.z).y};}
  // Crossing-road arms use the same datum and ramps as their rendered geometry,
@@ -48,7 +43,6 @@ export function groundAt(x,z,sGuess){
  // The interchange plaza is a raised paved surface, including its thin activity pads.
  if(s>STOPS[1].s-115&&s<STOPS[1].s+125&&lat>=-84&&lat<=-17)return {s,lat,y:r.groundY+.34};
  const street=streetHeight(x,z);if(street!==null)return {s,lat,y:street};
- for(const id of ['D1','L35','L35-bend']){const road=ROAD[id],n=nearest(road,x,z),h=road.kerb(n.p);if(Math.abs(n.lat)<=h+3.75&&Math.abs((x-n.f.x)*n.f.tx+(z-n.f.z)*n.f.tz)<.5)return {s,lat,y:Math.abs(n.lat)<=h?n.f.y+.03:road.surface(n.p,n.lat)};}
  return {s,lat,y:Math.hypot(x-r.x,z-r.z)>100?renderedGround(x,z):terrainLevel(x,z,s)-.24-channelDepth(x,z)};
 }
 

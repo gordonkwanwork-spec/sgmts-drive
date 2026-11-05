@@ -1,6 +1,5 @@
 import * as T from 'three';
 import {STOPS,LENGTH,sample,PATH,UNDERPASSES,sideCrossing} from './alignment.js';
-import {l35TrafficCurve,L35_LINES} from './routes.js';
 import {CONTROL_DEFAULTS,configure,createSignal,stepSignal,aspect,tramCommand} from './control-system.js';
 import './control-room.css';
 
@@ -63,13 +62,13 @@ export function createControlRoom(api){
   if(shiftDone)return;
   for(const a of fleet().filter(a=>a.active)){a.control.skipped=a.control.skipped.filter(id=>(a.s-STOPS.find(st=>st.id===id).s)*a.dir<160);a.control.wait=a.v<.2&&!a.dwell?a.control.wait+dt:0;delay+=a.v<.2&&!a.dwell?dt:0;const count=a.served.length,previous=served.get(a)||0;if(count>previous)completedStops+=count-previous;served.set(a,count);}
   for(const c of api.getTraffic()){
-   const line=c.curve?(c.curve===l35TrafficCurve?L35_LINES.d6Out:L35_LINES.d6Return):null;
+   const line=c.curve?(c.signalHold?.at??-Infinity):null;
    const upstream=c.curve?c.routeDistance+c.length/2<=line+.3:c.lat*c.dir<-(sideCrossing(c.junction,c.dir)+3+c.length/2)+.5;
    if(c.releaseAt||!upstream){c.queueWait=0;c.wasQueued=false;}else if(c.v<.3||c.wasQueued){c.queueWait+=dt;c.wasQueued=c.queueWait>=1;}else c.queueWait=0;
   }
   for(const sig of signals()){
-   const s=sig.control,normal=api.getTraffic().filter(c=>c.junction?.c===sig.c),turning=sig.c===2650?api.getTraffic().filter(c=>c.curve):[];
-   const queued=normal.filter(c=>c.lat*c.dir<0&&c.wasQueued&&!c.releaseAt),turnQueue=turning.filter(c=>{const line=c.curve===l35TrafficCurve?L35_LINES.d6Out:L35_LINES.d6Return;return c.routeDistance+c.length/2<=line+.3&&line-c.routeDistance<100&&c.wasQueued;});
+   const s=sig.control,normal=api.getTraffic().filter(c=>c.junction?.c===sig.c),turning=api.getTraffic().filter(c=>c.curve&&c.signalHold?.sig===sig);
+   const queued=normal.filter(c=>c.lat*c.dir<0&&c.wasQueued&&!c.releaseAt),turnQueue=turning.filter(c=>{const line=c.signalHold.at;return c.routeDistance+c.length/2<=line+.3&&line-c.routeDistance<100&&c.wasQueued;});
    const allQueue=[...queued,...turnQueue],trams=fleet().filter(a=>a.active&&!a.terminal&&(sig.centre-a.s)*a.dir>sig.stop+5&&(sig.centre-a.s)*a.dir<200).map(a=>({eta:Math.max(0,Math.abs(sig.centre-a.s)-sig.stop)/Math.max(a.v,2),wait:a.control.wait,pax:a.pax}));
    const peds=api.getCrossers().filter(p=>p.signal===sig.c),r=sample(sig.centre);
    const input={trams,queue:allQueue.length,roadWait:Math.max(0,...allQueue.map(c=>c.queueWait)),pedWaiting:peds.filter(p=>!p.active&&p.wait<=0).length,pedOccupied:peds.some(p=>p.active),tramOccupied:fleet().some(a=>inTramBox(a,sig)),
@@ -93,7 +92,7 @@ export function createControlRoom(api){
   el('health').textContent=signals().some(j=>j.control.fault||j.control.isolated)?' / INTERVENTION ACTIVE':' / ALL CONTROLLERS ONLINE';
   el('stage').innerHTML=`<strong>${{tram:'Tram movement',road:'Road movement',ped:'Pedestrian crossing',pedClear:'Pedestrian clearance',tramAmber:'Tram amber',roadAmber:'Road amber',clear:'All-red clearance'}[s.stage]}</strong><span>${seconds(s.age)} elapsed</span>`;
   el('aspects').innerHTML=['tram','road','ped'].map(axis=>`<div><i class="${aspect(s,axis)}"></i><strong>${axis==='ped'?'Walk':axis==='road'?'Road':'Tram'}</strong><span>${{go:'PROCEED',stop:'STOP',amber:'CLEAR'}[aspect(s,axis)]}</span></div>`).join('');el('reason').textContent=s.reason;
-  el('queue-detail').innerHTML=`<div><small>Tram requests</small><b>${s.input.trams.length}</b></div><div><small>Pedestrians waiting</small><b>${s.input.pedWaiting||0}</b></div>${(s.input.directions||[]).map(d=>`<div><small>${d.dir===1?'West':'East'} approach</small><b>${d.count} veh · ${Math.max(0,Math.round(d.metres))} m</b><span>${seconds(d.wait)} longest wait</span></div>`).join('')}<p>L35 turning queue: ${s.input.turnQueue||0} vehicles</p>`;
+  el('queue-detail').innerHTML=`<div><small>Tram requests</small><b>${s.input.trams.length}</b></div><div><small>Pedestrians waiting</small><b>${s.input.pedWaiting||0}</b></div>${(s.input.directions||[]).map(d=>`<div><small>${d.dir===1?'West':'East'} approach</small><b>${d.count} veh · ${Math.max(0,Math.round(d.metres))} m</b><span>${seconds(d.wait)} longest wait</span></div>`).join('')}<p>Network approach queue: ${s.input.turnQueue||0} vehicles</p>`;
   el('sequence').innerHTML=['tram','tramAmber','clear','road','roadAmber','ped','pedClear'].map(k=>`<span class="${s.stage===k?'active':''}">${{tram:'Tram',tramAmber:'Amber',clear:'All red',road:'Road',roadAmber:'Amber',ped:'Walk',pedClear:'Clear'}[k]}</span>`).join('');
   el('scores').innerHTML=`<b>Live pressure / red wait</b>${Object.entries(s.scores).map(([k,v])=>`<span>${k}: ${v.toFixed(1)} / ${seconds(s.wait[k])}</span>`).join('')}<span>Conflict area: ${s.input.tramOccupied||s.input.roadOccupied||s.input.pedOccupied?'OCCUPIED':'CLEAR'}</span><span>Tram exit: ${s.input.blockedExit?'BLOCKED':'AVAILABLE'}</span><span>Next request: ${s.request||'automatic'}</span>`;
   el('isolate').textContent=s.isolated?'Restore automatic':'Isolate junction';el('fault').textContent=s.fault?'Restore detector':'Simulate detector fault';

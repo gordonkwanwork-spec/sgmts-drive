@@ -16,7 +16,8 @@ import {createCrowd} from './crowd.js';
 import {autoFullscreen,toggleFullscreen} from './fullscreen.js';
 import {characterLighting,contactShadow,poseCyclist,posePedestrian,tripoPlayer} from './street-models.js';
 import {journeyTerminus,nextStationIndex,fleetPlan,parkingScore,stationStopTarget,NOSE,announcementText} from './service.js';
-import {terminalCurve,depotCurve,depotExitCurve,l35TrafficCurve,l35ReturnCurve,L35_LINES,L35,l35Offset,sideCrossing} from './routes.js';
+import {terminalCurve,depotCurve,depotExitCurve} from './routes.js';
+import {sideCrossing} from './alignment.js';
 import * as T from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {clone as cloneSkinned} from 'three/addons/utils/SkeletonUtils.js';
@@ -270,7 +271,6 @@ function makeTraffic(){
  for(let i=0;i<routes.length;i++){const route=routes[i],{id:kind,width:w,length,height}=types[i%types.length],group=streetModel(kind);
   group.name='traffic-'+kind;group.traverse(n=>{if(n.isMesh)n.castShadow=true;});scene.add(group);traffic.push({group,...route,kind,width:w,length,height,lat:route.start,start:route.start,v:0,cross:true});
  }
- for(let i=0;i<4;i++){const source=traffic[i],group=source.group.clone(true),curve=i%2?l35ReturnCurve:l35TrafficCurve;group.name='L35 turning '+source.kind;scene.add(group);traffic.push({...source,junction:null,group,curve,routeDistance:(.2+.45*(i>>1))*curve.getLength(),routeDir:1});}
  STOPS.forEach((st,i)=>{for(let j=0;j<6;j++){const g=stationPerson(st.s,j+i);if(!g)continue;
   const side=j%2?1:-1,phase=2+Math.floor(j/2)*3,origin=point(stopCentre(st,side)+(phase-6)*4,side*(8.35+(phase%2)*.45));origin.y+=.32+PLATFORM_RISE;g.position.copy(origin);g.rotation.y=sample(st.s).heading;scene.add(g);walkerObjects.push({group:g,station:i,side,origin,phase,progress:0,alight:phase<3,roaming:phase>=9});
  }});
@@ -810,14 +810,12 @@ function actors(dt){const subjectS=viewS();
   a.lat=dispatch?.skipped.length?laneOffset(a.s,a.dir,dispatch.skipped):a.dir===-1?returnOffset(a.s):laneOffset(a.s);
   poseTram(a,a.s,a.lat,a.dir===-1,a.door);for(const g of a.sections){g.visible=a.active&&Math.abs(a.s-subjectS)<700;if(g.visible)contact(g,2.54,10.6,3.5,'ART');}
  }
- for(const c of traffic){if(state.mode==='control'&&c.releaseAt){if(state.time<c.releaseAt){c.v=0;continue;}c.releaseAt=0;}if(c.curve){const length=c.curve.getLength(),u=clamp(c.routeDistance/length,0,1),p=c.curve.getPointAt(u),t=c.curve.getTangentAt(u),out=c.curve===l35TrafficCurve,front=c.routeDistance+c.length/2;let stop=c.routeDistance+1e6;const hold=line=>{if(front<=line+.3&&line-front<45)stop=Math.min(stop,Math.max(c.routeDistance,line-c.length/2));};
-  // L35 turning routes (lanes baked into the curves): queue behind anything in the lane, D6 side phase, D3 give-way, L35 zebras.
+ for(const c of traffic){if(state.mode==='control'&&c.releaseAt){if(state.time<c.releaseAt){c.v=0;continue;}c.releaseAt=0;}if(c.curve){const length=c.curve.getLength(),u=clamp(c.routeDistance/length,0,1),p=c.curve.getPointAt(u),t=c.curve.getTangentAt(u),front=c.routeDistance+c.length/2;let stop=c.routeDistance+1e6;const hold=line=>{if(front<=line+.3&&line-front<45)stop=Math.min(stop,Math.max(c.routeDistance,line-c.length/2));};
+  // Route traffic (lanes baked into the curves): queue behind anything in the lane; hold at each signal or give-way line on the route.
   for(const o of traffic){if(o===c)continue;const d=o.group.position.clone().sub(p),ahead=d.x*t.x+d.z*t.z;if(ahead>0&&ahead<30&&Math.abs(d.x*t.z-d.z*t.x)<2.2&&Math.abs(d.y)<3)stop=Math.min(stop,Math.max(c.routeDistance,c.routeDistance+ahead-(o.length+c.length)/2-3));}
-  const d6=signalObjects.find(s=>s.c===2650);if(d6&&signalAt(d6,true)!=='go')hold(out?L35_LINES.d6Out:L35_LINES.d6Return);
-  if(out&&traffic.some(o=>!o.curve&&o.junction?.c===3395&&o.dir===1&&o.along<-4&&o.lat>L35_LINES.mergeLat-45&&o.lat<L35_LINES.mergeLat+10))hold(L35_LINES.giveWay);
-  for(const x of crossers){if(x.s<L35.start||x.s>L35_LINES.bendS)continue;const mid=-l35Offset(x.s),e=L35.width/2;if(!(x.active&&(x.dir===1?x.lat>mid-e-3&&x.lat<mid+e+.5:x.lat<mid+e+3&&x.lat>mid-e-.5)))continue;const d=point(x.s,mid).sub(p),ahead=d.x*t.x+d.z*t.z;if(Math.abs(d.x*t.z-d.z*t.x)<e+1&&ahead-c.length/2>1.5&&ahead<40)stop=Math.min(stop,c.routeDistance+ahead-3-c.length/2);}
+  for(const h of c.holds||[])if(!h.go())hold(h.at);
   if(state.mode!=='control'&&!noCab())for(const body of vehicle.sections){const delta=body.position.clone().sub(p),ahead=delta.x*t.x+delta.z*t.z,cross=Math.abs(delta.x*t.z-delta.z*t.x);if(ahead>0&&cross<4&&Math.abs(delta.y)<4)stop=Math.min(stop,c.routeDistance+Math.max(0,ahead-c.length/2-7));}
-  const move=approachStep(c.routeDistance,c.v,1,out&&c.routeDistance>L35_LINES.giveWay+8?11:7,stop,dt);c.routeDistance=move.position;c.v=move.speed;if(c.routeDistance>length){c.routeDistance=0;if(state.mode==='control')c.releaseAt=state.time+controlRoom.arrivalGap;}const v=clamp(c.routeDistance/length,0,1),q=c.curve.getPointAt(v),h=c.curve.getTangentAt(v);c.group.position.copy(q);c.group.position.y+=.08;c.group.rotation.y=Math.atan2(-h.x,-h.z);c.group.visible=Math.abs(project(q.x,q.z)-subjectS)<500;if(c.group.visible)contact(c.group,c.width,c.length,c.height,'Turning traffic');continue;}const j=c.junction,r=sample(j.s),sig=signalObjects.find(sig=>sig.c===j.c),go=j.underpass&&!sig||signalAt(sig,true)==='go';
+  const move=approachStep(c.routeDistance,c.v,1,c.speed||11,stop,dt);c.routeDistance=move.position;c.v=move.speed;if(c.routeDistance>length){c.routeDistance=0;if(state.mode==='control')c.releaseAt=state.time+controlRoom.arrivalGap;}const v=clamp(c.routeDistance/length,0,1),q=c.curve.getPointAt(v),h=c.curve.getTangentAt(v);c.group.position.copy(q);c.group.position.y+=.08;c.group.rotation.y=Math.atan2(-h.x,-h.z);c.group.visible=Math.abs(project(q.x,q.z)-subjectS)<500;if(c.group.visible)contact(c.group,c.width,c.length,c.height,'Turning traffic');continue;}const j=c.junction,r=sample(j.s),sig=signalObjects.find(sig=>sig.c===j.c),go=j.underpass&&!sig||signalAt(sig,true)==='go';
   const line=-c.dir*((j.underpass?j.stop:sideCrossing(j,c.dir)+3)+c.length/2),distance=(line-c.lat)*c.dir;let stop=c.lat+c.dir*1e6;
   if(!go&&distance>=-.01)stop=line;
   for(const other of traffic)if(other!==c&&other.junction===j&&other.dir===c.dir&&other.along===c.along&&(other.lat-c.lat)*c.dir>0){const limit=other.lat-c.dir*((other.length+c.length)/2+3);if((limit-c.lat)*c.dir<(stop-c.lat)*c.dir)stop=limit;}

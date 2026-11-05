@@ -119,25 +119,24 @@ export function footpathHeight(s){
 }
 // Height of the drawn junction pavement in its local frame (x across, z opposite chainage).
 export function junctionPavementHeight(j,x,z){const w=roadSection(j.s).right,h=j.halfWidth,ax=Math.abs(x),az=Math.abs(z),R=6;
- if(!(j.c===2650&&x>0&&z<0)&&ax>w&&ax<w+R&&az>h&&az<h+R){const d=Math.hypot(ax-w-R,az-h-R);if(d>=R-3.75&&d<=R)return .18;}
+ if(ax>w&&ax<w+R&&az>h&&az<h+R){const d=Math.hypot(ax-w-R,az-h-R);if(d>=R-3.75&&d<=R)return .18;}
  if(ax>=w+R&&ax<=j.extent&&az>=h&&az<=h+3.75){const flare=clamp(1-(Math.abs(x-Math.sign(x)*sideCrossing(j,Math.sign(x)))-1.5)/1.8,0,1);return .18-.13*flare*(1-(az-h)/3.75);}
  return null;
 }
 
 export const CYCLE_WIDTH=4;
-function baseCycleOffset(s){let offset=roadSection(s).right+3.75+CYCLE_WIDTH/2;for(const st of STOPS){const d=Math.abs(s-st.s)-st.footprintLength/2-st.stagger/2,u=clamp(1-Math.max(0,d)/45,0,1),w=u*u*(3-2*u),flare=st.id==='A1'?Math.max(0,st.s-s-25)*.42:0;offset=Math.max(offset,offset+(7.05+st.width+flare+CYCLE_WIDTH/2-offset)*w);}const u=clamp(Math.min((s-L35.start+45)/45,(L35.end+50-s)/50),0,1),blend=u*u*(3-2*u);const normal=offset+(Math.max(offset,l35Offset(s)+L35.width/2+3.75+CYCLE_WIDTH/2)-offset)*blend;const d=Math.abs(toChainage(s)-3395),u3=clamp((200-d)/100,0,1);return -Math.max(normal+.6,normal+(52-normal)*u3*u3*(3-2*u3));}
+function baseCycleOffset(s){let offset=roadSection(s).right+3.75+CYCLE_WIDTH/2;for(const st of STOPS){const d=Math.abs(s-st.s)-st.footprintLength/2-st.stagger/2,u=clamp(1-Math.max(0,d)/45,0,1),w=u*u*(3-2*u),flare=st.id==='A1'?Math.max(0,st.s-s-25)*.42:0;offset=Math.max(offset,offset+(7.05+st.width+flare+CYCLE_WIDTH/2-offset)*w);}const u=clamp(Math.min((s-OUTBOARD.start+45)/45,(OUTBOARD.end+50-s)/50),0,1),blend=u*u*(3-2*u);const normal=offset+(Math.max(offset,outboardKerb(s)+3.75+CYCLE_WIDTH/2)-offset)*blend;const d=Math.abs(toChainage(s)-3395),u3=clamp((200-d)/100,0,1);return -Math.max(normal+.6,normal+(52-normal)*u3*u3*(3-2*u3));}
 
 // Volume 1 GA-1103/1105/1110/1113/1115. Unsigned chainages remain scaled game placements.
 export const CHANNELS=[{name:'A2 approach culvert',c:660,width:18,extent:160},{name:'Tin Sam Channel',c:1195,width:24,extent:190}].map(c=>({...c,s:fromChainage(c.c)}));
-export const JUNCTIONS=[{c:1660,name:'Crossing road',halfWidth:3.8},{c:2650,name:'Road D6',halfWidth:7.3},{c:3970,name:'Road D1',halfWidth:9}].map((j,i)=>({...j,s:fromChainage(j.c),offset:i*7,stop:j.halfWidth+14,extent:110}));
-export const UNDERPASSES=[{c:355,name:'Road D8',halfWidth:9},{c:3395,name:'Road D3',halfWidth:10},{c:4395,name:'Road D1',halfWidth:10}].map(j=>({...j,s:fromChainage(j.c),extent:150,offset:0,stop:14,underpass:true}));
-export const L35={start:fromChainage(2650),end:fromChainage(3395),offset:12.8,width:7.3};
-export function l35Offset(s){const d=Math.abs(s-STOPS[5].s),u=clamp((150-d)/65,0,1);return 12.8+6*u*u*(3-2*u);}
-export function l35Width(s){return s>=L35.start&&s<=L35.end?L35.width:0;}
-// L35 climbs onto the level Road D3 pad over 25 m, so its give-way mouth meets D3 flush.
-export function l35Ground(s){const d3=UNDERPASSES.find(j=>j.c===3395),u=clamp((45-d3.s+s)/25,0,1),g=sample(s).groundY;return g+(sample(d3.s).groundY-g)*u*u*(3-2*u);}
-// Junction-local x (= -lateral) of each side road's pedestrian crossing; D6 side 1 clears the L35 mouth and its R6 kerb return.
-export function sideCrossing(j,side){return j.c===2650&&side===1?L35.offset+L35.width/2+8:roadSection(j.s).right+10;}
+// halfWidth = kerb to centreline; lanes per direction (3.65 m) either side of a central median. Network roads continue from each arm end (extent).
+export const JUNCTIONS=[{c:1660,name:'Crossing road',halfWidth:3.65,lanes:1,median:0},{c:2650,name:'Road D6',halfWidth:8.3,lanes:2,median:2},{c:3970,name:'Road D1',halfWidth:9,lanes:2,median:3.4}].map((j,i)=>({...j,s:fromChainage(j.c),offset:i*7,stop:j.halfWidth+14,extent:80}));
+export const UNDERPASSES=[{c:355,name:'Road D8',halfWidth:9,lanes:2,median:3.4},{c:3395,name:'Road D3',halfWidth:10,lanes:2,median:5.4},{c:4395,name:'Road D1',halfWidth:10,lanes:2,median:5.4}].map(j=>({...j,s:fromChainage(j.c),extent:150,offset:0,stop:14,underpass:true}));
+// The cycle track keeps its outboard line from Ch 2650 to 3395 (the former side-road strip is now planted verge).
+const OUTBOARD={start:fromChainage(2650),end:fromChainage(3395)};
+function outboardKerb(s){const d=Math.abs(s-STOPS[5].s),u=clamp((150-d)/65,0,1);return 16.45+6*u*u*(3-2*u);}
+// Junction-local x (= -lateral) of each side road's signalised pedestrian crossing, just beyond the corridor footpath and cycle track.
+export function sideCrossing(j,side){return roadSection(j.s).right+10;}
 export function cycleCrossing(s){return JUNCTIONS.filter(j=>j.halfWidth<=7).some(j=>Math.abs(s-j.s)<j.halfWidth+.7);}
 export function cycleHeight(s){return .02+.28*clamp(Math.min(...[...JUNCTIONS,...UNDERPASSES].map(j=>(Math.abs(s-j.s)-j.halfWidth-1)/6)),0,1);}
 export const DEPOT={s:fromChainage(3565),opening:30,lateral:95,width:140,length:160};
@@ -158,10 +157,6 @@ export function railSample(s){return RAILWAY.at(interp(railU,s));}
 // True plan distance to the rail centreline, for scenery clearance.
 RAILWAY.distance=(x,z)=>{let d=Infinity;for(let i=1;i<railLine.length;i++){const a=railLine[i-1],b=railLine[i],dx=b.x-a.x,dz=b.z-a.z,t=clamp(((x-a.x)*dx+(z-a.z)*dz)/(dx*dx+dz*dz||1),0,1);d=Math.min(d,Math.hypot(x-a.x-t*dx,z-a.z-t*dz));}return d;};
 
-// Road D1 turns within the inside of the corridor's north-eastern bend.
-const d1a=sample(JUNCTIONS.find(j=>j.name==='Road D1').s),d1b=sample(UNDERPASSES.find(j=>j.name==='Road D1').s);
-const da={x:d1a.x-d1a.lx*80,z:d1a.z-d1a.lz*80,y:d1a.y},db={x:d1b.x-d1b.lx*80,z:d1b.z-d1b.lz*80,y:d1b.groundY};
-export const D1ROAD=Array.from({length:41},(_,i)=>{const t=i/40,u=1-t;return {x:u**3*da.x+3*u*u*t*(da.x-d1a.lx*120)+3*u*t*t*(db.x-d1b.lx*120)+t**3*db.x,z:u**3*da.z+3*u*u*t*(da.z-d1a.lz*120)+3*u*t*t*(db.z-d1b.lz*120)+t**3*db.z,y:da.y+(db.y-da.y)*(3*t*t-2*t*t*t)};});
 
 // Bay alignment is spatial: stationary vehicles never drift sideways.
 export function laneOffset(s,dir=1,skip=[]){let lane=1.9;for(const st of STOPS){if(skip.includes(st.id))continue;const platform=st.platforms.find(p=>p.side===dir),d=Math.abs(s-st.s-platform.centerOffset),u=clamp((st.footprintLength/2+40-d)/50,0,1);lane=Math.max(lane,1.9+3.5*u*u*u*(10-15*u+6*u*u));}return dir*Math.min(lane,roadSection(s).right-1.6);}
