@@ -196,10 +196,10 @@
       ],
       "roadGap": 14.1,
       "source": "ST-1101",
-      "appearance": "ACABAS Issue 3 station render and ST-5301\u20135307 curved cladding",
+      "appearance": "ACABAS Issue 3 station render, ST-5301\u20135307 curved cladding and 2025-09 Enscape station set (portal, bay rhythm, ticket machines)",
       "inferred": "Poster artwork, furniture positions and A1 wing interpolation; platform dimensions from GA. Bench backs are outboard of seats, facing the carriageway.",
-      "triangles": 51430,
-      "bytes": 2619852
+      "triangles": 61738,
+      "bytes": 3145824
     },
     {
       "id": "A2",
@@ -231,10 +231,10 @@
       ],
       "roadGap": 14.1,
       "source": "ST-1102",
-      "appearance": "ACABAS Issue 3 station render and ST-5301\u20135307 curved cladding",
+      "appearance": "ACABAS Issue 3 station render, ST-5301\u20135307 curved cladding and 2025-09 Enscape station set (portal, bay rhythm, ticket machines)",
       "inferred": "Poster artwork, furniture positions and A1 wing interpolation; platform dimensions from GA. Bench backs are outboard of seats, facing the carriageway.",
-      "triangles": 57932,
-      "bytes": 2812904
+      "triangles": 66932,
+      "bytes": 3344620
     },
     {
       "id": "A3",
@@ -266,10 +266,10 @@
       ],
       "roadGap": 14.1,
       "source": "ST-1103",
-      "appearance": "ACABAS Issue 3 station render and ST-5301\u20135307 curved cladding",
+      "appearance": "ACABAS Issue 3 station render, ST-5301\u20135307 curved cladding and 2025-09 Enscape station set (portal, bay rhythm, ticket machines)",
       "inferred": "Poster artwork, furniture positions and A1 wing interpolation; platform dimensions from GA. Bench backs are outboard of seats, facing the carriageway.",
-      "triangles": 57106,
-      "bytes": 2718200
+      "triangles": 65190,
+      "bytes": 3213580
     },
     {
       "id": "A4",
@@ -301,10 +301,10 @@
       ],
       "roadGap": 14.1,
       "source": "ST-1104",
-      "appearance": "ACABAS Issue 3 station render and ST-5301\u20135307 curved cladding",
+      "appearance": "ACABAS Issue 3 station render, ST-5301\u20135307 curved cladding and 2025-09 Enscape station set (portal, bay rhythm, ticket machines)",
       "inferred": "Poster artwork, furniture positions and A1 wing interpolation; platform dimensions from GA. Bench backs are outboard of seats, facing the carriageway.",
-      "triangles": 54306,
-      "bytes": 2604648
+      "triangles": 63190,
+      "bytes": 3133496
     },
     {
       "id": "A5",
@@ -336,10 +336,10 @@
       ],
       "roadGap": 14.1,
       "source": "ST-1105",
-      "appearance": "ACABAS Issue 3 station render and ST-5301\u20135307 curved cladding",
+      "appearance": "ACABAS Issue 3 station render, ST-5301\u20135307 curved cladding and 2025-09 Enscape station set (portal, bay rhythm, ticket machines)",
       "inferred": "Poster artwork, furniture positions and A1 wing interpolation; platform dimensions from GA. Bench backs are outboard of seats, facing the carriageway.",
-      "triangles": 49742,
-      "bytes": 2430812
+      "triangles": 59930,
+      "bytes": 3011004
     },
     {
       "id": "A6",
@@ -371,10 +371,10 @@
       ],
       "roadGap": 14.1,
       "source": "ST-1106",
-      "appearance": "ACABAS Issue 3 station render and ST-5301\u20135307 curved cladding",
+      "appearance": "ACABAS Issue 3 station render, ST-5301\u20135307 curved cladding and 2025-09 Enscape station set (portal, bay rhythm, ticket machines)",
       "inferred": "Poster artwork, furniture positions and A1 wing interpolation; platform dimensions from GA. Bench backs are outboard of seats, facing the carriageway.",
-      "triangles": 57764,
-      "bytes": 2741464
+      "triangles": 65660,
+      "bytes": 3229952
     },
     {
       "id": "A7",
@@ -406,10 +406,10 @@
       ],
       "roadGap": 14.1,
       "source": "ST-1107",
-      "appearance": "ACABAS Issue 3 station render and ST-5301\u20135307 curved cladding",
+      "appearance": "ACABAS Issue 3 station render, ST-5301\u20135307 curved cladding and 2025-09 Enscape station set (portal, bay rhythm, ticket machines)",
       "inferred": "Poster artwork, furniture positions and A1 wing interpolation; platform dimensions from GA. Bench backs are outboard of seats, facing the carriageway.",
-      "triangles": 55552,
-      "bytes": 2651292
+      "triangles": 64080,
+      "bytes": 3166360
     }
   ]
 }

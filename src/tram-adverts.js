@@ -22,7 +22,7 @@ export async function loadTramAdverts(asset,anisotropy){
 
 export function applyTramAdvert(tram,campaign){
   if(!campaign)return;
-  tram.advert=campaign.id;
+  tram.advert=campaign.id;tram.insideUniform??={value:0};
   for(const [index,section] of tram.sections.entries()){
     const role=['section_front','section_mid','section_rear'][index],windowRange=tramWindowRange(role);
     section.updateWorldMatrix(true,true);
@@ -40,13 +40,14 @@ export function applyTramAdvert(tram,campaign){
         shader.uniforms.tramColor={value:new T.Color(campaign.color)};
         shader.uniforms.tramWindowRange={value:new T.Vector2(...windowRange)};
         shader.uniforms.tramHero={value:role==='section_mid'?1:0};
+        shader.uniforms.tramInside=tram.insideUniform;
         // Rest-pose coordinates attach printing to sliding doors and articulated sections.
         shader.uniforms.tramTransform={value:transform};
         shader.vertexShader='uniform mat4 tramTransform; varying vec3 vTramPosition; varying vec3 vTramNormal;\n'+shader.vertexShader;
         shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
           vTramPosition=(tramTransform*vec4(transformed,1.0)).xyz;
           vTramNormal=mat3(tramTransform)*normal;`);
-        shader.fragmentShader='uniform sampler2D tramPrint; uniform vec3 tramColor; uniform vec2 tramWindowRange; uniform float tramHero; varying vec3 vTramPosition; varying vec3 vTramNormal;\n'+shader.fragmentShader;
+        shader.fragmentShader='uniform sampler2D tramPrint; uniform vec3 tramColor; uniform vec2 tramWindowRange; uniform float tramHero; uniform float tramInside; varying vec3 vTramPosition; varying vec3 vTramNormal;\n'+shader.fragmentShader;
         shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
           // One hero per vehicle side. Solid campaign colour continues around the other sections.
           bool side=abs(normalize(vTramNormal).x)>.5 && abs(vTramPosition.x)>1.05;
@@ -60,13 +61,15 @@ export function applyTramAdvert(tram,campaign){
             if(tramHero>.5 && side && printUV.x>=0.0 && printUV.x<=1.0 && printUV.y>=0.0 && printUV.y<=1.0)ink=texture2D(tramPrint,printUV).rgb;
             diffuseColor.rgb=GLASS ? mix(diffuseColor.rgb,ink,.85) : ink;
             if(GLASS)diffuseColor.a=max(diffuseColor.a,.85);
+            // Seen from the saloon the print is hidden: body panels read as lining, window film as a dark perforated screen.
+            if(tramInside>.5){diffuseColor.rgb=GLASS ? vec3(.06,.07,.08) : vec3(.86,.87,.85);if(GLASS)diffuseColor.a=.5;}
           }`).replace(/GLASS/g,glass?'true':'false');
         shader.fragmentShader=shader.fragmentShader.replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
           if(wrap)totalEmissiveRadiance=vec3(0.0);`);
         shader.fragmentShader=shader.fragmentShader.replace('#include <metalnessmap_fragment>',`#include <metalnessmap_fragment>
           if(wrap)metalnessFactor=0.0;`);
       };
-      material.customProgramCacheKey=()=> 'tram-body-wrap-v3'+(glass?'-glass':'');
+      material.customProgramCacheKey=()=> 'tram-body-wrap-v4'+(glass?'-glass':'');
     });
   }
 }

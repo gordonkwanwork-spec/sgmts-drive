@@ -1,6 +1,8 @@
 # Human character reference sheets
 
-Created 29 September 2026 with the built-in image-generation tool, using the supplied image as a photographic style and sheet-layout reference. These are proposed modelling references; the game models have not been changed.
+The roster sheets were created 29 September 2026 with the built-in image-generation tool, using the supplied image as a photographic style and sheet-layout reference. Additional child references were created 30 September in the same style. These are proposed modelling references; the game models have not been changed.
+
+Additional child references, the [boy in pale blue T-shirt](additional-boy-blue-shirt.png) and [girl in blue school uniform](additional-girl-blue-school-uniform.png), follow the same sheet layout. They are reference-only and are not assigned to the current game roster.
 
 [Open visual gallery](index.html) · [Generation prompts and refinements](prompts.json) · [Original supplied reference](source-layout-reference.png)
 
@@ -41,4 +43,3 @@ Start with silhouette, head/jaw/neck, shoulder and hip widths, elbow/knee positi
 These generated images are visual references, not calibrated orthographic scans: reconcile small view-to-view differences while modelling. Front/back views govern accessory handedness if a side view differs. Do not model incidental shoe marks as branding. Standing views are relaxed rather than strict rigging A-poses; establish a clean rest pose separately. All sheets use their own display scale, so child/adult physical height must come from the intended model scale, not equal pixel heights on different sheets.
 
 Before accepting replacement models, compare front/side/back silhouette and close-up faces against these sheets, then inspect walking, sitting, running, child jumping and prop contact in the game. Image generation does not establish mesh quality or animation correctness.
-

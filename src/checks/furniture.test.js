@@ -93,3 +93,22 @@ console.log('Cycle-track leaf pole passed');
   assert(!cycleCanopyAt(j.s+j.halfWidth+12),'Uncovered ramps retain their lighting');}
  assert(!data.items.some(i=>i.type==='lamp_cycle'&&i.road==='cycleway'&&cycleCanopyAt(pose(i).s)),'Saved bridge poles removed');}
 console.log('Covered cycle bridges exclude pole furniture and pole light sources');
+
+// A1 terminus: no lamp columns on the loop; feeder pillars stand on the island pads; cabins clear of the cycle track and loop walk.
+{const {LOOP,STOPS,cycleOffset,CYCLE_WIDTH}=await import('../alignment.js'),{A1_PADS}=await import('../environment.js'),{CABIN}=await import('../street/operator-kit.js');
+ assert(!data.items.some(i=>i.road==='loop'&&i.type.startsWith('lamp_')),'A1 loop has no lamp columns');
+ const t=sample(STOPS[0].s),pillars=data.items.filter(i=>i.type==='feeder_pillar'&&i.id.startsWith('a1-'));
+ assert.equal(pillars.length,A1_PADS.reduce((n,p)=>n+p.pillars,0),'A1 pillar count');
+ for(const it of pillars){const P=pose(it),dx=P.x-LOOP.center.x,dz=P.z-LOOP.center.z,along=dx*t.tx+dz*t.tz,lat=dx*t.lx+dz*t.lz;
+  assert(Math.hypot(dx,dz)+1.2<LOOP.innerRadius,it.id+' inside the island');
+  assert(A1_PADS.some(p=>Math.abs(lat-p.lat)<=2-.56&&Math.abs(along)<=p.length/2-1.06),it.id+' on a hardstanding');}
+ const rest=data.items.find(i=>i.id==='a1-rest-quarters'),R=pose(rest),q=sample(R.s),lat=Math.abs((R.x-q.x)*q.lx+(R.z-q.z)*q.lz);
+ assert(lat-CABIN.depth/2-rest.params.apron>=-cycleOffset(R.s)+CYCLE_WIDTH/2-.01,'Rest quarters apron stays off the cycle track');
+ for(const it of data.items.filter(i=>i.id.startsWith('a1-wc-pod'))){const P=pose(it);assert(Math.hypot(P.x-LOOP.center.x,P.z-LOOP.center.z)-CABIN.depth/2-it.params.apron>=LOOP.outerRadius+3.75-.01,it.id+' beyond the loop footpath');}
+ console.log(`A1 facilities: ${pillars.length} feeder pillars on ${A1_PADS.length} island pads, rest quarters and WC pods clear of paths; no loop lamps`);}
+{const parts=[],items=data.items.filter(i=>/^a1-(rest|wc-pod-1|feeder-pillar-11)/.test(i.id)),out=placeFurniture({items},{batch:(key,g,m,pos,scale)=>parts.push({key,pos,scale,m}),kitParts:()=>[]});
+ assert.deepEqual(out.errors,[],'Operator kit builds');assert(parts.length>400&&parts.every(p=>[p.pos.x,p.pos.y,p.pos.z,p.scale.x,p.scale.y,p.scale.z].every(Number.isFinite)),'Finite operator kit parts');
+ // Instanced batches keep the first material per key, so a key must never carry two materials.
+ const mat=new Map();for(const p of parts){if(mat.has(p.key))assert.equal(mat.get(p.key),p.m,'One material per batch key: '+p.key);mat.set(p.key,p.m);}
+ assert.equal(out.clearings.length,items.length,'Every building clears its planting');assert(out.fences.filter(f=>f.wall).length===items.length*4,'Closed collision outline per building');
+ console.log(`Operator kit: ${parts.length} parts for ${items.length} items, one material per key`);}

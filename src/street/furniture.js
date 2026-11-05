@@ -1,3 +1,4 @@
+import {panelParts,type2PostParts} from './sandbox/railing-details.js';
 import {cycleCanopyAt} from '../alignment.js';
 import {parkLamp} from './park-lamp.js';
 // Street furniture placed from public/street/furniture.json (edited in street.html). The game (environment.js) and the
@@ -6,6 +7,7 @@ import {parkLamp} from './park-lamp.js';
 import * as T from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {pose,poseAt,ROAD} from './roads.js';
+import {feederPillar,operatorCabin} from './operator-kit.js';
 
 // Placeable types. kind 'point' = one item at a chainage; 'run' = from/to along a road.
 export const CATALOGUE={
@@ -15,6 +17,10 @@ export const CATALOGUE={
  lamp_cycle:{label:'Cycle track lamp (twin leaf arm)',group:'Lighting',kind:'point',params:{height:5}},
  litter_bin:{label:'Litter bin (FEHD)',group:'Furniture',kind:'point'},
  pillar_box:{label:'Post box',group:'Furniture',kind:'point'},
+ feeder_pillar:{label:'Feeder pillar (stainless two-door)',group:'Utilities',kind:'point'},
+ cabinet_controller:{label:'Signal controller cabinet (stainless, PL plate)',group:'Signals',kind:'point'},
+ cabinet_td:{label:'TD cabinet (purple road-safety wrap)',group:'Signals',kind:'point'},
+ operator_cabin:{label:'Operator cabin (steel, one level)',group:'Buildings',kind:'point',params:{length:12,use:'rest'}},
  manhole:{label:'Manhole cover',group:'Paving',kind:'point'},
  wayfinding_sign:{label:'Footpath wayfinding sign',group:'Signs',kind:'point'},
  cycle_sign:{label:'Cycle track sign',group:'Signs',kind:'point'},
@@ -83,10 +89,41 @@ function binSticker(name){const low=name==='bin_sticker_low',c=document.createEl
   binIcon(W*.82,H*.3,H*.55);x.strokeStyle='#c21f1f';x.lineWidth=7;x.beginPath();x.moveTo(W*.8,H*.12);x.lineTo(W*.95,H*.35);x.moveTo(W*.95,H*.12);x.lineTo(W*.8,H*.35);x.stroke();}
  const map=new T.CanvasTexture(c);map.colorSpace=T.SRGBColorSpace;map.flipY=false;map.wrapS=T.RepeatWrapping;map.repeat.x=-1;map.offset.x=1;
  return new T.MeshStandardMaterial({map,roughness:.55});}
+// 視障人士輔助設施 label on the yellow push-button unit (site photos): black type and cane-walker icon on the yellow cover.
+function signalLabel(){const c=document.createElement('canvas');c.width=256;c.height=512;const x=c.getContext('2d');
+ x.fillStyle='#d99a08';x.fillRect(0,0,256,512);x.fillStyle='#1d1a12';x.textAlign='center';
+ x.font='bold 50px sans-serif';x.fillText('視障人士',128,70);x.fillText('輔助設施',128,128);
+ x.font='34px sans-serif';['Aids for','Visually','Impaired','Persons'].forEach((t,i)=>x.fillText(t,128,184+i*40));
+ x.lineCap='round';x.lineWidth=12;x.beginPath();x.arc(124,372,13,0,Math.PI*2);x.fill();
+ x.beginPath();x.moveTo(122,392);x.lineTo(112,448);x.lineTo(92,494);x.moveTo(112,448);x.lineTo(136,494);x.moveTo(118,405);x.lineTo(150,436);x.stroke();
+ x.lineWidth=5;x.beginPath();x.moveTo(150,436);x.lineTo(184,496);x.stroke();
+ const map=new T.CanvasTexture(c);map.colorSpace=T.SRGBColorSpace;map.flipY=false;return new T.MeshStandardMaterial({map,roughness:.4});}
+// Signal cabinet artwork (Victoria Road / waterfront photos): PL number plate, and the Transport Department purple
+// road-safety wrap — bus-chasing warning on the doors, "watch out before crossing" on the narrow sides.
+function cabinetArt(name){const plate=name==='cabinet_plate',side=name==='td_wrap_side',c=document.createElement('canvas');c.width=plate?256:side?240:512;c.height=plate?72:1024;const x=c.getContext('2d'),W=c.width,H=c.height;
+ const done=()=>{const map=new T.CanvasTexture(c);map.colorSpace=T.SRGBColorSpace;map.flipY=false;map.anisotropy=4;return new T.MeshStandardMaterial({map,roughness:plate?.5:.45});};
+ if(plate){x.fillStyle='#ddd9c8';x.fillRect(0,0,W,H);x.fillStyle='#111';x.font='bold 54px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText('PL 8178',W/2,H/2+3);return done();}
+ x.fillStyle='#4a2c9e';x.fillRect(0,0,W,H);x.textAlign='center';x.fillStyle='#fff';
+ const logo=(cx,cy,s)=>{x.save();x.lineWidth=s*.11;x.strokeStyle='#2fae9c';x.beginPath();x.arc(cx-s*.9,cy,s*.42,Math.PI*.6,Math.PI*1.9);x.stroke();x.fillStyle='#fff';x.fillRect(cx-s*1.05,cy-s*.32,s*.3,s*.08);x.fillRect(cx-s*.94,cy-s*.32,s*.08,s*.6);
+  x.textAlign='left';x.font=`bold ${s*.55}px sans-serif`;x.fillText('運輸署',cx-s*.35,cy+s*.05);x.font=`italic ${s*.24}px sans-serif`;x.fillText('Transport Department',cx-s*.35,cy+s*.38);x.restore();};
+ if(side){logo(W*.44,H*.2,W*.29);x.font='bold 62px sans-serif';[['小',0],['心',1],['過',2],['路',3]].forEach(([t,i])=>x.fillText(t,W*.66,H*.36+i*66));[['遵',0],['照',1],['燈',2],['號',3]].forEach(([t,i])=>x.fillText(t,W*.34,H*.36+i*66));
+  x.font='22px sans-serif';['Follow traffic signals','and watch out','before crossing'].forEach((t,i)=>x.fillText(t,W/2,H*.68+i*26));
+  x.font='bold 30px sans-serif';x.fillText('⦸ 禁止標貼',W/2,H*.82);x.font='bold 24px sans-serif';x.fillText('POST NO BILL',W/2,H*.86);return done();}
+ logo(W*.58,H*.07,W*.2);x.font='bold 40px sans-serif';x.fillText('巴士離站',W/2,H*.2);x.fillStyle='#f6e7a6';x.font='bold 84px sans-serif';x.fillText('切勿追趕',W/2,H*.29);
+ x.fillStyle='#fff';x.font='32px sans-serif';x.fillText('Do not chase a bus',W/2,H*.35);x.fillText('when it is leaving',W/2,H*.385);
+ // Pink double-decker at the stop, pavement in front and the chasing pedestrian crossed out.
+ x.fillStyle='#d9d4dc';x.beginPath();x.moveTo(0,H*.86);x.lineTo(W,H*.78);x.lineTo(W,H);x.lineTo(0,H);x.fill();
+ x.fillStyle='#e9bfc9';x.beginPath();x.moveTo(W*.08,H*.5);x.lineTo(W*.86,H*.46);x.lineTo(W*.9,H*.82);x.lineTo(W*.1,H*.9);x.closePath();x.fill();
+ x.fillStyle='#222';x.beginPath();x.moveTo(W*.08,H*.5);x.lineTo(W*.86,H*.46);x.lineTo(W*.865,H*.52);x.lineTo(W*.085,H*.57);x.fill();
+ x.fillStyle='#cfeee2';for(let k=0;k<4;k++){x.fillRect(W*(.27+k*.15),H*(.53-k*.006),W*.12,H*.1);x.fillRect(W*(.27+k*.15),H*(.66-k*.006),W*.12,H*.1);}x.fillRect(W*.1,H*.58,W*.15,H*.18);x.fillRect(W*.1,H*.52,W*.15,H*.045);
+ x.fillStyle='#333';x.beginPath();x.arc(W*.22,H*.89,W*.05,0,Math.PI*2);x.arc(W*.76,H*.83,W*.05,0,Math.PI*2);x.fill();
+ x.fillStyle='#dfe6f0';x.fillRect(W*.58,H*.72,W*.07,H*.13);x.beginPath();x.arc(W*.615,H*.7,W*.03,0,Math.PI*2);x.fill();
+ x.fillStyle='#e23b3b';x.beginPath();x.arc(W*.5,H*.87,W*.07,0,Math.PI*2);x.fill();x.strokeStyle='#fff';x.lineWidth=9;x.beginPath();x.moveTo(W*.465,H*.85);x.lineTo(W*.535,H*.89);x.moveTo(W*.535,H*.85);x.lineTo(W*.465,H*.89);x.stroke();
+ return done();}
 const kitLibraries=new WeakMap();
 export function kitLibrary(streetKit){if(kitLibraries.has(streetKit))return kitLibraries.get(streetKit);const cache={},stickers={};
- const parts=name=>{if(cache[name])return cache[name];const root=streetKit.getObjectByName(name);if(!root)throw Error('Missing Blender model '+name);root.updateMatrixWorld(true);const inv=root.matrixWorld.clone().invert(),out=[];
-  root.traverse(n=>{if(!n.isMesh)return;const m=n.material.name;if(/^bin_sticker_/.test(m))stickers[m]??=binSticker(m);out.push({geometry:n.geometry.clone().applyMatrix4(inv.clone().multiply(n.matrixWorld)),material:stickers[m]||n.material});});return cache[name]=out;};
+ const parts=name=>{if(cache[name])return cache[name];if(name==='railing_post'){const byMaterial=new Map();for(const p of type2PostParts(furnitureMaterials().galvanised)){if(!byMaterial.has(p.material))byMaterial.set(p.material,[]);const geo=p.geometry.index?p.geometry.toNonIndexed():p.geometry;geo.deleteAttribute('uv');byMaterial.get(p.material).push(geo);}return cache[name]=[...byMaterial].map(([material,geometries])=>({material,geometry:mergeGeometries(geometries)}));}if(/^railing_(type2|crossing)/.test(name))return cache[name]=panelParts(name,furnitureMaterials().galvanised);const root=streetKit.getObjectByName(name);if(!root)throw Error('Missing Blender model '+name);root.updateMatrixWorld(true);const inv=root.matrixWorld.clone().invert(),out=[];
+  root.traverse(n=>{if(!n.isMesh)return;const m=n.material.name;if(/^bin_sticker_/.test(m))stickers[m]??=binSticker(m);if(m==='signal_label')stickers[m]??=signalLabel();if(/^(td_wrap_|cabinet_plate$)/.test(m))stickers[m]??=cabinetArt(m==='td_wrap_back'?'td_wrap_front':m);out.push({geometry:n.geometry.clone().applyMatrix4(inv.clone().multiply(n.matrixWorld)),material:stickers[m]||n.material});});return cache[name]=out;};
  kitLibraries.set(streetKit,parts);return parts;}
 
 // ---------- instancing for the editor (the game uses environment.js's chunked batches) ----------
@@ -97,18 +134,18 @@ export function instancer(){const buckets={};
 const UP=new T.Vector3(0,1,0),ONE=new T.Vector3(1,1,1);
 const chunkOf=P=>Math.max(0,Math.floor(P.s/240));
 
-// HyD Type 2 railings (H2130I) in 1.5 m bays; the two bays beside an open end use the H2132H junction/crossing
+// HyD Type 2 railings (H2130I) in 1.5 m bays; the three bays beside an open end use the H2132H junction/crossing
 // panel with horizontal flats, and each open end finishes with a rounded end panel.
 export function railingBuilder({batch,kitParts,fences}){
  const kit=(name,pos,rot,scale,ch)=>kitParts(name).forEach((part,i)=>batch(name+'-'+i,part.geometry,part.material,pos,scale||ONE,rot instanceof T.Euler?rot:new T.Euler(0,rot,0),ch));
  function railPanel(a,b,kind,ch){fences.push({ax:a.x,az:a.z,bx:b.x,bz:b.z,y:a.y,top:1});const horiz=Math.hypot(b.x-a.x,b.z-a.z),mid=a.clone().add(b).multiplyScalar(.5);
   kit(kind,mid,new T.Euler(Math.atan2(b.y-a.y,horiz),Math.atan2(a.x-b.x,a.z-b.z),0,'YXZ'),new T.Vector3(1,1,horiz/RAIL),ch);}
  function railEnd(p,toward,kind,ch){const d=p.clone().sub(toward).setY(0).normalize();fences.push({ax:p.x,az:p.z,bx:p.x+d.x*.4,bz:p.z+d.z*.4,y:p.y,top:1});kit(kind+'_end',p,Math.atan2(toward.x-p.x,toward.z-p.z),null,ch);}
- function railRun(points,chunk,ends=[true,true]){const n=points.length-1;if(n<1)return;
-  const kind=i=>ends[0]&&i<2||ends[1]&&i>=n-2?'railing_crossing':'railing_type2';
-  for(let i=0;i<n;i++)railPanel(points[i],points[i+1],kind(i),chunk(i));
-  points.forEach((p,i)=>kit('railing_post',p,Math.atan2(points[Math.max(0,i-1)].x-points[Math.min(n,i+1)].x,points[Math.max(0,i-1)].z-points[Math.min(n,i+1)].z),null,chunk(Math.min(i,n-1))));
-  if(ends[0])railEnd(points[0],points[1],kind(0),chunk(0));if(ends[1])railEnd(points[n],points[n-1],kind(n-1),chunk(n-1));}
+ function railRun(points,chunk,ends=[true,true]){const spaced=[],chunks=[];for(let i=0;i<points.length-1;i++){const a=points[i],b=points[i+1],n=Math.ceil(a.distanceTo(b)/1.5001);for(let k=0;k<n;k++){spaced.push(a.clone().lerp(b,k/n));chunks.push(chunk(i));}}if(points.length)spaced.push(points.at(-1));points=spaced;const n=points.length-1;if(n<1)return;
+  const kind=i=>ends[0]&&i<3||ends[1]&&i>=n-3?'railing_crossing':'railing_type2';
+  for(let i=0;i<n;i++)railPanel(points[i],points[i+1],kind(i),chunks[i]);
+  points.forEach((p,i)=>kit('railing_post',p,Math.atan2(points[Math.max(0,i-1)].x-points[Math.min(n,i+1)].x,points[Math.max(0,i-1)].z-points[Math.min(n,i+1)].z),null,chunks[Math.min(i,n-1)]));
+  if(ends[0])railEnd(points[0],points[1],kind(0),chunks[0]);if(ends[1])railEnd(points[n],points[n-1],kind(n-1),chunks[n-1]);}
  return {kit,railRun};}
 
 // Post positions of a railing run: equal bays of at most 1.5 m between from and to.
@@ -117,12 +154,14 @@ export function runPoints(run){const road=ROAD[run.road],a=road.toParam(Math.min
 
 // Builds every catalogue item into `batch` (instanced) and returns what the rest of the game needs: lamp heads for the
 // baked night light, railing fences for collision, bins, and traffic-signal groups (animated by experience.js).
-export function placeFurniture(data,{batch,kitParts}){const m=furnitureMaterials(),lampPositions=[],fences=[],bins=[],signals=[],errors=[];
+export function placeFurniture(data,{batch,kitParts,railAllowed=()=>true}){const m=furnitureMaterials(),lampPositions=[],fences=[],bins=[],signals=[],errors=[],clearings=[];
  const {kit,railRun}=railingBuilder({batch,kitParts,fences});
  const at=(P,x,y,z)=>new T.Vector3(x,y,z).applyAxisAngle(UP,P.yaw).add(new T.Vector3(P.x,P.y,P.z));
  const box=(key,mat,P,x,y,z,w,h,d)=>batch(key,geo.box,mat,at(P,x,y,z),new T.Vector3(w,h,d),new T.Euler(0,P.yaw,0),chunkOf(P));
  const piece=(key,g,mat,P,x,y,z,w,h,d,turn=0)=>batch(key,g,mat,at(P,x,y,z),new T.Vector3(w,h,d),new T.Euler(0,P.yaw+turn,0),chunkOf(P));
  const light=(P,x,y,z,it,height)=>{const v=at(P,x,y,z),f=P.f;lampPositions.push({s:P.s,x:v.x,y:v.y,z:v.z,kind:it.type,road:it.road,height,axis:{tx:f.tx,tz:f.tz,lx:f.lx,lz:f.lz},id:it.id});};
+ // Context for the multi-part builders in operator-kit.js.
+ const ctx=(P,it)=>({batch,at,fences,clearings,chunk:chunkOf(P),lamp:m.lamp,light:(P,x,y,z)=>light(P,x,y,z,it,3)});
  const BUILD={
   lamp_park(P,it){const h=it.params?.height??5.5;parkLamp(batch,new T.Vector3(P.x,P.y,P.z),h,m.lamp,chunkOf(P));light(P,0,h-.4,0,it,h);},
   lamp_road(P,it){const h=it.params?.height??10;
@@ -154,6 +193,10 @@ export function placeFurniture(data,{batch,kitParts}){const m=furnitureMaterials
    for(const [key,g,d,lampY] of [['furn-cycle-leaf-big',geo.leafBig,1,h-.2],['furn-cycle-leaf-small',geo.leafSmall,-1,h-.85]]){
     const base=lampY+.07-g.lamp.y,z=d*g.lamp.z;piece(key,g.geometry,m.leafGreen,P,0,base,0,1,1,1,d>0?0:Math.PI);
     piece('furn-cycle-lantern',geo.lantern,m.lanternGrey,P,0,lampY+.035,z,.17,.06,.3);piece('furn-cycle-LED',geo.lantern,m.lamp,P,0,lampY,z,.13,.02,.22);light(P,0,lampY,z,it,h);}},
+  feeder_pillar(P,it){feederPillar(ctx(P,it),P);},
+  operator_cabin(P,it){operatorCabin(ctx(P,it),P,it);},
+  cabinet_controller(P){kit('cabinet_controller',new T.Vector3(P.x,P.y,P.z),P.yaw,null,chunkOf(P));},
+  cabinet_td(P){kit('cabinet_td',new T.Vector3(P.x,P.y,P.z),P.yaw,null,chunkOf(P));},
   litter_bin(P){kit('litter_bin',new T.Vector3(P.x,P.y,P.z),P.yaw,null,chunkOf(P));bins.push({x:P.x,y:P.y,z:P.z,s:P.s,side:P.lat>=0?1:-1});},
   pillar_box(P){piece('furn-pillar-box',geo.cyl,m.postGreen,P,0,.58,0,.25,1.16,.25);piece('furn-pillar-cap',geo.cyl,m.postGreen,P,0,1.17,0,.29,.12,.29);piece('furn-post-label',geo.plane,m.postLabel,P,0,.68,-.256,.28,.32,1,Math.PI);box('furn-letter-slot',m.iron,P,0,.95,-.255,.23,.045,.025);},
   manhole(P){box('furn-paving-repair',m.patch,P,0,.006,0,1.10,.016,1.35);box('furn-manhole-rim',m.galvanised,P,0,.018,0,.76,.022,1.03);box('furn-manhole-cover',m.iron,P,0,.032,0,.69,.018,.96);for(let i=-3;i<=3;i++)box('furn-manhole-tread',m.galvanised,P,i*.085,.044,0,.018,.008,.82);},
@@ -178,9 +221,11 @@ export function placeFurniture(data,{batch,kitParts}){const m=furnitureMaterials
    }},
  };
  for(const it of data.items||[]){try{const P=pose(it);if(isModel(it.type)){if(it.params?.light)light(P,0,it.params.light,0,it,it.params.light);continue;}const build=BUILD[it.type];if(!build)throw Error('unknown type '+it.type);build(P,it);}catch(e){errors.push(`${it.id}: ${e.message}`);}}
- for(const run of data.runs||[]){if(run.type!=='railing')continue;try{const P=runPoints(run);railRun(P.map(p=>new T.Vector3(p.x,p.y,p.z)),i=>chunkOf(P[i]),run.ends||[true,true]);}catch(e){errors.push(`${run.id}: ${e.message}`);}}
+ for(const run of data.runs||[]){if(run.type!=='railing')continue;try{const P=runPoints(run);let segment=[];
+  const flush=()=>{if(segment.length>1){const points=segment;railRun(points.map(p=>new T.Vector3(p.x,p.y,p.z)),i=>chunkOf(points[i]),run.ends||[true,true]);}segment=[];};
+  for(let i=1;i<P.length;i++){if(railAllowed(run,P[i-1],P[i])){if(!segment.length)segment.push(P[i-1]);segment.push(P[i]);}else flush();}flush();}catch(e){errors.push(`${run.id}: ${e.message}`);}}
  if(errors.length)console.warn('Street furniture skipped:',errors);
- return {lampPositions,fences,bins,signals,errors};}
+ return {lampPositions,fences,bins,signals,errors,clearings};}
 
 // Paving pattern of the corridor footpath on one side at corridor distance s (null: the default chunk colours).
 // Later runs sit on top of earlier ones, so a new run over the seeded 240 m bands wins.

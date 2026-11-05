@@ -5,7 +5,9 @@ const experience=readFileSync(new URL('../experience.js',import.meta.url),'utf8'
 const environment=readFileSync(new URL('../environment.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../experience.css',import.meta.url),'utf8');
 // Mobile hide keeps exactly the driving controls and the camera button (25 Sep 2026 request).
-assert(css.includes('html.mobile body.clean-view :is([data-action=go],[data-action=stop],[data-action=doors],[data-action=express],[data-action=cruise],#camera,#ff-button){visibility:visible!important}'));
+assert(css.includes('html.mobile body.clean-view :is([data-action=go],[data-action=stop],[data-action=doors],[data-action=express],[data-action=cruise],#camera){visibility:visible!important}'));
+assert(!css.includes('#ff-button){visibility'),'Hide also hides fast-forward');
+assert(css.includes('body.clean-view #music-shuffle{visibility:visible!important}'),'Hide keeps the music button');
 // Every button with a shortcut carries a visible hotkey badge (hidden on touch layouts).
 assert(experience.includes('b.dataset.hotkey=key')&&css.includes('button[data-hotkey]::after{content:attr(data-hotkey)')&&css.includes('html.mobile button[data-hotkey]::after{display:none}'));
 

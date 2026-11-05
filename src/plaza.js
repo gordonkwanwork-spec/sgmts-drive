@@ -22,7 +22,7 @@ export const BANNER_TARGETS=[
 ];
 export function selectBannerSites(fences){
  const candidates=[];
- for(let i=0;i<fences.length;i+=3){const first=fences[i],middle=fences[i+1],last=fences[i+2];if(!last||Math.hypot(first.bx-middle.ax,first.bz-middle.az)>.05||Math.hypot(middle.bx-last.ax,middle.bz-last.az)>.05||Math.abs(first.y-last.y)>.15)continue;const f={...first,bx:last.bx,bz:last.bz},p=bannerSite(f);if(p)candidates.push({...p,f});}
+ for(let i=0;i<fences.length;i+=3){const first=fences[i],middle=fences[i+1],last=fences[i+2];if(!last||first.wall||Math.hypot(first.bx-middle.ax,first.bz-middle.az)>.05||Math.hypot(middle.bx-last.ax,middle.bz-last.az)>.05||Math.abs(first.y-last.y)>.15)continue;const f={...first,bx:last.bx,bz:last.bz},p=bannerSite(f);if(p)candidates.push({...p,f});}
  const selected=[],near=(p,t)=>{const r=sample(t.s);return Math.hypot(p.x-r.x,p.z-r.z)<t.radius;};
  for(const target of BANNER_TARGETS){const r=sample(target.s),ranked=candidates.filter(p=>near(p,target)).sort((a,b)=>Math.hypot(a.x-r.x,a.z-r.z)-Math.hypot(b.x-r.x,b.z-r.z));
   for(const p of ranked){if(selected.filter(q=>near(q,target)).length>=2)break;if(selected.includes(p)||selected.some(q=>Math.hypot(p.x-q.x,p.z-q.z)<6)||BANNER_TARGETS.some(t=>near(p,t)&&selected.filter(q=>near(q,t)).length>=2))continue;selected.push(p);}

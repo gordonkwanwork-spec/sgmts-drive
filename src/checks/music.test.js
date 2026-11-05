@@ -22,7 +22,7 @@ class Media {constructor(){this.paused=true;this.currentTime=0;this.duration=180
 const param=()=>({value:0,setTargetAtTime(value,time,tau){this.value=value;this.tau=tau;},setValueAtTime(v){this.value=v;},cancelScheduledValues(){}});
 const node=()=>({gain:param(),frequency:param(),Q:param(),connect(){},start(){},stop(){}});
 let context;
-class Context{constructor(){context=this;this.currentTime=0;this.sampleRate=8;this.state='running';this.destination={};}createGain(){return node();}createBiquadFilter(){return node();}createOscillator(){return node();}createBuffer(c,n){return {getChannelData:()=>new Float32Array(n)}}createBufferSource(){return node();}decodeAudioData(){return Promise.resolve({duration:1});}createMediaElementSource(){return node();}resume(){return Promise.resolve();}}
+class Context{constructor(){context=this;this.currentTime=0;this.sampleRate=8;this.state='running';this.destination={};}createGain(){return node();}createBiquadFilter(){return node();}createOscillator(){return node();}createBuffer(c,n){return {getChannelData:()=>new Float32Array(n)}}createBufferSource(){return node();}decodeAudioData(){return Promise.resolve({duration:1,getChannelData:()=>Float32Array.of(0,.5,-.5,0)});}createMediaElementSource(){return node();}resume(){return Promise.resolve();}}
 globalThis.window={AudioContext:Context};globalThis.Audio=Media;
 const audio=await import('../audio.js');
 audio.updateMusic({screen:'menu',menuMusic:'l05a'});assert(await audio.initAudio());
@@ -41,4 +41,7 @@ await audio.announce('gap');audio.updateMusic({...drive,gameMusic:'g04a'});
 assert(Math.abs(audio.musicStatus().find(t=>t.target>0).target-before*.22)<1e-8,'Announcements duck music by 13 dB');
 audio.cancelAnnouncement();audio.updateMusic({...drive,gameMusic:'g04a'});
 assert.equal(audio.musicStatus().find(t=>t.target>0).target,before,'Music restores after speech');
+const clip=level=>({getChannelData:()=>Float32Array.from({length:100},(_,i)=>i%2?level:-level)});
+assert(audio.announcementGain(clip(.05))>audio.announcementGain(clip(.3)),'Quiet voices are lifted towards the louder ones');
+assert(audio.announcementGain(clip(.3))*.3<=.9+1e-9,'Normalising never pushes a peak past full scale');
 console.log('23 soundtrack files, scene routing, overrides, stopping, looping and two-deck lifecycle passed.');

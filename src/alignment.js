@@ -96,6 +96,8 @@ export function selfCheck(){for(let s=0;s<=LENGTH;s+=2){const p=sample(s);if(!Ob
 
 // User-locked cross-section: a 40 m (1:12.3) taper into symmetric docking lanes.
 export const TAPER=40;
+// ST-5301 Section C: 300 mm platform, restored to drawing height on 7 October 2026.
+export const PLATFORM_RISE=0;
 export function roadSection(s){const c=toChainage(s);let right=3.8;
  // Dimensioned widened bends from GA-1101/1103/1107/1113/1115 and BW-1106.
  for(const [a,b,width] of [[95,200,9.5],[540,660,9.5],[1550,1700,8.5],[3500,3620,12],[4000,4200,9.5]])right=Math.max(right,3.8+(width/2-3.8)*clamp(Math.min((c-a+25)/25,(b+25-c)/25),0,1));
@@ -105,11 +107,20 @@ for(const st of STOPS){const d=Math.min(...st.platforms.map(p=>Math.abs(s-st.s-p
 export const END_STOP=LENGTH-14;
 
 export const CROSSINGS=STOPS.flatMap(st=>[-1,1].map(side=>({s:clamp(st.s+side*(st.footprintLength/2+st.stagger/2+TAPER+6),0,LENGTH),station:st.id}))).filter(c=>c.s>8&&!sample(c.s).elevated);
-export function footpathHeight(s){const station=Math.min(...CROSSINGS.map(c=>Math.abs(c.s-s))),junction=Math.min(...JUNCTIONS.flatMap(j=>[-1,1].map(d=>Math.abs(s-j.s-d*(j.halfWidth+10)))));return .02+.28*clamp(Math.min((station-1.5)/6,(junction-1.5)/2.5),0,1);}
+// Ordinary sandbox K1 kerbs are 150 mm; the station approach footway rises
+// to 300 mm over a 12 m ramp. Station platforms follow the drawing at approximately 300 mm.
+export function footpathHeight(s){
+ const distance=Math.min(...STOPS.map(st=>Math.abs(s-st.s)-st.footprintLength/2-st.stagger/2-10));
+ const nearStation=clamp(1-Math.max(0,distance)/12,0,1);
+ const nearJunction=clamp(1-Math.min(...JUNCTIONS.map(j=>Math.max(0,Math.abs(s-j.s)-j.halfWidth-6)))/8,0,1);
+ const normal=sample(s).elevated?.3:Math.max(.15+.15*nearStation,.15+.03*nearJunction);
+ const crossing=Math.min(...CROSSINGS.map(c=>Math.abs(c.s-s))),junction=Math.min(...JUNCTIONS.flatMap(j=>[-1,1].map(d=>Math.abs(s-j.s-d*(j.halfWidth+10)))));
+ return .02+(normal-.02)*clamp(Math.min((crossing-1.5)/3,(junction-1.5)/2.5),0,1);
+}
 // Height of the drawn junction pavement in its local frame (x across, z opposite chainage).
 export function junctionPavementHeight(j,x,z){const w=roadSection(j.s).right,h=j.halfWidth,ax=Math.abs(x),az=Math.abs(z),R=6;
- if(ax>w&&ax<w+R&&az>h&&az<h+R){const d=Math.hypot(ax-w-R,az-h-R);if(d>=R-3.75&&d<=R)return .3;}
- if(ax>=w+R&&ax<=j.extent&&az>=h&&az<=h+3.75){return Math.abs(x-Math.sign(x)*sideCrossing(j,Math.sign(x)))<=1.5?.025+.28*(az-h)/3.75:.3;}
+ if(!(j.c===2650&&x>0&&z<0)&&ax>w&&ax<w+R&&az>h&&az<h+R){const d=Math.hypot(ax-w-R,az-h-R);if(d>=R-3.75&&d<=R)return .18;}
+ if(ax>=w+R&&ax<=j.extent&&az>=h&&az<=h+3.75){const flare=clamp(1-(Math.abs(x-Math.sign(x)*sideCrossing(j,Math.sign(x)))-1.5)/1.8,0,1);return .18-.13*flare*(1-(az-h)/3.75);}
  return null;
 }
 

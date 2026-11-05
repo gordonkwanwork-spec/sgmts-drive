@@ -1,0 +1,239 @@
+{
+  "source": "S/HSK/2A Attachment II, local RNTPC Paper 3/26 appendix page 2; checked against Library Attachment II",
+  "scope": "D7 and western D8 access with an illustrative western connector. OZP guides road reserves; alignment is a sensible game layout, not detailed engineering. Existing ART/BRT corridor and junction counts retained.",
+  "pixelFrame": "public/lots/ozp-underlay.jpg, x right / y down; metadata metresPerPixel 1.27",
+  "roads": [
+    {
+      "id": "ozp-d7-west",
+      "name": "Road D7 \u00b7 west access",
+      "preset": "local",
+      "footway": "red",
+      "pts": [
+        [
+          228,
+          2403
+        ],
+        [
+          240,
+          2409
+        ],
+        [
+          275,
+          2419
+        ],
+        [
+          330,
+          2430
+        ],
+        [
+          387,
+          2440
+        ]
+      ],
+      "turningRadius": 20
+    },
+    {
+      "id": "ozp-d7-north",
+      "name": "Road D7 \u00b7 commercial access",
+      "preset": "local",
+      "footway": "grey",
+      "pts": [
+        [
+          330,
+          2430
+        ],
+        [
+          346,
+          2369
+        ],
+        [
+          367,
+          2306
+        ],
+        [
+          384,
+          2286
+        ],
+        [
+          403,
+          2280
+        ],
+        [
+          429,
+          2285
+        ],
+        [
+          454,
+          2295
+        ],
+        [
+          475,
+          2300
+        ]
+      ],
+      "turningRadius": 12
+    },
+    {
+      "id": "ozp-d7-south",
+      "name": "Road D7 \u00b7 community access",
+      "preset": "local",
+      "footway": "red",
+      "pts": [
+        [
+          305,
+          2425
+        ],
+        [
+          291,
+          2483
+        ],
+        [
+          287,
+          2529
+        ]
+      ],
+      "turningRadius": 12
+    },
+    {
+      "id": "ozp-d8-west",
+      "name": "Road D8 \u00b7 west access",
+      "preset": "local",
+      "footway": "red",
+      "pts": [
+        [
+          228,
+          2727
+        ],
+        [
+          240,
+          2733
+        ],
+        [
+          261,
+          2740
+        ],
+        [
+          300,
+          2746
+        ],
+        [
+          361,
+          2755
+        ],
+        [
+          414,
+          2762
+        ],
+        [
+          425,
+          2764
+        ]
+      ]
+    },
+    {
+      "id": "ozp-d8-community",
+      "name": "Road D8 \u00b7 community access",
+      "preset": "local",
+      "footway": "grey",
+      "pts": [
+        [
+          414,
+          2762
+        ],
+        [
+          404,
+          2785
+        ],
+        [
+          390,
+          2816
+        ],
+        [
+          375,
+          2830
+        ],
+        [
+          346,
+          2843
+        ],
+        [
+          310,
+          2851
+        ]
+      ],
+      "turningRadius": 12
+    },
+    {
+      "id": "hsk-west-connector",
+      "name": "Western neighbourhood connector \u00b7 illustrative",
+      "preset": "service",
+      "footway": "red",
+      "pts": [
+        [
+          240,
+          2409
+        ],
+        [
+          219,
+          2448
+        ],
+        [
+          202,
+          2500
+        ],
+        [
+          194,
+          2580
+        ],
+        [
+          197,
+          2640
+        ],
+        [
+          214,
+          2690
+        ],
+        [
+          240,
+          2733
+        ]
+      ],
+      "planningStatus": "Illustrative local access connector inside the western road reserve/buffer; not a claim of Kong Sham Western Highway detailed design."
+    }
+  ],
+  "controlRegions": [
+    {
+      "x": 200,
+      "y": 400,
+      "bestNativeOffset": [
+        0,
+        0
+      ]
+    },
+    {
+      "x": 400,
+      "y": 1400,
+      "bestNativeOffset": [
+        0,
+        0
+      ]
+    },
+    {
+      "x": 350,
+      "y": 2400,
+      "bestNativeOffset": [
+        0,
+        0
+      ]
+    },
+    {
+      "x": 500,
+      "y": 3000,
+      "bestNativeOffset": [
+        0,
+        0
+      ]
+    }
+  ],
+  "registration": "Native image strips stitched in PDF order then scaled 1.25; crop (1303,1107)-(2418,4384). Four 100px square regions searched +/-8px give zero offset at every region. Raster grayscale/contrast differs; this is internal image registration, not a survey georeference."
+}

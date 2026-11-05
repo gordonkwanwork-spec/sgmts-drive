@@ -1,0 +1,71 @@
+{
+  "source": "Verified original checkout before new streets",
+  "alignmentSha256": "f14aefb323fcd033900649c7ad636e312209378fb75939b9a5e6057025cc3ecd",
+  "shared": [
+    {
+      "c": 1660,
+      "name": "Crossing road",
+      "halfWidth": 3.8,
+      "s": 1698.6295985987888,
+      "offset": 0,
+      "stop": 17.8,
+      "extent": 110
+    },
+    {
+      "c": 2650,
+      "name": "Road D6",
+      "halfWidth": 7.3,
+      "s": 2702.2940226932897,
+      "offset": 7,
+      "stop": 21.3,
+      "extent": 110
+    },
+    {
+      "c": 3970,
+      "name": "Road D1",
+      "halfWidth": 9,
+      "s": 3966.2829996833243,
+      "offset": 14,
+      "stop": 23,
+      "extent": 110
+    }
+  ],
+  "gradeSeparated": [
+    {
+      "c": 355,
+      "name": "Road D8",
+      "halfWidth": 9,
+      "s": 380.35923196619257,
+      "extent": 150,
+      "offset": 0,
+      "stop": 14,
+      "underpass": true
+    },
+    {
+      "c": 3395,
+      "name": "Road D3",
+      "halfWidth": 10,
+      "s": 3410.7889854215096,
+      "extent": 150,
+      "offset": 0,
+      "stop": 14,
+      "underpass": true
+    },
+    {
+      "c": 4395,
+      "name": "Road D1",
+      "halfWidth": 10,
+      "s": 4388.580522106389,
+      "extent": 150,
+      "offset": 0,
+      "stop": 14,
+      "underpass": true
+    }
+  ],
+  "bridgeIds": [
+    "VB1",
+    "VB2",
+    "VB3"
+  ],
+  "excluded": "Existing depot access, terminal loops, pedestrian crossings and cycle structures are separate operational/access facilities; all remain unchanged."
+}

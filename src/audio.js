@@ -6,8 +6,8 @@ let ctx = null, master = null;
 let motorOsc = null, motorGain = null, motorOsc2 = null, humGain = null, whineOsc = null, whineFilter = null, whineGain = null, world = null;
 let rollSrc = null, rollFilter = null, rollGain = null;
 let indicatorTimer = null;
-let muted=false;
-let announcementSource=null,announcementActive=false,announcementGeneration=0;
+let muted=false,volume=1;
+let announcementSource=null,announcementActive=false,announcementGeneration=0,announcementDeadline=0;
 const announcementQueue=[];
 const announcementBuffers=new Map(),announcementLog=[];
 const music=[];
@@ -48,7 +48,7 @@ function ensure() {
       const gain=ctx.createGain();gain.gain.value=0;ctx.createMediaElementSource(element).connect(gain);gain.connect(master);
       music.push({element,gain,track:null,target:0,playingRequest:false,retireAt:0});
     }
-    master.gain.value=muted?0:.55;
+    master.gain.value=muted?0:.55*volume;
     return true;
   } catch { return false; }
 }
@@ -118,7 +118,7 @@ function buildWorld() {
   const artHum = ctx.createGain(); artHum.gain.value = 0; artHum.connect(master);
   const ao = ctx.createOscillator(); ao.frequency.value = 52; ao.connect(artHum); ao.start();
   const aw = ctx.createOscillator(); aw.type = 'square'; aw.frequency.value = 700; const awf = ctx.createBiquadFilter(); awf.type = 'bandpass'; awf.Q.value = 10; awf.frequency.value = 1500; const awg = ctx.createGain(); awg.gain.value = .12; aw.connect(awf); awf.connect(awg); awg.connect(artHum); aw.start();
-  return { voiceBed: voices, tyres, engine, artHum, nextStep: 0 };
+  return { voiceBed: voices, tyres, engine, artHum };
 }
 const nearness = (ds, range) => { let v = 0; for (const d of ds) if (d < range) v += (1 - d / range) ** 2; return Math.min(1, v); };
 export function updateWorldSound({ people = [], cars = [], trams = [] }, running = true) {
@@ -127,12 +127,6 @@ export function updateWorldSound({ people = [], cars = [], trams = [] }, running
   world.voiceBed.gain.setTargetAtTime(on * crowd * .012, t, .4);
   world.tyres.gain.setTargetAtTime(on * road * .08, t, .3); world.engine.gain.setTargetAtTime(on * road * .05, t, .3);
   world.artHum.gain.setTargetAtTime(on * art * .045, t, .3);
-  // Footsteps: short filtered ticks, denser with more people close by.
-  if (on && crowd > .05 && t > world.nextStep) {
-    const src = ctx.createBufferSource(); src.buffer = rollSrc.buffer; const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1400 + Math.random() * 900; f.Q.value = 2; const g = ctx.createGain();
-    g.gain.setValueAtTime(crowd * .07, t); g.gain.exponentialRampToValueAtTime(.0005, t + .06); src.connect(f); f.connect(g); g.connect(master); src.start(t, Math.random()); src.stop(t + .08);
-    world.nextStep = t + .12 + Math.random() * .5 / (.2 + crowd);
-  }
 }
 
 function beep(freq, dur = 0.12, type = 'sine', gain = 0.2, when = 0) {
@@ -216,21 +210,28 @@ export function thunder(delay=2) {
   s.connect(f); f.connect(g); g.connect(master); s.start(ctx.currentTime + delay);
 }
 
-export function setMuted(value) { muted=value;if(master) master.gain.setTargetAtTime(muted?0:.55,ctx.currentTime,.15); }
+export function setMuted(value) { muted=value;if(master) master.gain.setTargetAtTime(muted?0:.55*volume,ctx.currentTime,.15); }
+// Master volume 0‒1 (the settings slider); mute still wins.
+export function setVolume(value) { volume=Math.max(0,Math.min(1,value));if(master&&!muted) master.gain.setTargetAtTime(.55*volume,ctx.currentTime,.1); }
 
+// The three voices were recorded at very different levels (English is ~8 dB quieter): bring each clip to the same loudness, peaks permitting.
+export function announcementGain(buffer){const d=buffer.getChannelData(0);let sum=0,peak=0;for(let i=0;i<d.length;i++){const v=Math.abs(d[i]);sum+=v*v;if(v>peak)peak=v;}const rms=Math.sqrt(sum/Math.max(1,d.length));return rms&&peak?Math.min(4,.14/rms,.9/peak):1;}
 export function cancelAnnouncement(){announcementQueue.length=0;announcementGeneration++;announcementSource?.stop();announcementSource=null;announcementActive=false;}
 export function announcementStatus(){return {active:announcementActive,queued:[...announcementQueue],log:announcementLog.slice(-30)};}
 function finishAnnouncement(generation){if(generation!==announcementGeneration||!announcementActive)return;announcementSource=null;announcementActive=false;const next=announcementQueue.shift();if(next)announce(next);}
 export async function announce(key){
  if(!ensure()||!announcementManifest[key])return false;
+ // Watchdog: a clip that never reported its end (device change, throttled tab) must not silence every later announcement.
+ if(announcementActive&&performance.now()>announcementDeadline){announcementGeneration++;announcementSource?.stop();announcementSource=null;announcementActive=false;}
  if(announcementActive){if(!announcementQueue.includes(key))announcementQueue.push(key);return true;}
- announcementActive=true;const generation=announcementGeneration;
+ announcementActive=true;announcementDeadline=performance.now()+8000;const generation=announcementGeneration;
  try{
   // Decode and schedule all three clips on the same clock: no autoplay gap between languages.
   const clips=await Promise.all(announcementManifest[key].map(async clip=>{if(!announcementBuffers.has(clip.file))announcementBuffers.set(clip.file,fetch((import.meta.env?.BASE_URL||'/')+'audio/announcements/'+clip.file+'?v=audible-2').then(r=>{if(!r.ok)throw Error('Announcement unavailable');return r.arrayBuffer();}).then(b=>ctx.decodeAudioData(b)));return {clip,buffer:await announcementBuffers.get(clip.file)};}));
-  if(generation!==announcementGeneration)return false;if(ctx.state!=='running'){announcementActive=false;return false;}
+  if(generation!==announcementGeneration)return false;if(ctx.state==='suspended')await ctx.resume().catch(()=>{});if(generation!==announcementGeneration)return false;if(ctx.state!=='running'){announcementActive=false;return false;}
   let time=ctx.currentTime+.06;const sources=[];
-  for(const {clip,buffer} of clips){const source=ctx.createBufferSource(),gain=ctx.createGain();gain.gain.value=.95;source.buffer=buffer;source.connect(gain);gain.connect(master);source.start(time);sources.push(source);announcementLog.push({key,language:clip.language,start:time,duration:buffer.duration});time+=buffer.duration+.22;}
+  for(const {clip,buffer} of clips){const source=ctx.createBufferSource(),gain=ctx.createGain();gain.gain.value=announcementGain(buffer);source.buffer=buffer;source.connect(gain);gain.connect(master);source.start(time);sources.push(source);announcementLog.push({key,language:clip.language,start:time,duration:buffer.duration});time+=buffer.duration+.22;}
+  announcementDeadline=performance.now()+(time-ctx.currentTime)*1000+1500;
   announcementSource={stop(){for(const source of sources)try{source.stop();}catch{}}};
   sources.at(-1).onended=()=>finishAnnouncement(generation);return true;
  }catch(error){for(const clip of announcementManifest[key])announcementBuffers.delete(clip.file);console.warn('Announcement playback failed',key,error);if(generation===announcementGeneration)announcementActive=false;return false;}

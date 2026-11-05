@@ -327,6 +327,18 @@ def hood(name,centre,r,top,bottom,parent,seg=20,t=.01):
  return b.mesh(name,vs,fs,'signal_black',parent,True)
 
 
+def prism(name,pts,width,material,parent,bev=0,axis='x',at=0):
+ """Extrude a closed 2D outline: axis 'x' takes (y,z) points across X centred on at; axis 'z' takes (x,y) points of height width centred on at."""
+ n=len(pts);lo,hi=at-width/2,at+width/2
+ vs=[(c,a,bb) for c in (lo,hi) for a,bb in pts] if axis=='x' else [(a,bb,c) for c in (lo,hi) for a,bb in pts]
+ fs=[tuple(range(n))[::-1],tuple(range(n,2*n))]+[(i,(i+1)%n,n+(i+1)%n,n+i) for i in range(n)]
+ o=b.mesh(name,vs,fs,material,parent)
+ bpy.context.view_layer.objects.active=o;o.select_set(True);bpy.ops.object.mode_set(mode='EDIT');bpy.ops.mesh.select_all(action='SELECT');bpy.ops.mesh.normals_make_consistent(inside=False);bpy.ops.object.mode_set(mode='OBJECT')
+ if bev:mod=o.modifiers.new('Rounded','BEVEL');mod.width=bev;mod.segments=3;mod.limit_method='ANGLE';bpy.ops.object.modifier_apply(modifier=mod.name)
+ bpy.ops.object.shade_smooth_by_angle(angle=math.radians(40))
+ o.select_set(False);return o
+
+
 def traffic_signals():
  """HK junction signal after the Wan Chai site photo: grey Ø114 pole with domed cap, a black 300 mm aspect head clamped
  beside it on two brackets (tunnel hoods, cable looping from the pole top). Vehicle: red/amber/green; pedestrian: red man
@@ -348,9 +360,35 @@ def traffic_signals():
    b.box('Bracket plate',(x0,y0-.01,z),(.14,.02,.09),'signal_grey',p)
   b.tube('Signal cable',[(-.035,-.045,3.6),(-.02,-.07,3.35),(.03,-.09,3.15),(x0-.1,-.13,zt-.02),(x0-.02,-.12,zt-.01),(x0,y0+.04,zt+.005)],.009,'rubber',p,6)
   if kind=='pedestrian':
+   # Yellow audible/tactile push-button unit (photos 1–2), faces the waiting pedestrian (−Y). Side profiles (depth off the
+   # pole face, height) are extruded across X and edge-rounded: a hooded top cap over a seam, then a lower body whose
+   # front bulges out and curls back to the backplate. The label strip follows the bulge; furniture.js paints it.
+   yb=-.06;b.box('Push button backplate',(0,yb-.012,1.18),(.12,.024,.46),'signal_grey',p,.01)
+   cap=[(0,1.41),(.05,1.41),(.085,1.395),(.105,1.36),(.115,1.31),(.118,1.262),(0,1.262)]
+   body=[(0,1.255),(.122,1.255),(.13,1.21),(.133,1.15),(.13,1.09),(.12,1.04),(.1,1.0),(.07,.975),(.035,.965),(0,.962)]
+   prism('Push button cap',[(yb-d,h) for d,h in cap],.125,'signal_yellow',p,.012)
+   prism('Push button body',[(yb-d,h) for d,h in body],.13,'signal_yellow',p,.014)
+   b.box('Push button seam',(0,yb-.058,1.258),(.118,.112,.004),'signal_seal',p)
+   front=[(d,h) for d,h in body[1:7]];w=.1;vs=[];fs=[];uvs=[]
+   for i,(d,h) in enumerate(front):
+    vs+=[(x,yb-d-.0015,h) for x in (-w/2,w/2)];uvs+=[(0,1-i/(len(front)-1)),(1,1-i/(len(front)-1))]
+    if i:fs.append((2*i-2,2*i,2*i+1,2*i-1))
+   lab=b.mesh('Push button label',vs,fs,'signal_label',p,True);uv=lab.data.uv_layers.new(name='UVMap')
+   for l in lab.data.loops:uv.data[l.index].uv=uvs[l.vertex_index]
+   b.box('Tactile arrow',(0,yb-.06,.958),(.018,.07,.008),'signal_black',p)
+   # Black audible-signal speaker below the head (photo 3): plan profile with a big rounded front, extruded upright,
+   # lipped top and bottom, vertical slots wrapping the front and the rounded corner.
+   sz,sh=1.95,.3;R=.07;plan=[(-.06,.06),(.16,.06),(.16,.15)]+[(.16-R+R*math.cos(t*math.pi/2/6),.15+R*math.sin(t*math.pi/2/6)) for t in range(1,7)]+[(-.06,.22)]
+   prism('Speaker box',plan,sh,'signal_black',p,.012,axis='z',at=sz)
+   for dz in (-1,1):prism('Speaker lip',[(x*1.04+(0 if x<0 else .004),y+(.004 if y>.1 else 0)) for x,y in plan],.02,'signal_black',p,.006,axis='z',at=sz+dz*(sh/2-.01))
+   b.box('Speaker bracket',(0,.05,sz),(.06,.03,.12),'signal_grey',p)
+   for x in [-.04+i*.019 for i in range(9)]:
+    if x<=.16-R:y=.221
+    else:t=math.acos(min(1,(x-.16+R)/R));y=.15+R*math.sin(t)+.001
+    b.box('Speaker slot',(x,y,sz+.01),(.008,.004,.2),'signal_seal',p)
    head=b.empty('signal_pedestrian_head')
    for obj in list(p.children):
-    if obj.name.startswith('Signal pole'):continue
+    if obj.name.startswith(('Signal pole','Push button','Tactile','Speaker')):continue  # pole-mounted, stay on the pedestrian pole
     copy=obj.copy();copy.data=obj.data.copy() if obj.data else None;bpy.context.collection.objects.link(copy);copy.parent=head
    b.merge_static(head)
   b.merge_static(p)
@@ -378,6 +416,59 @@ def tree_supports():
  b.merge_static(g)
 
 
+def panel(name,c,n,w,z0,z1,material,parent):
+ """Upright UV'd quad facing outward along n (±X or ±Y); u runs left→right as seen from outside, v bottom→top."""
+ r=Vector(n).cross(Vector((0,0,1)))*-1;c=Vector(c)
+ vs=[tuple(c+r*s*w/2+Vector((0,0,z))) for s,z in ((-1,z0),(1,z0),(1,z1),(-1,z1))]
+ o=b.mesh(name,vs,[(0,1,2,3)],material,parent);uv=o.data.uv_layers.new(name='UVMap')
+ for l in o.data.loops:uv.data[l.index].uv=((0,0),(1,0),(1,1),(0,1))[l.vertex_index]
+ return o
+
+
+def signal_cabinets():
+ """Roadside signal cabinets after the Victoria Road / waterfront site photos; front (doors) faces +Y.
+ cabinet_controller: stainless two-leaf controller (PL 8178) — overhanging lid, dark recessed base, viewing window and
+ louvres on each leaf, twin padlocks at the meeting stiles, PL number plate (furniture.js paints it), side sight-holes.
+ cabinet_td: narrow Transport Department cabinet on a concrete plinth, galvanised lid, wrapped in purple road-safety
+ vinyl; td_wrap_front/back/side faces are UV'd so furniture.js can paint the artwork."""
+ p=b.empty('cabinet_controller');W,D,H=1.25,.42,1.22;F=D/2
+ box('Cabinet base',(0,0,.07),(W-.05,D-.05,.14),'cabinet_shadow',p)
+ box('Cabinet body',(0,0,.14+(H-.14)/2),(W,D,H-.14),'stainless',p,.006)
+ box('Cabinet lid',(0,.005,H+.02),(W+.06,D+.07,.04),'stainless',p,.008)
+ box('Lid shadow gap',(0,.005,H-.002),(W+.02,D+.03,.006),'cabinet_shadow',p)
+ for x0,x1 in ((-.59,-.032),(-.012,.59)):  # +Y front: viewer's left is +X
+  box('Door shadow gap',((x0+x1)/2,F+.003,.69),(x1-x0+.012,.006,.98),'cabinet_shadow',p)
+  box('Door leaf',((x0+x1)/2,F+.014,.69),(x1-x0,.018,.96),'stainless',p,.004)
+ Y=F+.024
+ box('Window frame',(.37,Y,1.0),(.2,.006,.27),'cabinet_shadow',p);box('Window glass',(.37,Y+.002,1.0),(.17,.006,.24),'cabinet_glass',p)
+ box('Sight window',(-.54,Y,1.12),(.05,.006,.07),'cabinet_glass',p)
+ for x,z,w in ((.27,.42,.26),(-.33,.6,.22)):
+  box('Louvre throat',(x,Y,z),(w,.004,.2),'cabinet_shadow',p)
+  for k in range(6):box('Louvre blade',(x,Y+.008,z-.085+k*.034),(w-.01,.016,.012),'stainless',p)
+ for x in (.015,-.06):
+  box('Padlock body',(x,Y+.018,.66),(.04,.018,.05),'padlock',p,.004)
+  b.tube('Padlock shackle',[(x-.012,Y+.018,.68),(x-.012,Y+.018,.71),(x,Y+.018,.722),(x+.012,Y+.018,.71),(x+.012,Y+.018,.68)],.004,'padlock',p,6)
+  box('Hasp',(x,Y+.004,.70),(.018,.01,.06),'stainless',p)
+ panel('PL plate',(-.3,Y+.001,0),(0,1,0),.22,.95,1.02,'cabinet_plate',p)
+ box('Warning label',(-.27,Y+.001,1.15),(.08,.003,.03),'cabinet_label',p)
+ for x in (-.035,.035):
+  for z in (.3,.62,.96):box('Hinge pin hole',(x,Y,z),(.012,.004,.012),'cabinet_shadow',p)
+ for s in (-1,1):box('Side sight hole',(s*(W/2+.001),.1,1.1),(.004,.06,.06),'cabinet_glass',p)
+ b.merge_static(p)
+ q=b.empty('cabinet_td');w,d,h,z0=.62,.36,1.18,.36
+ box('TD plinth',(0,0,z0/2),(.88,.64,z0),'concrete',q,.02)
+ box('TD body',(0,0,z0+h/2),(w,d,h),'galvanised',q,.004)
+ box('TD lid',(0,0,z0+h+.02),(w+.04,d+.04,.04),'galvanised',q,.006)
+ lo,hi=z0+.02,z0+h-.05
+ panel('TD wrap',(0,d/2+.002,0),(0,1,0),w-.03,lo,hi,'td_wrap_front',q)
+ panel('TD wrap',(0,-d/2-.002,0),(0,-1,0),w-.03,lo,hi,'td_wrap_back',q)
+ for s in (-1,1):panel('TD wrap',(s*(w/2+.002),0,0),(s,0,0),d-.03,lo,hi,'td_wrap_side',q)
+ box('TD hinge strip',(w/2-.006,d/2+.004,z0+h/2),(.012,.006,h-.04),'galvanised',q)
+ box('TD door latch',(0,d/2+.008,hi+.02),(.09,.012,.035),'galvanised',q)
+ box('TD side plate',(w/2+.004,-.05,hi-.08),(.006,.14,.09),'galvanised',q)
+ b.merge_static(q)
+
+
 if '--people' in sys.argv or '--furniture' in sys.argv:
  # Fast path: rebuild only the pedestrians inside the existing kit.
  bpy.ops.wm.open_mainfile(filepath=str(b.BLEND/'street-kit.blend'));b.M.update({m.name:m for m in bpy.data.materials})
@@ -391,10 +482,12 @@ for name,c in {'car':(.16,.35,.42),'taxi':(.65,.035,.025),'van':(.76,.77,.70),'t
 b.M['silver']=b.mat('silver',(.55,.56,.52))
 for n,c,metal,rough in [('bin_orange',(.93,.30,.035),0,.38),('bin_bag',(.05,.05,.06),0,.5),('ash',(.13,.12,.1),0,.95),('bin_sticker_top',(.62,.78,.2),0,.6),('bin_sticker_low',(.62,.78,.2),0,.6),
  ('galvanised',(.6,.63,.62),.6,.42),('cast_iron',(.12,.12,.11),.5,.7),('sump',(.012,.012,.012),0,1),('boxout',(.36,.36,.34),0,.95),('kerb',(.52,.52,.49),0,.9),
- ('signal_grey',(.30,.33,.33),.35,.5),('signal_black',(.016,.018,.018),0,.45),('signal_seal',(.05,.055,.055),0,.7),
- ('bamboo',(.47,.39,.24),0,.75),('bamboo_node',(.36,.29,.17),0,.8),('rope',(.33,.26,.17),0,.95),('guard_green',(.06,.33,.22),.3,.5),('granite',(.42,.42,.41),0,.85),('soil',(.2,.15,.1),0,1)]+[(n,(.03,.03,.03),0,.2) for n in ('signal_red','signal_amber','signal_green','signal_ped_stop','signal_ped_go')]:
+ ('signal_grey',(.30,.33,.33),.35,.5),('signal_black',(.016,.018,.018),0,.45),('signal_seal',(.05,.055,.055),0,.7),('signal_yellow',(.85,.55,.02),0,.35),('signal_label',(.75,.47,.02),0,.6),
+ ('bamboo',(.47,.39,.24),0,.75),('bamboo_node',(.36,.29,.17),0,.8),('rope',(.33,.26,.17),0,.95),('guard_green',(.06,.33,.22),.3,.5),('granite',(.42,.42,.41),0,.85),('soil',(.2,.15,.1),0,1),
+ ('stainless',(.62,.63,.62),.75,.32),('cabinet_shadow',(.03,.03,.03),0,.9),('cabinet_glass',(.02,.025,.025),0,.12),('padlock',(.45,.46,.45),.8,.3),('cabinet_plate',(.85,.84,.78),0,.5),('cabinet_label',(.7,.12,.08),0,.5),('concrete',(.5,.49,.46),0,.95),
+ ('td_wrap_front',(.24,.13,.55),0,.5),('td_wrap_back',(.24,.13,.55),0,.5),('td_wrap_side',(.24,.13,.55),0,.5)]+[(n,(.03,.03,.03),0,.2) for n in ('signal_red','signal_amber','signal_green','signal_ped_stop','signal_ped_go')]:
  b.M[n]=bpy.data.materials.get(n) or b.mat(n,c,metal,rough)
- if n.startswith(('signal_','bamboo','rope','guard_','granite','soil')):  # furniture fast path: keep colours in step with this list
+ if n.startswith(('signal_','bamboo','rope','guard_','granite','soil','stainless','cabinet_','padlock','concrete','td_wrap_')):  # furniture fast path: keep colours in step with this list
   bsdf=b.M[n].node_tree.nodes['Principled BSDF'];bsdf.inputs['Base Color'].default_value=(*c,1);bsdf.inputs['Metallic'].default_value=metal;bsdf.inputs['Roughness'].default_value=rough;b.M[n].diffuse_color=(*c,1)
 b.M['branch']=b.mat('branch',(.18,.12,.06))
 b.M['flower']=b.mat('flower',(.76,.19,.42))
@@ -406,9 +499,9 @@ if '--furniture' not in sys.argv or '--people' in sys.argv:
 if '--people' in sys.argv or '--furniture' in sys.argv:
  if '--people' in sys.argv:cyclist()
  if '--furniture' in sys.argv:
-  for root in [o for o in bpy.data.objects if o.parent is None and o.name.split('.')[0] in ('litter_bin','railing_type2','railing_type2_end','railing_crossing','railing_crossing_end','railing_post','gully_grating','kerb_weir','signal_vehicle','signal_pedestrian','signal_pedestrian_head','tree_stakes','tree_guard')]:
+  for root in [o for o in bpy.data.objects if o.parent is None and o.name.split('.')[0] in ('litter_bin','railing_type2','railing_type2_end','railing_crossing','railing_crossing_end','railing_post','gully_grating','kerb_weir','signal_vehicle','signal_pedestrian','signal_pedestrian_head','tree_stakes','tree_guard','cabinet_controller','cabinet_td')]:
    for o in [root,*root.children_recursive]:bpy.data.objects.remove(o,do_unlink=True)
-  litter_bin();railings();gully();traffic_signals();tree_supports()
+  litter_bin();railings();gully();traffic_signals();tree_supports();signal_cabinets()
  b.save('street-kit');sys.exit(0)
 vegetation()
 from build_vegetation_lod import add_vegetation_lods
@@ -416,5 +509,5 @@ add_vegetation_lods()
 cyclist()
 for args in [('car',1.8,4.2,1.6),('taxi',1.8,4.7,1.65),('van',2,5.5,2.5),('truck',2.4,8.5,3.2),('bus',2.5,11,3.5)]:traffic(*args)
 for args in [('residential',10),('tech',6),('village',2),('logistics',1)]:building(*args)
-litter_bin();railings();gully();traffic_signals();tree_supports()
+litter_bin();railings();gully();traffic_signals();tree_supports();signal_cabinets()
 b.save('street-kit')

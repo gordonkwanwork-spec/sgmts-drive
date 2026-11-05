@@ -5,8 +5,9 @@
 import {sample,LENGTH,toChainage,fromChainage,roadSection,footpathHeight,JUNCTIONS,UNDERPASSES,sideCrossing,L35,l35Offset,l35Ground,D1ROAD,LOOP,cycleSample,cycleBridgeHeight,project,CYCLE_WIDTH} from '../alignment.js';
 import {l35BendCurve,depotCurve} from '../routes.js';
 import {CV_ROAD,CV_ROAD_WIDTH} from '../depot.js';
+import {presetOf,frames as networkFrames,frameAt,junctions as networkJunctions,streetLevel,Y as NET_Y} from './network.js';
 
-const FOOTPATH=3.75,RAISED=.3;
+const FOOTPATH=3.75,RAISED=.18;
 const frameOf=(x,y,z,tx,tz,groundY=y)=>{const n=Math.hypot(tx,tz)||1;tx/=n;tz/=n;return {x,y,z,groundY,tx,tz,lx:tz,lz:-tx,heading:Math.atan2(-tx,-tz)};};
 const flatSurface=(yAt,half)=>(p,lat)=>yAt(p)+(Math.abs(lat)>half(p)&&Math.abs(lat)<=half(p)+FOOTPATH?RAISED:0);
 const same=x=>x;
@@ -20,12 +21,12 @@ const cycleway={id:'cycleway',name:'Cycle track',p0:0,p1:LENGTH,toCh:toChainage,
 const L35_BEND=fromChainage(3310);
 const l35={id:'L35',name:'Road L35',p0:L35.start,p1:L35_BEND,toCh:toChainage,toParam:fromChainage,
  frame(s){const r=sample(s),o=-l35Offset(s),y=l35Ground(s);return {...r,x:r.x+r.lx*o,z:r.z+r.lz*o,y,groundY:y};},
- kerb:()=>L35.width/2,surface:flatSurface(l35Ground,()=>L35.width/2)};
+ kerb:()=>L35.width/2,surface:(s,lat)=>l35Ground(s)+(Math.abs(lat)>L35.width/2&&Math.abs(lat)<=L35.width/2+FOOTPATH?.03+footpathHeight(s):.03)};
 // Crossing roads run straight through each junction/underpass centre along the corridor's lateral axis.
 const crossings=[...JUNCTIONS,...UNDERPASSES].map(j=>{const r=sample(j.s),y0=j.underpass?r.groundY:r.y;
  return {id:(j.underpass?'U':'J')+j.c,name:`${j.name} ${j.underpass?'underpass':'junction'} (Ch ${j.c})`,p0:-j.extent,p1:j.extent,toCh:p=>p+j.extent,toParam:ch=>ch-j.extent,
   frame:d=>frameOf(r.x+r.lx*d,y0,r.z+r.lz*d,r.lx,r.lz),kerb:()=>j.halfWidth,
-  surface:(d,lat)=>y0+(j.underpass?0:r.grade*lat)+(Math.abs(lat)>j.halfWidth&&Math.abs(lat)<=j.halfWidth+FOOTPATH?RAISED:0)};});
+  surface:(d,lat)=>y0+(j.underpass?0:-r.grade*lat)+(Math.abs(lat)>j.halfWidth&&Math.abs(lat)<=j.halfWidth+FOOTPATH?RAISED:.03)};});
 // Tangents blend between vertices so every nearby point has a unique perpendicular foot (no gaps at the corners).
 function polylineRoad(id,name,pts,half){const run=[0];for(let i=1;i<pts.length;i++)run.push(run[i-1]+Math.hypot(pts[i].x-pts[i-1].x,pts[i].z-pts[i-1].z));
  const tan=pts.map((_,i)=>{const a=pts[Math.max(0,i-1)],b=pts[Math.min(pts.length-1,i+1)],n=Math.hypot(b.x-a.x,b.z-a.z)||1;return {x:(b.x-a.x)/n,z:(b.z-a.z)/n};});
@@ -55,8 +56,18 @@ export function poseAt(item,param){const road=ROAD[item.road],p=clampP(road,para
 const tables=new Map();
 function table(road){if(!tables.has(road.id)){const n=Math.max(8,Math.ceil((road.p1-road.p0)/2)),t=[];for(let i=0;i<=n;i++){const p=road.p0+(road.p1-road.p0)*i/n,f=road.frame(p);t.push({p,x:f.x,z:f.z});}tables.set(road.id,t);}return tables.get(road.id);}
 export function nearest(road,x,z,guess){let p=guess;if(p==null){let best=Infinity;for(const q of table(road)){const d=(q.x-x)**2+(q.z-z)**2;if(d<best){best=d;p=q.p;}}}
- for(let i=0;i<6;i++){const f=road.frame(p),step=(x-f.x)*f.tx+(z-f.z)*f.tz;p=clampP(road,p+step);if(Math.abs(step)<1e-5)break;}
+ // Converges by the ratio lateral/radius per step: points deep inside a tight curve (the A1 island) need more than a few.
+ for(let i=0;i<40;i++){const f=road.frame(p),step=(x-f.x)*f.tx+(z-f.z)*f.tz;p=clampP(road,p+step);if(Math.abs(step)<1e-5)break;}
  const f=road.frame(p),lat=(x-f.x)*f.lx+(z-f.z)*f.lz,along=(x-f.x)*f.tx+(z-f.z)*f.tz;return {road,p,f,lat,dist:Math.hypot(lat,along)};}
+// Drawn roads (street/network.js) join the registry so furniture places on them like any game road: chainage = metres from the
+// first point, kerb = carriageway edge (centreline for a footpath-only route). Call again after every edit.
+const netIds=new Set();
+export function setNetwork(network,ground){
+ for(const id of netIds){delete ROAD[id];const i=ROADS.findIndex(r=>r.id===id);if(i>=0)ROADS.splice(i,1);tables.delete(id);}netIds.clear();
+ for(const {r,P,F} of networkJunctions(network,ground).roads){if(F.length<2)continue;const h=P.carriageway/2,at=d=>frameAt(F,d);
+  const entry={id:r.id,name:r.name||`${P.short} ${r.id}`,drawn:true,p0:0,p1:F.at(-1).d,toCh:same,toParam:same,frame:d=>{const f=at(d);return frameOf(f.x,f.y,f.z,f.tx,f.tz);},kerb:()=>h,
+   surface:(d,lat)=>{const a=Math.abs(lat);const f=at(d);return f.y+(f.crossSlope||0)*lat+(a<=h&&P.median&&a<=P.median/2?NET_Y.raised:a<=h+P.footpath?streetLevel(r,d,lat):0);}};
+  ROADS.push(entry);ROAD[r.id]=entry;netIds.add(r.id);}}
 // Road, chainage and lateral offset nearest to a world point; roadId locks the search to one road.
 export function locate(x,z,roadId){let best=null;for(const road of roadId?[ROAD[roadId]]:ROADS){const n=nearest(road,x,z);if(Math.abs(n.lat)>60&&!roadId)continue;if(!best||n.dist<best.dist)best=n;}return best&&{...best,ch:best.road.toCh(best.p)};}
 

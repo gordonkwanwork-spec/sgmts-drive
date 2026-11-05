@@ -15,8 +15,8 @@ for(const st of STOPS){
   const platforms=manifest.stations.find(m=>m.id===st.id).platforms;
   const g=stationAdvertGeometry(st,platforms,s=>sample(s).y);
   const p=g.attributes.position,n=g.attributes.normal,uv=g.attributes.uv;
-  assert.equal(p.count,52*4,'26 framed adverts per platform');
-  assert.equal(g.index.count,52*6);
+  assert.equal(p.count,20*4,'10 framed adverts per platform');
+  assert.equal(g.index.count,20*6);
   assert.equal(new Set(g.groups.map(g=>g.materialIndex)).size,7,'Each station mixes all seven campaigns');
   for(let k=1;k<g.groups.length;k++)assert.notEqual(g.groups[k].materialIndex,g.groups[k-1].materialIndex,'Adjacent posters differ');
   for(let i=0;i<p.count;i+=4){
@@ -24,7 +24,7 @@ for(const st of STOPS){
     assert(p.getY(i+2)>p.getY(i),'Artwork stays upright');
     assert.deepEqual([uv.getX(i),uv.getY(i),uv.getX(i+2),uv.getY(i+2)],[0,0,1,1]);
     for(let k=0;k<4;k++)assert(Number.isFinite(p.getY(i+k)));
-    const platform=platforms[i<26*4?0:1],along=-p.getZ(i)+platform.offsetZ;
+    const platform=platforms[i<10*4?0:1],along=-p.getZ(i)+platform.offsetZ;
     const expected=platform.side*(7.05+platform.width-.39+(platform.bent?Math.max(0,-along-25)*.42:0));
     assert(Math.abs(p.getX(i)-expected)<1e-5,'Frames follow station stagger and flare');
   }
@@ -57,7 +57,7 @@ for(const st of STOPS){
   }
 
 }
-console.log('Seven unique campaigns; 364 upright platform adverts with inward faces, stagger and flare passed');
+console.log('Seven unique campaigns; 140 upright platform adverts with inward faces, stagger and flare passed');
 console.log('Seven rooftop campaigns: fourteen framed boards, twenty-eight readable faces, canopy clearance and stagger passed');
 
 for(const id of BUILDING_ADVERTS){

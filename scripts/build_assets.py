@@ -168,7 +168,7 @@ def exterior(p,idx):
  merge_static(w)
 
 # ---- Saloon, cab and doors (29 Sep 2026 rebuild after the CRRC ART cab and saloon photographs) ----
-FLOOR=.63;CAB_FLOOR=.90;CAB_Y=2.15;PODIUM=.99;WHEELS=[-3.0,3.0];DOOR_HALF=.535
+FLOOR=.63;RISE=0;CAB_FLOOR=.90;CAB_Y=2.15;PODIUM=.99;WHEELS=[-3.0,3.0];DOOR_HALF=.535
 EYE=(0,2.84,2.13);CONSOLE_P=(0,3.0)
 # Inner lining half-profile (x,z): floor, window sill 1.20, window head 2.50, door head 2.60, cove to the LED strip.
 IP=[(1.20,.63),(1.215,.92),(1.22,1.20),(1.21,1.60),(1.195,2.05),(1.18,2.50),(1.17,2.60),(1.13,2.74),(1.04,2.86),(.93,2.94)]
@@ -606,7 +606,8 @@ def vehicle():
 def platform(id,side,width,offset,length=89.6,bent=False):
  p=empty(f'{id}_platform_{side}',(0,offset,0));edge=7.05
  # Bent A1 wing follows its dimensioned GA break; extension coordinate is measured approximation.
- def pt(x,y,z):return (side*(x+(max(0,-y-25)*.42 if bent else 0)),y,z)
+ # ST-5301 Section C: 300 mm platform; user restored the drawing height on 7 October 2026.
+ def pt(x,y,z):return (side*(x+(max(0,-y-25)*.42 if bent else 0)),y,z+RISE)
  def b(n,x,y,z,sx,sy,sz,m,bev=0):
   if bev:o=box(n,(x,y,z),(sx,sy,sz),m,p,bev)
   else:
@@ -618,15 +619,29 @@ def platform(id,side,width,offset,length=89.6,bent=False):
   return o
  for y in range(-42,42,2):
   low=max(y,-41.8);high=min(y+2,41.8);mid=(low+high)/2;span=high-low
-  mesh('Platform slab',[pt(x,yy,z) for z in [0,.3] for yy in [low,high] for x in [edge,edge+width]],[(0,2,3,1),(4,5,7,6),(0,1,5,4),(2,6,7,3),(0,4,6,2),(1,3,7,5)],'concrete',p) if bent else b('Platform slab',edge+width/2,mid,.15,width,span,.3,'concrete')
+  mesh('Platform slab',[pt(x,yy,z) for z in [-RISE,.3] for yy in [low,high] for x in [edge+.125,edge+width]],[(0,2,3,1),(4,5,7,6),(0,1,5,4),(2,6,7,3),(0,4,6,2),(1,3,7,5)],'concrete',p) if bent else b('Platform slab',edge+(width+.125)/2,mid,(.3-RISE)/2,width-.125,span,.3+RISE,'concrete')
   for lane in range(int(width*2)):
-   b('Paver course',edge+.25+lane*.5,mid,.306,.485,span-.015,.018,'tile')
+   # Station-colour feature paving between the end portal and the fare gates, as rendered.
+   feature=abs(mid)>=38 and lane>1 and (lane+int(mid//2))%2==0
+   b('Paver course',edge+(.3125 if lane==0 else .25+lane*.5),mid,.306,.36 if lane==0 else .485,span-.015,.018,'paving_accent' if feature else 'tile')
   b('Tactile warning',edge+.38,mid,.329,.4,span-.015,.026,'yellow')
   for rail in [-.12,0,.12]:b('Tactile rib',edge+.38+rail,mid,.348,.025,span-.02,.017,'yellow')
  # 3m end ramps, total overall 89.6m with central 83.6m flat deck.
  for end in [-1,1]:
-  y0=end*41.8;y1=end*44.8;x0=edge;x1=edge+width
+  y0=end*41.8;y1=end*44.8;x0=edge+.125;x1=edge+width
   mesh('Access ramp',[pt(x0,y0,.315),pt(x1,y0,.315),pt(x1,y1,.30),pt(x0,y1,.30)],[(0,1,2,3)],'tile',p)
+ # Same rounded K1 section as the street builder, with a taller buried stem.
+ profile=json.loads((ROOT/'scripts/k1-profile.json').read_text());n=len(profile)
+ for i in range(90):
+  a=-44.8+i;b0=min(a+.992,44.8)
+  if a>=44.8:break
+  for lo,hi,material in [(a,b0,'station_kerb'),(b0,min(a+1,44.8),'tile_dark')]:
+   verts=[]
+   for yy in [lo,hi]:
+    top=.315-.015*max(0,(abs(yy)-41.8)/3)
+    for d,z in profile:verts.append(pt(edge+d,yy,-.1 if z==-.25 else top+z-(.003 if material=='tile_dark' else 0)))
+   faces=[(k,(k+1)%n,(k+1)%n+n,k+n) for k in range(n)]+[tuple(reversed(range(n))),tuple(range(n,2*n))]
+   mesh('K1 platform kerb' if material=='station_kerb' else 'K1 recessed joint',verts,faces,material,p)
  # One closed wall/haunch/roof profile per bay, including fascia and end caps.
  # The closest roof point is 500 mm behind the curb, including the bent A1 wing.
  back=edge+width-.15;front=edge+.5
@@ -635,7 +650,8 @@ def platform(id,side,width,offset,length=89.6,bent=False):
   a=j*math.pi/24
   curve.append((back-.6+.6*math.cos(a),2.45+.6*math.sin(a)))
  curve.append((front,3.27))
- outer=[]
+ # Mitred unit offsets per profile point; the 200 mm shell and the chunkier portal both grow along them.
+ miters=[]
  for i,(x,z) in enumerate(curve):
   normals=[]
   for j in [i-1,i]:
@@ -643,57 +659,95 @@ def platform(id,side,width,offset,length=89.6,bent=False):
     dx=curve[j+1][0]-curve[j][0];dz=curve[j+1][1]-curve[j][1];n=math.hypot(dx,dz)
     normals.append(Vector((dz/n,-dx/n)))
   normal=sum(normals,Vector((0,0))).normalized()
-  shell_offset=normal*(.2/normal.dot(normals[0]))
-  outer.append((x+shell_offset.x,z+shell_offset.y))
- outer[-1]=(front,3.47)
- profile=curve+outer[::-1];count=len(profile)
- def shell(name,y0,y1,material,rib=False):
-  section=[(x-(.035 if rib and i<len(curve)-1 else 0),z) for i,(x,z) in enumerate(profile)]
+  miters.append(normal/normal.dot(normals[0]))
+ def section(inset=0,outset=0,roof_only=False):
+  # Front tip stays on x=front so every variant keeps the 500 mm curb setback.
+  inner=[(x-m.x*inset,z-m.y*inset) for (x,z),m in zip(curve,miters)];inner[-1]=(front,3.27-inset)
+  outer=[(x+m.x*(.2+outset),z+m.y*(.2+outset)) for (x,z),m in zip(curve,miters)];outer[-1]=(front,3.47+outset)
+  c0=1 if roof_only else 0
+  return inner[c0:]+outer[c0:][::-1],len(curve)-c0
+ def shell(name,y0,y1,material,rib=False,inset=0,outset=0,roof_only=False):
+  profile,L=section(inset,outset,roof_only);count=len(profile)
+  if rib:profile=[(x-(.035 if i<L-1 else 0),z) for i,(x,z) in enumerate(profile)]
   rows=[y0]+([-25] if bent and y0 < -25 < y1 else [])+[y1]
-  vs=[pt(x,y,z) for y in rows for x,z in section]
+  vs=[pt(x,y,z) for y in rows for x,z in profile]
   faces=[(r*count+i,r*count+(i+1)%count,(r+1)*count+(i+1)%count,(r+1)*count+i) for r in range(len(rows)-1) for i in range(count)]
   faces.extend([tuple(reversed(range(count))),tuple(range((len(rows)-1)*count,len(rows)*count))])
   o=mesh(name,vs,faces,material,p)
   if material!='accent':
    o.data.materials.append(M['accent'])
-   for r in range(len(rows)-1):o.data.polygons[r*count+len(curve)-1].material_index=1
+   for r in range(len(rows)-1):o.data.polygons[r*count+L-1].material_index=1
   bm=bmesh.new();bm.from_mesh(o.data);bmesh.ops.recalc_face_normals(bm,faces=list(bm.faces))
   assert all(e.is_manifold for e in bm.edges),name+' must be closed'
   bm.to_mesh(o.data);bm.free()
-  # Smooth only the rounded haunch; keep the soffit, fascia and end caps planar.
+  # Smooth only the rounded haunch; keep the wall, soffit, fascia and end caps planar.
+  s=0 if roof_only else 1
   for i,f in enumerate(o.data.polygons):
-   k=i%count;f.use_smooth=i<len(faces)-2 and (1<=k<len(curve)-2 or count-len(curve)+1<=k<count-2)
+   k=i%count;f.use_smooth=i<len(faces)-2 and (s<=k<L-2 or L+1<=k<count-1-s)
   return o
+ def board(n,y,z,w,h,m):
+  # Vertical textured quad on the back wall; u reads left-to-right from the platform.
+  x=back-.17;o=mesh(n,[pt(x,y+side*w/2,z-h/2),pt(x,y-side*w/2,z-h/2),pt(x,y-side*w/2,z+h/2),pt(x,y+side*w/2,z+h/2)],[(0,1,2,3)],m,p)
+  if o.data.polygons[0].normal.x*side>0:o.data.flip_normals()
+  uv=o.data.uv_layers.new(name='UVMap')
+  for loop in o.data.loops:uv.data[loop.index].uv=[(0,0),(1,0),(1,1),(0,1)][loop.vertex_index]
+  return o
+ # Rendered rhythm (2025-09 Enscape set): closed end bay with name and ticket machines, then
+ # SGMTS logo board / poster pair with feature artwork / low-glazed opening, repeated five times.
  for bay,y in enumerate([-39.8+i*5 for i in range(17)]):
-  shell('Closed curved canopy',y-2.34,y+(2.34 if bay==16 else 2.5),'roof')
-  b('Lower aluminium cladding',back-.025,y,1.31,.12,4.98,2,'cladding')
-  b('Wall panel seam',back-.091,y-2.48,1.38,.008,.012,2.1,'panel')
-  for z in [1.05,1.78,2.31]:b('Horizontal cladding joint',back-.091,y,z,.008,4.98,.012,'panel')
-  # Solid coloured portal frames and a continuous enclosed front fascia.
-  shell('Closed canopy rib',y-2.5,y-2.34,'accent' if bay%4==0 else 'cladding',rib=True)
-  if bay==16:shell('Closed canopy end',y+2.34,y+2.5,'accent',rib=True)
+  kind='end' if bay in (0,16) else ['board','posters','glazed'][(bay-1)%3]
+  y0=y-2.05 if bay==0 else y-2.34;y1=y+2.05 if bay==16 else y+2.5
+  shell('Closed curved canopy',y0,y1,'roof',roof_only=kind=='glazed')
+  if kind=='glazed':
+   mesh('Glazed bay panel',[pt(back-.06,yy,z) for yy,z in [(y-2.3,.36),(y+2.3,.36),(y+2.3,1.15),(y-2.3,1.15)]],[(0,1,2,3)],'station_glass',p)
+   tube('Glazed bay handrail',[pt(back-.06,y-2.34,1.18),pt(back-.06,y+2.34,1.18)],.03,'steel',p)
+   tube('Glazed bay base rail',[pt(back-.06,y-2.34,.34),pt(back-.06,y+2.34,.34)],.03,'steel',p)
+   tube('Glazed bay post',[pt(back-.06,y,.31),pt(back-.06,y,1.18)],.025,'steel',p)
+  else:
+   b('Lower aluminium cladding',back-.025,y,1.31,.12,4.98,2,'cladding')
+   b('Wall panel seam',back-.091,y-2.48,1.38,.008,.012,2.1,'panel')
+   for z in [1.05,1.78,2.31]:b('Horizontal cladding joint',back-.091,y,z,.008,4.98,.012,'panel')
+  # Thick coloured portal at each open end; slim colour-accent column every third bay.
+  if bay==0:shell('Station portal',y-2.5,y-2.05,'accent',inset=.12,outset=.06)
+  else:shell('Closed canopy rib',y-2.5,y-2.34,'accent' if (bay-1)%3==0 else 'cladding',rib=True)
+  if bay==16:shell('Station portal',y+2.05,y+2.5,'accent',inset=.12,outset=.06)
   b('Recessed canopy light',edge+width*.42,y,3.12,.24,1.4,.028,'light')
-  if bay%4!=3:
+  if kind=='posters':
    for dy in [-1.1,1.1]:
     b('Poster frame',back-.10,y+dy,1.95,.07,.85,1.2,'dark')
     b('Poster artwork',back-.15,y+dy,1.96,.035,.73,1.08,'cladding')
     b('Poster colour field',back-.18,y+dy,1.67,.025,.70,.47,'accent')
-    for j in range(5):
-     tube('Poster rays',[pt(back-.20,y+dy,2.02),pt(back-.20,y+dy+(j-2)*.12,2.37)],.016,'teal' if j%2 else 'yellow',p)
-  else:
-   b('Rear station board',back-.10,y,1.95,.08,3.35,1.15,'cladding')
-   for label,z,size in [(STATION_NAMES[id]['zh'],2.05,.38),(STATION_NAMES[id]['name'],1.72,.19)]:
-    o=text('Rear board lettering',label,pt(back-.16,y,z),size,'panel',p,rot=(math.pi/2,0,-side*math.pi/2));bpy.context.view_layer.update()
-    if o.dimensions.y>3.05:o.scale*=3.05/o.dimensions.y
+   # Firework feature artwork between the two posters.
+   b('Feature artwork panel',back-.10,y,1.95,.06,1.1,1.2,'panel')
+   for j in range(10):
+    a=j*math.pi/5;tube('Feature artwork ray',[pt(back-.15,y+.1*math.cos(a),1.98+.1*math.sin(a)),pt(back-.15,y+.42*math.cos(a),1.98+.42*math.sin(a))],.014,['accent','yellow','teal','orange'][j%4],p)
+  elif kind=='board':
+   b('SGMTS board frame',back-.10,y,1.85,.06,3.72,1.40,'dark')
+   board('SGMTS logo board',y,1.85,3.6,1.32,'sgmts_board')
+  elif kind=='end':
+   e=-1 if bay==0 else 1
+   for label,z,size in [(STATION_NAMES[id]['zh'],2.0,.42),(STATION_NAMES[id]['name'],1.62,.17)]:
+    o=text('End wall station name',label,pt(back-.12,y+e*1.0,z),size,'panel',p,rot=(math.pi/2,0,-side*math.pi/2));bpy.context.view_layer.update()
+    if o.dimensions.y>2.0:o.scale*=2.0/o.dimensions.y
+   # Two stainless ticket machines against the wall, outside the fare line.
+   for dy in [-.42,.42]:
+    yy=y-e*.9+dy
+    b('Ticket machine',back-.33,yy,1.19,.46,.76,1.76,'steel',.03)
+    b('Ticket machine screen',back-.565,yy,1.38,.012,.5,.38,'glass')
+    b('Ticket machine slot',back-.565,yy,.98,.012,.3,.08,'dark')
 
  # Roadside approach rails run longitudinally, leaving the access through the gates clear.
  for end in [-1,1]:
   rail=empty(f'{id}_platform_{side}_approach_rail_{end}',parent=p)
   def height(y):return .315-.015*max(0,(abs(y)-41.8)/3)
   tube('Approach handrail',[pt(edge+.18,end*y,height(y)+1.09) for y in [36.5,41.8,44.8]],.035,'steel',rail)
-  for j in range(53):
-   y=end*(36.5+j*8.3/52);z=height(y)
-   tube('Approach railing bar',[pt(edge+.18,y,z),pt(edge+.18,y,z+1.09)],.018,'steel',rail)
+  # Six laminated glass bays per end; posts only at panel joints.
+  for j in range(7):
+   y=end*(36.5+j*8.3/6);z=height(y)
+   tube('Glass barrier post',[pt(edge+.18,y,z),pt(edge+.18,y,z+1.09)],.025,'steel',rail)
+  for j in range(6):
+   ya=end*(36.5+j*8.3/6+.045);yb=end*(36.5+(j+1)*8.3/6-.045)
+   mesh('Laminated glass end panel',[pt(edge+.18,y,height(y)+z) for y,z in [(ya,.10),(yb,.10),(yb,1.04),(ya,1.04)]],[(0,1,2,3)],'station_glass',rail)
   merge_static(rail)
  for y in [-27,-12,8,25]:
   b('Bench seat',edge+width-1.2,y,.8,.65,2,.12,'sand',.04)
@@ -711,16 +765,22 @@ def platform(id,side,width,offset,length=89.6,bent=False):
    b('Fare gate',edge+dx,y,.82,.22,.7,1,'steel',.08)
    b('Gate reader',edge+dx,y,1.34,.17,.22,.08,'teal',.02)
  merge_static(p)
- return {'name':p.name,'side':side,'width':width,'length':length,'offsetZ':-offset,'edgeX':side*edge,'height':.31,'bent':bent,'bendStartLocalZ':25,'bendSlope':.42 if bent else 0}
+ return {'name':p.name,'side':side,'width':width,'length':length,'offsetZ':-offset,'edgeX':side*edge,'height':.31+RISE,'bent':bent,'bendStartLocalZ':25,'bendSlope':.42 if bent else 0}
 
 def station(id):
- reset();width=6 if id=='A2' else (5 if id=='A1' else 4)
+ reset();M['station_kerb']=mat('station_kerb',(.55,.54,.49),0,.92)
+ M['station_glass']=mat('station_glass',(.55,.78,.82),.05,.14)
+ glass=M['station_glass'];glass.diffuse_color=(.55,.78,.82,.28);glass.node_tree.nodes.get('Principled BSDF').inputs['Alpha'].default_value=.28;glass.surface_render_method='DITHERED';glass.use_backface_culling=False
+ width=6 if id=='A2' else (5 if id=='A1' else 4)
  colors=[(.08,.38,.31),(.07,.27,.61),(.57,.17,.24),(.45,.22,.57),(.68,.38,.06),(.10,.47,.53),(.45,.55,.17)]
  c=colors[int(id[1:])-1];M['accent'].diffuse_color=(*c,1);M['accent'].node_tree.nodes.get('Principled BSDF').inputs['Base Color'].default_value=(*c,1);M['sign_text']=mat('sign_text',(.92,.98,1),0,.5,1)
+ M['paving_accent']=mat('paving_accent',tuple(.8*a+.2*t for a,t in zip(c,(.71,.73,.71))),0,.85)
+ board=M['sgmts_board']=mat('sgmts_board',(1,1,1),0,.4);nt=board.node_tree;tex=nt.nodes.new('ShaderNodeTexImage')
+ tex.image=bpy.data.images.load(str(ROOT/'assets/textures/sgmts-board.png'),check_existing=True);nt.links.new(tex.outputs['Color'],nt.nodes.get('Principled BSDF').inputs['Base Color'])
 
  # A2 platform starts differ by ~18.5m from scaled GA; retain stagger explicitly.
  plats=[platform(id,-1,width,-9.25 if id=='A2' else 0,bent=id=='A1'),platform(id,1,width,9.25 if id=='A2' else 0,bent=id=='A1')]
- d={'id':id,'platforms':plats,'roadGap':14.1,'source':'ST-110'+str(int(id[1:])),'appearance':'ACABAS Issue 3 station render and ST-5301–5307 curved cladding','inferred':'Poster artwork, furniture positions and A1 wing interpolation; platform dimensions from GA. Bench backs are outboard of seats, facing the carriageway.'};d.update(save('station-'+id));return d
+ d={'id':id,'platforms':plats,'roadGap':14.1,'source':'ST-110'+str(int(id[1:])),'appearance':'ACABAS Issue 3 station render, ST-5301–5307 curved cladding and 2025-09 Enscape station set (portal, bay rhythm, ticket machines)','inferred':'Poster artwork, furniture positions and A1 wing interpolation; platform dimensions from GA. Bench backs are outboard of seats, facing the carriageway.'};d.update(save('station-'+id));return d
 
 if __name__=='__main__':
  OUT.mkdir(exist_ok=True,parents=True);BLEND.mkdir(exist_ok=True,parents=True)
@@ -738,5 +798,5 @@ if __name__=='__main__':
   manifest['stations'].append(station(sid));(OUT/'asset-manifest.json').write_text(json.dumps(manifest,indent=2))
  # Detailed saloon and cab; other trams hide interiors beyond 60 m in the game.
  assert manifest['vehicle']['triangles']<200000
- # Closed canopy shells and bilingual sign lettering remain below 60k triangles per station.
- assert all(s['triangles']<60000 for s in manifest['stations'])
+ # Closed canopies, bilingual lettering and individual rounded K1 units stay below 80k triangles.
+ assert all(s['triangles']<80000 for s in manifest['stations'])

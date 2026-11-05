@@ -46,7 +46,10 @@ export function createRailway(scene,model){
   piece('dark',10.4,7.0,.5,u+sign*115,0,3.5);
   for(const side of [-1,1])for(const rail of [-.715,.715])piece('steel',.075,.15,230,u,side*TRAIN.track+rail,.075);
  }
- for(const [kind,list] of Object.entries(parts)){if(!list.length)continue;const m=new T.Mesh(mergeGeometries(list),mats[kind]);m.name='Railway '+kind;m.castShadow=kind!=='led'&&kind!=='wire';m.receiveShadow=true;root.add(m);for(const g of list)g.dispose();}
+ // Merged per 300 m cell (not one mesh for the whole line) so frustum culling drops what is behind or far ahead.
+ const cellOf=g=>{g.computeBoundingBox();const c=g.boundingBox.getCenter(new T.Vector3());return Math.floor(c.x/300)+':'+Math.floor(c.z/300);};
+ for(const [kind,list] of Object.entries(parts)){const cells=new Map();for(const g of list){const k=cellOf(g);if(!cells.has(k))cells.set(k,[]);cells.get(k).push(g);}
+  for(const cell of cells.values()){const m=new T.Mesh(mergeGeometries(cell),mats[kind]);m.name='Railway '+kind;m.castShadow=kind!=='led'&&kind!=='wire';m.receiveShadow=true;root.add(m);for(const g of cell)g.dispose();}}
  // Fixed low-cost illumination makes the parapet visible along the entire line.
  const strips=[];for(let u=1;u<RAILWAY.length;u+=2)for(const side of [-1,1]){const r=RAILWAY.at(u),p=railPosition(u,side*5.358);p.y=r.y+.50;strips.push(new T.PlaneGeometry(2.02,.67).applyMatrix4(new T.Matrix4().makeRotationY(r.heading+side*Math.PI/2).setPosition(p)));}
  const glow=new T.Mesh(mergeGeometries(strips),new T.MeshBasicMaterial({color:0xb9a070,transparent:true,opacity:.24,depthWrite:false,blending:T.AdditiveBlending,side:T.DoubleSide}));glow.name='Viaduct parapet illumination';glow.visible=false;root.add(glow);strips.forEach(g=>g.dispose());
