@@ -19,8 +19,8 @@ import {journeyTerminus,nextStationIndex,fleetPlan,parkingScore,stationStopTarge
 import {terminalCurve,depotCurve,depotExitCurve} from './routes.js';
 import {sideCrossing,crossingGeometry} from './alignment.js';
 import {crossingRoutes} from './city/traffic-routes.js';
-import {cityGraph} from './city/life-headless.js';
-import {createTraffic} from './city/life.js';
+import {cityGraph,cityFootways} from './city/life-headless.js';
+import {createTraffic,createPeople} from './city/life.js';
 import {zoneRule,plotPaving,setLotSampler} from './city/blocks.js';
 import {cityPlots} from './city/plots-headless.js';
 import {renderModernBuildings} from './city/kit/hk-modern.js';
@@ -274,7 +274,7 @@ function giveWay(p,r,dt,reach,width=.55){
  if(side!==null){p.dodgeT=side>0||side===0&&p.id>.5?-.7:.7;p.stuck=(p.stuck||0)+dt;if(p.stuck>6){p.dir*=-1;p.stuck=0;}}
  else{p.stuck=0;if(!personNear(p.group,1.6))p.dodgeT=0;}
  p.dodge=(p.dodge||0)+Math.max(-.9*dt,Math.min(.9*dt,(p.dodgeT||0)-(p.dodge||0)));return side===null;}
-let cityTraffic=null;
+let cityTraffic=null,cityPeople=null;const cityWalkers=[];
 function makeTraffic(){
  // City rebuild: general traffic follows lane paths through each rebuilt crossing and out along the OZP network
  // (src/city/traffic-routes.js); at grade it holds at the side-road stop line until the junction's road phase shows green.
@@ -293,6 +293,9 @@ function makeTraffic(){
   signal:X=>{const sig=signalObjects.find(s=>s.c===X.c);return !sig||signalAt(sig,true)==='go';}});
  for(const car of cityTraffic.cars){const group=streetModel(car.kind);group.name='traffic-'+car.kind;group.traverse(m=>{if(m.isMesh)m.castShadow=true;});group.visible=false;scene.add(group);
   traffic.push({group,kind:car.kind,width:car.width,length:car.length,height:car.height,v:0,life:car});}
+ // …and people on the city footways (both sides of every street), recycled within 140 m of the camera.
+ cityPeople=createPeople(cityFootways(environment.network),{count:28});
+ for(const h of cityPeople.people){const group=streetModel('pedestrian_'+(h.id*7+3)%PEDESTRIAN_COUNT);group.name='city-pedestrian';group.visible=false;scene.add(group);cityWalkers.push({group,h});}
 
  STOPS.forEach((st,i)=>{for(let j=0;j<6;j++){const g=stationPerson(st.s,j+i);if(!g)continue;
   const side=j%2?1:-1,phase=2+Math.floor(j/2)*3,origin=point(stopCentre(st,side)+(phase-6)*4,side*(8.35+(phase%2)*.45));origin.y+=.32+PLATFORM_RISE;g.position.copy(origin);g.rotation.y=sample(st.s).heading;scene.add(g);walkerObjects.push({group:g,station:i,side,origin,phase,progress:0,alight:phase<3,roaming:phase>=9});
@@ -838,7 +841,9 @@ function actors(dt){const subjectS=viewS();
  if(cityLive){const dir=camera.getWorldDirection(new T.Vector3()),fl=Math.hypot(dir.x,dir.z)||1,blockers=noCab()?[]:vehicle.sections.map(b=>({x:b.position.x,z:b.position.z,r:5.5}));
   if(state.avatar!=='drive'&&state.mode!=='free')blockers.push({x:player.x,z:player.z,r:.8});
   const env={focus:{x:camera.position.x,z:camera.position.z},view:{x:camera.position.x,z:camera.position.z,fx:dir.x/fl,fz:dir.z/fl},blockers};
-  for(let t=Math.min(dt,1.5);t>1e-4;t-=.1)cityTraffic.step(Math.min(.1,t),env);}
+  for(let t=Math.min(dt,1.5);t>1e-4;t-=.1)cityTraffic.step(Math.min(.1,t),env);cityPeople.step(Math.min(dt,.25),env);}
+ for(const w of cityWalkers){const h=w.h;w.group.visible=!!(cityLive&&h.path)&&Math.hypot(h.x-camera.position.x,h.z-camera.position.z)<150;
+  if(w.group.visible){w.group.position.set(h.x,h.y+.02,h.z);w.group.rotation.y=Math.atan2(-h.tx,-h.tz);posePedestrian(w.group,h.moved,dt);}}
  for(const c of traffic){if(c.life){const car=c.life;c.v=car.v;c.cross=car.piece?.kind==='cross'?car.piece.crossing.junction:null;
    c.group.visible=!!(cityLive&&car.piece)&&Math.hypot(car.x-camera.position.x,car.z-camera.position.z)<520;
    if(c.group.visible){c.group.position.set(car.x,car.y+.03,car.z);c.group.rotation.y=Math.atan2(-car.tx,-car.tz);contact(c.group,c.width,c.length,c.height,'Traffic');}continue;}
@@ -1184,7 +1189,7 @@ const controlRoom=createControlRoom({state,renderer,scene,getFleet:()=>ai,getSig
  for(const a of depotVehicles)for(const g of a.sections)g.visible=Math.abs(s-DEPOT.s)<700;
 }});
 setUiTheme(document.body.dataset.uiTheme);
-window.__sgmts={get riders(){return riders;},get cityTraffic(){return cityTraffic;},updateRiders,bubbles,solid,crowdPeople,player,controlRoom,fitOneLine,state,atmosphere,STOPS,LENGTH,END_STOP,sample,LOOP,renderer,scene,camera,errors,reset,action,stopTarget,dockError,get ready(){return ready;},get vehicle(){return vehicle;},get manifest(){return manifest;},get signals(){return signalObjects;},get environment(){return environment;},get railway(){return railway;},railwaySoundStatus:audio.railwaySoundStatus,get traffic(){return traffic;},get ai(){return ai;},get crossers(){return crossers;},get cyclists(){return cyclists;},actors,update,terminalStep,terminalLength,weather,lightScene,nextDispatch,get depotVehicles(){return depotVehicles;},get walkers(){return walkerObjects;},get sitters(){return sitters;},get joggers(){return joggers;},get plazaPeople(){return plazaPeople;},seats,toggleSit,player,bikes,toggleAvatar,talk,updateAvatar,orbit,keys,aim,get birds(){return birds;},get stations(){return stations;},CAMERAS,signalAt,JUNCTIONS,setCamera:n=>{state.cam=n;resetOrbit();firstCamera=true;},pose:()=>poseTram(vehicle,state.s,state.lat),musicStatus:audio.musicStatus,announcementStatus:audio.announcementStatus,announce:audio.announce,proof:false,simulationRate:1,get ff(){return ffRate;},ffBlock,hudOverlaps,coach:()=>{const st=STOPS[state.index];return coach(st,st?(stopTarget(st)-state.s)*travelDirection():0,state.mode==='turnback',state.mode==='explore');},makeSchedule,clockText,NOSE};
+window.__sgmts={get riders(){return riders;},get cityTraffic(){return cityTraffic;},get cityPeople(){return cityPeople;},updateRiders,bubbles,solid,crowdPeople,player,controlRoom,fitOneLine,state,atmosphere,STOPS,LENGTH,END_STOP,sample,LOOP,renderer,scene,camera,errors,reset,action,stopTarget,dockError,get ready(){return ready;},get vehicle(){return vehicle;},get manifest(){return manifest;},get signals(){return signalObjects;},get environment(){return environment;},get railway(){return railway;},railwaySoundStatus:audio.railwaySoundStatus,get traffic(){return traffic;},get ai(){return ai;},get crossers(){return crossers;},get cyclists(){return cyclists;},actors,update,terminalStep,terminalLength,weather,lightScene,nextDispatch,get depotVehicles(){return depotVehicles;},get walkers(){return walkerObjects;},get sitters(){return sitters;},get joggers(){return joggers;},get plazaPeople(){return plazaPeople;},seats,toggleSit,player,bikes,toggleAvatar,talk,updateAvatar,orbit,keys,aim,get birds(){return birds;},get stations(){return stations;},CAMERAS,signalAt,JUNCTIONS,setCamera:n=>{state.cam=n;resetOrbit();firstCamera=true;},pose:()=>poseTram(vehicle,state.s,state.lat),musicStatus:audio.musicStatus,announcementStatus:audio.announcementStatus,announce:audio.announce,proof:false,simulationRate:1,get ff(){return ffRate;},ffBlock,hudOverlaps,coach:()=>{const st=STOPS[state.index];return coach(st,st?(stopTarget(st)-state.s)*travelDirection():0,state.mode==='turnback',state.mode==='explore');},makeSchedule,clockText,NOSE};
 boot();
 
 function drawMinimap(){const c=$('#minimap');if(c.height!==190)c.height=190;drawNearbyMap(c.getContext('2d'));}

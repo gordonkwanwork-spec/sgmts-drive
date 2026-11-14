@@ -134,3 +134,27 @@ export function createTraffic(graph,{count=40,seed=7,signal=()=>true,fleet=[{len
    const far=env.focus&&Math.hypot(c.x-env.focus.x,c.z-env.focus.z)>(env.far??420)+90;
    if(c.wait>40||far){if(c.wait>40){stats.respawns++;stats.stuck=[...(stats.stuck||[]).slice(-9),`${c.piece.kind}/${c.piece.road?.r.id||c.piece.node?.kind} next ${c.next?.rule||'-'} at ${c.x.toFixed(0)},${c.z.toFixed(0)}`];}const old={...c};if(!spawn(c,env))Object.assign(c,old,{wait:far?0:20});}}}
  return {cars,step,stats,get clock(){return clock;}};}
+
+// Pedestrians. footways(net): every stretch of footway between side-road mouths, both sides of every street, as walking
+// lines 55 % of the way across the footway (clear of the kerbside furniture band).
+export function footways(net){const out=[];
+ for(const o of net.roads){if(o.r.loop||!(o.P.footpath>=2))continue;const L=o.F.at(-1).d,h=o.P.carriageway/2,own=end=>net.joins.find(j=>j.A===o&&j.end===end);
+  const a0=own(0)?own(0).B.P.carriageway/2+own(0).B.P.footpath+1:3,a1=L-(own(1)?own(1).B.P.carriageway/2+own(1).B.P.footpath+1:o.r.turningRadius?o.r.turningRadius+2:3);
+  for(const side of [1,-1]){const gaps=net.joins.filter(j=>j.B===o&&j.side===side).map(j=>{const w=j.A.P.carriageway/2+j.A.P.footpath+7;return [j.at.d-w,j.at.d+w];}).sort((p,q)=>p[0]-q[0]);
+   let from=a0;for(const [g0,g1] of [...gaps,[a1,a1]]){const to=Math.min(g0,a1);if(to-from>18){const lat=side*(h+o.P.footpath*.55),n=Math.ceil((to-from)/3),pts=[];let s=0;
+     for(let i=0;i<=n;i++){const d=from+(to-from)*i/n,f=frameAt(o.F,d),p={x:f.x+f.lx*lat,y:f.y+streetLevel(o.r,d,lat)+(f.crossSlope||0)*lat,z:f.z+f.lz*lat};if(i)s+=Math.hypot(p.x-pts[i-1].x,p.z-pts[i-1].z);p.s=s;pts.push(p);}
+     out.push({road:o.r.id,side,pts,len:s});}from=Math.max(from,g1);}}}
+ return out;}
+// People stroll their stretch of footway, pause and turn back at its ends, and are recycled near the focus like the cars.
+export function createPeople(paths,{count=28,seed=11}={}){let rs=seed>>>0;const rnd=()=>{rs=Math.imul(rs^rs>>>15,2246822507)+0x9e3779b9>>>0;return (rs>>>8)/16777216;};
+ const total=paths.reduce((s,p)=>s+p.len,0),people=Array.from({length:count},(_,id)=>({id,path:null,speed:1.05+rnd()*.5}));
+ const pose=(p,s)=>{const P=p.pts;let i=1;while(i<P.length-1&&P[i].s<s)i++;const a=P[i-1],b=P[i],u=Math.max(0,Math.min(1,(s-a.s)/((b.s-a.s)||1))),dx=b.x-a.x,dz=b.z-a.z,l=Math.hypot(dx,dz)||1;return {x:a.x+dx*u,y:a.y+(b.y-a.y)*u,z:a.z+dz*u,tx:dx/l,tz:dz/l};};
+ function spawn(h,env){for(let tries=0;tries<30;tries++){let t=rnd()*total,p=paths[0];for(const q of paths){if((t-=q.len)<0){p=q;break;}}const s=1+rnd()*(p.len-2),q=pose(p,s);
+   if(env?.focus){const d=Math.hypot(q.x-env.focus.x,q.z-env.focus.z);if(d<(env.near??25)||d>(env.far??140))continue;
+    if(env.view&&d<90){const dx=q.x-env.view.x,dz=q.z-env.view.z;if((dx*env.view.fx+dz*env.view.fz)/(d||1)>.6)continue;}}
+   if(people.some(o=>o.path&&Math.hypot(o.x-q.x,o.z-q.z)<3))continue;Object.assign(h,{path:p,s,dir:rnd()<.5?1:-1,wait:0,moved:0},q);return true;}return false;}
+ function step(dt,env={}){for(const h of people){if(!h.path){spawn(h,env);continue;}h.moved=0;
+   if(h.wait>0)h.wait-=dt;else{const d=h.speed*dt;h.s+=h.dir*d;h.moved=d;if(h.s<=.5||h.s>=h.path.len-.5){h.s=Math.max(.5,Math.min(h.path.len-.5,h.s));h.dir=-h.dir;h.wait=1+rnd()*3;}}
+   const q=pose(h.path,h.s);h.x=q.x;h.y=q.y;h.z=q.z;h.tx=q.tx*h.dir;h.tz=q.tz*h.dir;
+   if(env.focus&&Math.hypot(h.x-env.focus.x,h.z-env.focus.z)>(env.far??140)+40){const old={...h};if(!spawn(h,env))Object.assign(h,old);}}}
+ return {people,step};}

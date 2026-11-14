@@ -35,4 +35,13 @@ for(const seed of [7,21]){let green=true;const T=createTraffic(g,{count:50,seed,
  assert.equal(T.cars.filter(c=>c.piece?.kind==='cross'&&c.piece.hold!=null&&c.s>c.piece.hold+1).length,0,'no car passes a stop line on red');assert.ok(T.cars.some(c=>c.held),'cars queue at the red light');}
 {const T=createTraffic(g,{count:50,seed:5});for(let i=0;i<600;i++)T.step(.05,{});const c=T.cars.find(c=>c.v>8&&c.piece.kind==='lane'&&c.piece.len-c.s>80),b={x:c.x+c.tx*40,z:c.z+c.tz*40,r:1};
  for(let i=0;i<400;i++){T.step(.05,{blockers:[b]});assert.ok(Math.hypot(c.x-b.x,c.z-b.z)>c.length/2+1,'car stops short of an obstacle in its lane');}}
+// Pedestrians: footway lines on both sides of the streets, never on a carriageway; people keep walking and stay on them.
+{const {cityFootways}=await import('../city/life-headless.js'),{createPeople}=await import('../city/life.js'),{junctions,nearestOn}=await import('../street/network.js'),{renderedGround}=await import('../environment.js');
+ const paths=cityFootways(network),net=junctions(network,renderedGround);assert.ok(paths.length>60&&paths.reduce((s,p)=>s+p.len,0)>15000,`${paths.length} footway stretches`);
+ // on a carriageway: inside any street's kerbs (a joining road's last 14 m lie on its host and are judged by the host)
+ const joined=new Set(net.joins.map(j=>j.A.r.id+':'+j.end)),onRoad=(x,z)=>net.roads.some(o=>{const n=nearestOn(o.F,x,z),L=o.F.at(-1).d;
+  return n.dist<o.P.carriageway/2-.3&&!(joined.has(o.r.id+':0')&&n.d<14)&&!(joined.has(o.r.id+':1')&&n.d>L-14);});
+ for(const p of paths)for(const q of p.pts)assert.ok(!onRoad(q.x,q.z),`footway line of ${p.road} is on a carriageway at ${q.x.toFixed(0)},${q.z.toFixed(0)}`);
+ const P=createPeople(paths,{count:28}),walked=new Map();for(let i=0;i<1200;i++){P.step(.05,{});for(const h of P.people)walked.set(h.id,(walked.get(h.id)||0)+(h.moved||0));}
+ for(const h of P.people){assert.ok(h.path&&Number.isFinite(h.x+h.y+h.z),'person placed');assert.ok(walked.get(h.id)>30,`person ${h.id} walked only ${walked.get(h.id).toFixed(0)} m in a minute`);assert.ok(!onRoad(h.x,h.z),'person on a carriageway');}}
 console.log(`city-life checks passed: ${lanes.length} lanes (${(lanes.reduce((s,p)=>s+p.len,0)/1000).toFixed(1)} km), ${g.pieces.filter(p=>p.kind==='turn').length} junction movements, 2 × 5 min of traffic clean`);
