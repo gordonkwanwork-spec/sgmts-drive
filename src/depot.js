@@ -3,6 +3,7 @@
 // Rubber-tyred ART: stabling and maintenance bays are painted, never railed.
 import {fromHK,project,sample,roadSection,DEPOT} from './alignment.js';
 import {pointInPolygon} from './lots/wand.js';
+import D5_MOUTH from './city/depot-mouth.json' with {type:'json'};
 
 // Drawing pixel (60 dpi render) → HK1980: E816300 at x=208, N834400 at y=327, 4.72 px/m.
 const px=(x,y)=>fromHK(816300+(x-208)/4.72,834400-(y-327)/4.73);
@@ -58,13 +59,16 @@ export const CV_STALLS=[];for(const [y0,y1] of [[400,471],[532,603],[603,674],[7
 export const CV_FENCE=[[[294,478],[292,392],[740,392]],[[740,392],[740,800]],[[740,800],[300,800],[296,524]]].map(ring);
 // Same boundary as CV_FENCE, closed, for point-in-polygon tests: the park is its own paved lot, not depot yard.
 export const CV_PARK=ring([[294,478],[292,392],[740,392],[740,800],[300,800],[296,524]]);
-// Public service road (7.3 m, two-way): from the southern end of Road D3 along the Road D5 alignment south of the
-// depot, north along the site's west side, then east over the drainage reserve into the vehicle park's north aisle.
-// Never touches the SGMTS corridor. y rises from D3's level (1.5) to the depot platform.
-const roadPts=ring([[1578,1135],[1520,1255],[1300,1320],[1000,1345],[700,1320],[420,1335],[180,1300],[70,1150],[55,900],[60,600],[95,505],[200,501],[335,501]]);
+// Public service road (7.3 m, two-way): from Road D5 north along the site's west side, then east over the drainage
+// reserve into the vehicle park's north aisle. Never touches the SGMTS corridor. y rises from D5's level to the depot platform.
+// City rebuild 2 (14 Nov 2026): Road D5 itself is now a city street on that alignment, so the service road starts at a
+// run-in on D5's north kerb (D5_MOUTH, written by scripts/build-city-network.mjs and held to the kerb line by
+// src/checks/city-network.test.js) instead of doubling D5 back to Road D3.
+export {D5_MOUTH};
+const roadPts=[[D5_MOUTH.x,D5_MOUTH.z],...ring([[70,1150],[55,900],[60,600],[95,505],[200,501],[335,501]])];
 export const CV_ROAD=(()=>{let run=0;const out=roadPts.map((p,i)=>{if(i)run+=Math.hypot(p[0]-roadPts[i-1][0],p[1]-roadPts[i-1][1]);return {x:p[0],z:p[1],run};});
  const L=run,flatFrom=L-110;// level for the last 110 m (west road and park spur)
- return out.map(p=>({...p,y:1.5+(d.y-1.5)*Math.min(1,p.run/flatFrom)}));})();
+ return out.map(p=>({...p,y:D5_MOUTH.y+(d.y-D5_MOUTH.y)*Math.min(1,p.run/flatFrom)}));})();
 export const CV_ROAD_WIDTH=7.3;
 // Bounding box of the site and service road: a cheap first test for the per-point checks the environment runs everywhere.
 export const DEPOT_BOUNDS=(()=>{const xs=[...SITE.map(p=>p[0]),...CV_ROAD.map(p=>p.x)],zs=[...SITE.map(p=>p[1]),...CV_ROAD.map(p=>p.z)];return {x0:Math.min(...xs),x1:Math.max(...xs),z0:Math.min(...zs),z1:Math.max(...zs)};})();

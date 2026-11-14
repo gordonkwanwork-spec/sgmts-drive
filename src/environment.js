@@ -157,11 +157,18 @@ export function ribbon(start,end,left,right,yOffset=0,terrain=false,cut=false,sa
  for(let i=0;i<n;i++){const j=i*2,a=sample(stations[i]),b=sample(stations[i+1]),forward=k=>(p[(k+2)*3]-p[k*3])*(b.x-a.x)+(p[(k+2)*3+2]-p[k*3+2])*(b.z-a.z);if(!(cut&&(typeof cut==='function'?cut:inJunction)((stations[i]+stations[i+1])/2))&&up(j,j+2,j+1)>1e-8&&up(j+1,j+2,j+3)>1e-8&&forward(j)>0&&forward(j+1)>0)idx.push(j,j+2,j+1,j+1,j+2,j+3);}
  let g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(p,3));g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();return g;
 }
-export function terrainLevel(x,z,s){for(const j of [...JUNCTIONS,...UNDERPASSES]){const g=crossingGeometry(j),dx=x-g.C.x,dz=z-g.C.z;if(Math.abs(dx*g.u.x+dz*g.u.z)<j.extent+1&&Math.abs(dx*g.n.x+dz*g.n.z)<j.halfWidth+j.footway+.5)return crossingY(j,x,z);}const d=sample(DEPOT.s),lat=(x-d.x)*d.lx+(z-d.z)*d.lz,along=(x-d.x)*d.tx+(z-d.z)*d.tz;if(lat>0&&lat<55&&Math.abs(along+DEPOT.s-DEPOT.gate)<20)return Math.min(d.y,sample(DEPOT.gate-18).y,sample(DEPOT.gate+18).y)-.3;if(nearDepotBounds(x,z)&&pointInPolygon([x,z],DEPOT_SITE))return d.y-.8;/* under the yard: deep enough that offset night overlays never bleed through */const road=nearServiceRoad(x,z,5);if(road!=null)return road-.1;return sample(s).groundY;}
+export function terrainLevel(x,z,s){for(const j of [...JUNCTIONS,...UNDERPASSES]){const g=crossingGeometry(j),dx=x-g.C.x,dz=z-g.C.z;if(Math.abs(dx*g.u.x+dz*g.u.z)<j.extent+1&&Math.abs(dx*g.n.x+dz*g.n.z)<j.halfWidth+j.footway+.5)return crossingY(j,x,z);}const d=sample(DEPOT.s),lat=(x-d.x)*d.lx+(z-d.z)*d.lz,along=(x-d.x)*d.tx+(z-d.z)*d.tz;if(lat>0&&lat<55&&Math.abs(along+DEPOT.s-DEPOT.gate)<20)return Math.min(d.y,sample(DEPOT.gate-18).y,sample(DEPOT.gate+18).y)-.3;if(nearDepotBounds(x,z)&&pointInPolygon([x,z],DEPOT_SITE))return d.y-.8;/* under the yard: deep enough that offset night overlays never bleed through */const road=nearServiceRoad(x,z,5);if(road!=null)return road-.1;
+ // City rebuild 2: beside the corridor the ground is the corridor's own; from 40 m out it eases into the smooth city field
+ // (fieldLevel), a function of position only, so streets and lots away from the corridor meet no terraces.
+ const r=sample(s),u=Math.max(0,Math.min(1,(Math.hypot(x-r.x,z-r.z)-40)/80));return u>0?r.groundY+(fieldLevel(x,z)-r.groundY)*u*u*(3-2*u):r.groundY;}
+// Smooth city ground: the corridor's ground levels (one sample every 40 m) blended by inverse distance with an 80 m soft core.
+let FIELD=null;
+export function fieldLevel(x,z){FIELD??=Array.from({length:Math.ceil(LENGTH/40)+1},(_,i)=>{const r=sample(Math.min(LENGTH,i*40));return [r.x,r.z,r.groundY];});
+ let w=0,y=0;for(const [px,pz,py] of FIELD){const k=1/((x-px)**2+(z-pz)**2+6400)**2;w+=k;y+=k*py;}return y/w;}
 // Fixed world grid prevents the folded wide-offset ribbons that left terrain holes.
 // Terrain extends beneath the surrounding city and eases down to the backdrop.
-export const CITY_TERRAIN_RADIUS=550;
-export function renderedGround(x,z,sHint){const s=sHint??project(x,z),r=sample(s),d=Math.hypot(x-r.x,z-r.z),u=Math.max(0,Math.min(1,(d-350)/200)),fade=u*u*(3-2*u);return terrainLevel(x,z,s)*(1-fade)-5*fade;}
+export const CITY_TERRAIN_RADIUS=700;// the outermost city streets (Tin Ha Road) lie 545 m from the corridor; the rim eases down beyond them
+export function renderedGround(x,z,sHint){const s=sHint??project(x,z),r=sample(s),d=Math.hypot(x-r.x,z-r.z),u=Math.max(0,Math.min(1,(d-600)/100)),fade=u*u*(3-2*u);return terrainLevel(x,z,s)*(1-fade)-5*fade;}
 export function terrainPatch(start,end,grade=(x,z,y)=>y,cache=new Map()){
  const pts=PATH.filter(p=>p.s>=Math.max(0,start-5)&&p.s<=end+5),step=8,p=[],uv=[],idx=[];
  const minX=Math.floor((Math.min(...pts.map(p=>p.x))-CITY_TERRAIN_RADIUS)/step)*step,maxX=Math.max(...pts.map(p=>p.x))+CITY_TERRAIN_RADIUS,minZ=Math.floor((Math.min(...pts.map(p=>p.z))-CITY_TERRAIN_RADIUS)/step)*step,maxZ=Math.max(...pts.map(p=>p.z))+CITY_TERRAIN_RADIUS;

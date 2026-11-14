@@ -71,11 +71,14 @@ export function junctions(network,ground){const all=(network?.roads||[]).map(r=>
  for(const A of all)for(const end of [0,1]){const e=end?A.F.at(-1):A.F[0];
   for(const B of all){if(B===A)continue;const n=nearestOn(B.F,e.x,e.z);if(n.dist>JOIN||n.d<2||n.d>B.F.at(-1).d-2)continue;
    // into A, away from the junction
-   const a=end?[-e.tx,-e.tz]:[e.tx,e.tz],s=Math.sign(a[0]*n.f.lx+a[1]*n.f.lz)||1;out.push({A,B,end,at:n.f,side:s,a});break;}}
+   const a=end?[-e.tx,-e.tz]:[e.tx,e.tz],s=Math.sign(a[0]*n.f.lx+a[1]*n.f.lz)||1;
+   // A closed ring (roundabout) host keeps its circle: kerb returns are solved against the circle itself (corner()).
+   if(B.r.loop&&!B.ring){const P=B.F.slice(0,-1),ox=P.reduce((t,f)=>t+f.x,0)/P.length,oz=P.reduce((t,f)=>t+f.z,0)/P.length;B.ring={ox,oz,R:P.reduce((t,f)=>t+Math.hypot(f.x-ox,f.z-oz),0)/P.length};}
+   out.push({A,B,end,at:n.f,side:s,a});break;}}
  // Match the joining road's longitudinal level to the host at the mouth.
  for(const j of out){const end=j.end?j.A.F.at(-1):j.A.F[0],cs=[corner(j,1),corner(j,-1)].filter(Boolean),aReach=Math.max(...cs.map(c=>c.uA)),bReach=Math.max(...cs.map(c=>Math.abs(c.tB)));
   for(const [road,at,reach] of [[j.A,end.d,aReach],[j.B,j.at.d,bReach]])for(const f of road.F){const d=Math.abs(f.d-at),u=Math.min(1,Math.max(0,(d-reach)/20));f.y=j.at.y*(1-u)+f.y*u;
-   if(road.r.standard==='sandbox'&&u<1){const axis=road===j.B?[j.at.tx,j.at.tz]:j.end?[-j.a[0],-j.a[1]]:j.a,along=f.d-at;f.x=(j.at.x+axis[0]*along)*(1-u)+f.x*u;f.z=(j.at.z+axis[1]*along)*(1-u)+f.z*u;const tx=axis[0]*(1-u)+f.tx*u,tz=axis[1]*(1-u)+f.tz*u,l=Math.hypot(tx,tz);f.tx=tx/l;f.tz=tz/l;f.lx=f.tz;f.lz=-f.tx;}
+   if(road.r.standard==='sandbox'&&u<1&&!(road===j.B&&j.B.ring)){const axis=road===j.B?[j.at.tx,j.at.tz]:j.end?[-j.a[0],-j.a[1]]:j.a,along=f.d-at;f.x=(j.at.x+axis[0]*along)*(1-u)+f.x*u;f.z=(j.at.z+axis[1]*along)*(1-u)+f.z*u;const tx=axis[0]*(1-u)+f.tx*u,tz=axis[1]*(1-u)+f.tz*u,l=Math.hypot(tx,tz);f.tx=tx/l;f.tz=tz/l;f.lx=f.tz;f.lz=-f.tx;}
   }
  }
  for(const j of out){j.A.r.junctionDistances.push(j.end?j.A.F.at(-1).d:0);j.B.r.junctionDistances.push(j.at.d);
@@ -92,6 +95,13 @@ const add=(p,v,k=1)=>[p[0]+v[0]*k,p[1]+v[1]*k],dot=(u,v)=>u[0]*v[0]+u[1]*v[1];
 // Returns the footpath patch outline, the arc, where B's footpath stops (along B) and where A's starts (from the junction, along A).
 function corner(j,c){const {A,B,at,side:s,a}=j,hB=B.P.carriageway/2,fB=B.P.footpath,hA=A.P.carriageway/2,fA=A.P.footpath,R=Math.min(CORNER,Math.max(1,hA+fA));
  const J=[at.x,at.z],tB=[at.tx,at.tz],m=[at.lx*s,at.lz*s],q=[a[1]*c,-a[0]*c];// q: A's lateral on corner c (left of the direction into A for c=+1)
+ if(B.ring){const O=[B.ring.ox,B.ring.oz],Ro=B.ring.R+hB,
+   hit=(p,rad)=>{const w=[p[0]-O[0],p[1]-O[1]],wa=dot(w,a),disc=wa*wa-(dot(w,w)-rad*rad);return disc<0?null:add(p,a,-wa+Math.sqrt(disc));};// where the line p + a·t leaves the circle
+  const C=hit(add(J,q,hA+R),Ro+R);if(!C)return null;const l=Math.hypot(C[0]-O[0],C[1]-O[1]),m1=[(C[0]-O[0])/l,(C[1]-O[1])/l],T1=add(O,m1,Ro),T2=add(C,q,-R),O2=hit(add(J,q,hA+fA),Ro+fB)||add(T1,m1,fB);
+  let a1=Math.atan2(T1[1]-C[1],T1[0]-C[0]),a2=Math.atan2(T2[1]-C[1],T2[0]-C[0]);while(a2-a1>Math.PI)a2-=2*Math.PI;while(a2-a1<-Math.PI)a2+=2*Math.PI;
+  const arc=Array.from({length:9},(_,i)=>{const t=a1+(a2-a1)*i/8;return [C[0]+R*Math.cos(t),C[1]+R*Math.sin(t)];});
+  const jo=[J[0]-O[0],J[1]-O[1]],ang=Math.atan2(jo[0]*m1[1]-jo[1]*m1[0],dot(jo,m1)),turn=Math.sign(jo[0]*tB[1]-jo[1]*tB[0])||1;// arc distance along the ring from the join to T1
+  return {outline:[add(T1,m1,fB),...arc.map(p=>add(p,[C[0]-p[0],C[1]-p[1]],.125/R)),add(T2,q,fA),O2],arc,road:[hit(add(J,q,hA),Ro),...arc],centre:C,radius:R,tB:ang*turn*B.ring.R,uA:dot([T2[0]-J[0],T2[1]-J[1]],a)};}
  const C=isect(add(J,m,hB+R),tB,add(J,q,hA+R),a);if(!C)return null;
  const T1=add(C,m,-R),T2=add(C,q,-R),O=isect(add(J,m,hB+fB),tB,add(J,q,hA+fA),a)||add(T1,m,fB);
  let a1=Math.atan2(T1[1]-C[1],T1[0]-C[0]),a2=Math.atan2(T2[1]-C[1],T2[0]-C[0]);while(a2-a1>Math.PI)a2-=2*Math.PI;while(a2-a1<-Math.PI)a2+=2*Math.PI;
