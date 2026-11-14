@@ -22,6 +22,7 @@ import {setKitNight} from './street/operator-kit.js';
 import {CV_FRAME,setNetwork,ROAD} from './street/roads.js';
 import {buildNetwork,networkMask,streetTerrain,frames,halfWidth} from './street/network.js';
 import {hillMesh} from './street/hills.js';
+import {riverDepth,riverMeshes} from './city/river.js';
 import {treeTemplates} from './street/trees.js';
 import {LENGTH,STOPS,sample,LOOP,roadSection,fromChainage,project,PATH,BRIDGES,CROSSINGS,footpathHeight,cycleOffset,CYCLE_WIDTH,CHANNELS,JUNCTIONS,UNDERPASSES,DEPOT,RAILWAY,railSample,cycleCrossing,cycleHeight,sideCrossing,crossingGeometry,junctionGap,laneOffset,curveRadius,returnOffset,CROSSOVER_START,END_STOP,CYCLE_BRIDGES,CYCLE_RAMP,cycleBridgeAt,cycleBridgeHeight,cycleSample,PLATFORM_RISE} from './alignment.js';
 export {JUNCTIONS,UNDERPASSES} from './alignment.js';
@@ -99,7 +100,7 @@ export function pavementLight(v,lamps){
  }
  return glow;
 }
-export function channelDepth(x,z){return Math.max(0,...CHANNELS.map(c=>{const r=sample(c.s),dx=x-r.x,dz=z-r.z;return Math.abs(dx*r.lx+dz*r.lz)<c.extent?3.8*Math.max(0,Math.min(1,(c.width/2+3-Math.abs(dx*r.tx+dz*r.tz))/3)):0;}));}
+export function channelDepth(x,z){return Math.max(0,riverDepth(x,z),...CHANNELS.map(c=>{const r=sample(c.s),dx=x-r.x,dz=z-r.z;return Math.abs(dx*r.lx+dz*r.lz)<c.extent?3.8*Math.max(0,Math.min(1,(c.width/2+3-Math.abs(dx*r.tx+dz*r.tz))/3)):0;}));}
 const cycleLine=Array.from({length:Math.ceil(LENGTH/3)+1},(_,i)=>cycleSample(Math.min(i*3,LENGTH)));
 export function cycleClearance(x,z){let nearest=Infinity;for(let i=1;i<cycleLine.length;i++){const a=cycleLine[i-1],b=cycleLine[i],dx=b.x-a.x,dz=b.z-a.z,t=Math.max(0,Math.min(1,((x-a.x)*dx+(z-a.z)*dz)/(dx*dx+dz*dz||1)));nearest=Math.min(nearest,Math.hypot(x-a.x-t*dx,z-a.z-t*dz));}return nearest;}
 // Scenery must clear every nearby bend and crossing road, not just its placement sample.
@@ -167,8 +168,8 @@ export function fieldLevel(x,z){FIELD??=Array.from({length:Math.ceil(LENGTH/40)+
  let w=0,y=0;for(const [px,pz,py] of FIELD){const k=1/((x-px)**2+(z-pz)**2+6400)**2;w+=k;y+=k*py;}return y/w;}
 // Fixed world grid prevents the folded wide-offset ribbons that left terrain holes.
 // Terrain extends beneath the surrounding city and eases down to the backdrop.
-export const CITY_TERRAIN_RADIUS=700;// the outermost city streets (Tin Ha Road) lie 545 m from the corridor; the rim eases down beyond them
-export function renderedGround(x,z,sHint){const s=sHint??project(x,z),r=sample(s),d=Math.hypot(x-r.x,z-r.z),u=Math.max(0,Math.min(1,(d-600)/100)),fade=u*u*(3-2*u);return terrainLevel(x,z,s)*(1-fade)-5*fade;}
+export const CITY_TERRAIN_RADIUS=800;// Tin Ha Road lies 545 m from the corridor and the river channel 620 m; the rim eases down beyond them
+export function renderedGround(x,z,sHint){const s=sHint??project(x,z),r=sample(s),d=Math.hypot(x-r.x,z-r.z),u=Math.max(0,Math.min(1,(d-700)/100)),fade=u*u*(3-2*u);return terrainLevel(x,z,s)*(1-fade)-5*fade;}
 export function terrainPatch(start,end,grade=(x,z,y)=>y,cache=new Map()){
  const pts=PATH.filter(p=>p.s>=Math.max(0,start-5)&&p.s<=end+5),step=8,p=[],uv=[],idx=[];
  const minX=Math.floor((Math.min(...pts.map(p=>p.x))-CITY_TERRAIN_RADIUS)/step)*step,maxX=Math.max(...pts.map(p=>p.x))+CITY_TERRAIN_RADIUS,minZ=Math.floor((Math.min(...pts.map(p=>p.z))-CITY_TERRAIN_RADIUS)/step)*step,maxZ=Math.max(...pts.map(p=>p.z))+CITY_TERRAIN_RADIUS;
@@ -526,7 +527,7 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
  const bridgeCentre=at(a2.s+115,-28);footbridge('HSWRL plaza pedestrian bridge',bridgeCentre,sample(a2.s+115).heading+Math.PI/2,104,7);
  for(let ds=-100;ds<=115;ds+=25)for(const lat of [-22,-72]){const p=at(a2.s+ds,lat),ch=Math.floor(a2.s/240);const head=parkLamp(batch,p.clone().add(new T.Vector3(0,.32,0)),7,mats.lamp,ch);lampPositions.push({s:a2.s+ds,x:head.x,y:head.y,z:head.z});}
  // Street furniture from public/street/furniture.json (src/street/furniture.js; edited in street.html).
- if(drawFurniture&&furniture.network){const streets=buildNetwork(furniture.network,{mats,ground:renderedGround});scene.add(streets);cityDetails(streets,{batch,kitParts,fences,lampPositions,mats});}
+ if(drawFurniture&&furniture.network){scene.add(riverMeshes(renderedGround,{concrete:mats.concrete}));const streets=buildNetwork(furniture.network,{mats,ground:renderedGround});scene.add(streets);cityDetails(streets,{batch,kitParts,fences,lampPositions,mats});}
  const furnished=placeFurniture(furniture,{batch:drawFurniture?batch:()=>{},kitParts,railAllowed:(run,a,b)=>run.road!=='corridor'||fenceAllowed(Math.min(a.s,b.s)-.12,Math.max(a.s,b.s)+.12,a.lat>0?1:-1)});lampPositions.push(...furnished.lampPositions);fences.push(...furnished.fences);const bins=furnished.bins;
  // Station ramp railings follow the station access geometry and stay generated here (HyD Type 2, 1.5 m bays).
  const RAIL=1.5,{railRun}=railingBuilder({batch,kitParts,fences});
