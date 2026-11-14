@@ -2,6 +2,7 @@ import * as T from 'three';
 import {crossingY} from './city/crossings.js';
 import {sample,roadSection,projectFrame,STOPS,LENGTH,footpathHeight,cycleSample,cycleBridgeHeight,cycleCrossing,JUNCTIONS,UNDERPASSES,junctionPavement,crossingGeometry,PLATFORM_RISE} from './alignment.js';
 import {streetHeight,surfaceSampler} from './street/network.js';
+import {lotHeight} from './city/blocks.js';
 import {ROAD,nearest} from './street/roads.js';
 import {renderedGround,terrainLevel,channelDepth,stationAccess,depotKerbHeight} from './environment.js';
 
@@ -43,6 +44,7 @@ export function groundAt(x,z,sGuess){
  // The interchange plaza is a raised paved surface, including its thin activity pads.
  if(s>STOPS[1].s-115&&s<STOPS[1].s+125&&lat>=-84&&lat<=-17)return {s,lat,y:r.groundY+.34};
  const street=streetHeight(x,z);if(street!==null)return {s,lat,y:street};
+ const plot=lotHeight(x,z);if(plot!==null)return {s,lat,y:plot};// paved plot plinths and forecourts (src/city/blocks.js)
  return {s,lat,y:Math.hypot(x-r.x,z-r.z)>100?renderedGround(x,z):terrainLevel(x,z,s)-.24-channelDepth(x,z)};
 }
 

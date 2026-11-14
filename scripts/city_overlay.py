@@ -22,11 +22,12 @@ for r in d['roads']:
     pts = [P(*p) for p in r['pts']]
     g.line(pts, fill=(250, 250, 120, 150), width=w(r['hw'] * 2), joint='curve'); g.line(pts, fill=(40, 40, 40, 220), width=w(r['cw'] * 2), joint='curve')
     if r['head']: x, z = r['pts'][-1]; h = r['head']; g.ellipse([P(x - h, z - h), P(x + h, z + h)], fill=(40, 40, 40, 220))
+for p in d.get('plots', []): g.polygon([P(*q) for q in p['poly']], fill=(200, 30, 120, 170) if p['row'] == 1 else (120, 30, 200, 170), outline=(60, 0, 40, 255))
 for c in d['crossings']:
     a = P(c['x'] - c['ux'] * c['extent'], c['z'] - c['uz'] * c['extent']); b = P(c['x'] + c['ux'] * c['extent'], c['z'] + c['uz'] * c['extent'])
     g.line([a, b], fill=(0, 200, 255, 255) if c['under'] else (255, 0, 0, 255), width=w(c['hw'] * 2))
 img = Image.alpha_composite(img.convert('RGBA'), ov); g = ImageDraw.Draw(img)
-try: f = ImageFont.truetype('/System/Library/Fonts/Helvetica.ttc', int(7 * k))
+try: f = ImageFont.truetype('/System/Library/Fonts/Helvetica.ttc', max(9, int(7 * k)))
 except Exception: f = ImageFont.load_default()
 for l in d['lots']:
     xs = [p[0] for p in l['poly']]; zs = [p[1] for p in l['poly']]; g.text(P(sum(xs) / len(xs), sum(zs) / len(zs)), l['id'], fill=(0, 0, 120), font=f)
