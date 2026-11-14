@@ -10,7 +10,7 @@ const LANE=3.65;
 export function crossingRoutes(network){const roads=network?.roads||[],routes=[];
  for(const j of [...JUNCTIONS,...UNDERPASSES]){const g=crossingGeometry(j),{C,u}=g;
   // Network road leaving arm σ, as points from its tie outwards.
-  const arm=σ=>{const r=roads.find(r=>r.tie?.junction===j.c&&r.tie.side===σ);return r?frames(r).filter((f,i,F)=>i%3===0||i===F.length-1).map(f=>({x:f.x,z:f.z})):[];};
+  const arm=σ=>{const r=roads.find(r=>r.tie?.junction===j.c&&r.tie.side===σ);return r?frames(r).filter(f=>f.d<=260).filter((f,i,F)=>i%3===0||i===F.length-1).map(f=>({x:f.x,z:f.z})):[];};// control-centre routes: the first 260 m of each arm
   for(const σ of [1,-1]){// travelling from arm σ to arm −σ (direction −σ·u)
    const centre=[...arm(σ).reverse()];for(let d=σ*(j.extent-2);d*σ>-(j.extent-2);d-=σ*5)centre.push({x:C.x+u.x*d,z:C.z+u.z*d});centre.push(...arm(-σ));
    const dedup=centre.filter((p,i)=>!i||Math.hypot(p.x-centre[i-1].x,p.z-centre[i-1].z)>.5);if(dedup.length<4)continue;
