@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {FREE_SPAWNS,freeSpawn} from '../free-spawns.js';
 import {STOPS,DEPOT,LENGTH,sample,project} from '../alignment.js';
-assert.equal(FREE_SPAWNS.length,STOPS.length+5);
+assert.equal(FREE_SPAWNS.length,STOPS.length+8);// + three city-drive starts (city rebuild 2)
+assert.equal(FREE_SPAWNS.filter(p=>p.car).length,3);for(const p of FREE_SPAWNS.filter(p=>p.car))assert.ok(p.walk&&freeSpawn(p.id).freeCar===1,'a city drive starts in explore mode, in the car');
 assert.equal(new Set(FREE_SPAWNS.map(p=>p.id)).size,FREE_SPAWNS.length);
 for(const location of FREE_SPAWNS){
  const p=freeSpawn(location.id);

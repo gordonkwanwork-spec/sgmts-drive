@@ -21,6 +21,7 @@ import {sideCrossing,crossingGeometry} from './alignment.js';
 import {crossingRoutes} from './city/traffic-routes.js';
 import {cityGraph,cityFootways} from './city/life-headless.js';
 import {createTraffic,createPeople} from './city/life.js';
+import {stepCar} from './city/drive.js';
 import {zoneRule,plotPaving,setLotSampler} from './city/blocks.js';
 import {cityPlots} from './city/plots-headless.js';
 import {renderModernBuildings} from './city/kit/hk-modern.js';
@@ -274,7 +275,18 @@ function giveWay(p,r,dt,reach,width=.55){
  if(side!==null){p.dodgeT=side>0||side===0&&p.id>.5?-.7:.7;p.stuck=(p.stuck||0)+dt;if(p.stuck>6){p.dir*=-1;p.stuck=0;}}
  else{p.stuck=0;if(!personNear(p.group,1.6))p.dodgeT=0;}
  p.dodge=(p.dodge||0)+Math.max(-.9*dt,Math.min(.9*dt,(p.dodgeT||0)-(p.dodge||0)));return side===null;}
-let cityTraffic=null,cityPeople=null;const cityWalkers=[];
+let cityTraffic=null,cityPeople=null,cityLanes=null,cityMask=null;const cityWalkers=[];
+// City rebuild 2: the player's own car (src/city/drive.js). It exists in explore mode: a city-drive start puts the player at
+// the wheel; on foot, Enter beside it drives it, and Enter on a city street with nothing else nearby brings it to that lane.
+const playerCar={group:null,x:0,y:0,z:0,yaw:0,v:0,steer:0,length:4.6,width:1.95,active:false};
+const inCrossing=(x,z)=>[...JUNCTIONS,...UNDERPASSES].some(j=>{const g=crossingGeometry(j),dx=x-g.C.x,dz=z-g.C.z;return Math.abs(dx*g.n.x+dz*g.n.z)<j.halfWidth&&Math.abs(dx*g.u.x+dz*g.u.z)<j.extent+2;});
+const carWorld={drivable:(x,z)=>cityMask.onRoad(x,z,-.25)||inCrossing(x,z),
+ blocked:(x,z,r)=>cityTraffic.cars.some(c=>c.piece&&[-1,0,1].some(k=>Math.hypot(c.x+c.tx*k*c.length/3-x,c.z+c.tz*k*c.length/3-z)<r+1.25))||// three discs along each vehicle
+ [vehicle,...ai].some(a=>a.sections.some(b=>b.visible&&Math.hypot(b.position.x-x,b.position.z-z)<r+4.5))};
+function nearestLane(x,z,max=40){let best=null,bd=max;for(const p of cityLanes.pieces)if(p.kind==='lane')for(let i=1;i<p.pts.length;i++){const q=p.pts[i],d=Math.hypot(q.x-x,q.z-z);if(d<bd){bd=d;const a=p.pts[i-1],l=Math.hypot(q.x-a.x,q.z-a.z)||1;best={x:q.x,y:q.y,z:q.z,tx:(q.x-a.x)/l,tz:(q.z-a.z)/l};}}return best;}
+function poseCar(){const g=playerCar.group;g.visible=playerCar.active;g.position.set(playerCar.x,playerCar.y+.03,playerCar.z);g.rotation.y=playerCar.yaw;}
+function placeCar(q){Object.assign(playerCar,{x:q.x,z:q.z,y:q.y,yaw:Math.atan2(-q.tx,-q.tz),v:0,steer:0,active:true});poseCar();}
+function enterCar(){state.avatar='car';player.group.visible=false;orbit.yaw=playerCar.yaw;orbit.pitch=0;orbit.zoom=1;toast('Driving · W accelerate · S brake / reverse · A D steer · Space handbrake · Enter to get out · keep left / 靠左行駛',7);}
 function makeTraffic(){
  // City rebuild: general traffic follows lane paths through each rebuilt crossing and out along the OZP network
  // (src/city/traffic-routes.js); at grade it holds at the side-road stop line until the junction's road phase shows green.
@@ -289,7 +301,8 @@ function makeTraffic(){
  // City rebuild 2: live traffic over the whole city network (src/city/life.js). It replaces the fixed crossing routes in every
  // mode but the control centre, which still meters its own route traffic. The two systems meet only at the six corridor
  // crossings, where city cars obey the junction's road phase.
- cityTraffic=createTraffic(cityGraph(environment.network),{count:44,fleet:types.map(t=>({kind:t.id,length:t.length,width:t.width,height:t.height})),
+ cityLanes=cityGraph(environment.network);playerCar.group=streetModel('car');playerCar.group.name='player-car';playerCar.group.visible=false;scene.add(playerCar.group);
+ cityTraffic=createTraffic(cityLanes,{count:44,fleet:types.map(t=>({kind:t.id,length:t.length,width:t.width,height:t.height})),
   signal:X=>{const sig=signalObjects.find(s=>s.c===X.c);return !sig||signalAt(sig,true)==='go';}});
  for(const car of cityTraffic.cars){const group=streetModel(car.kind);group.name='traffic-'+car.kind;group.traverse(m=>{if(m.isMesh)m.castShadow=true;});group.visible=false;scene.add(group);
   traffic.push({group,kind:car.kind,width:car.width,length:car.length,height:car.height,v:0,life:car});}
@@ -501,7 +514,7 @@ function lightScene(){const night=state.condition==='night';glowPeople(night);if
 $('#night').onclick=()=>{state.condition=state.condition==='night'?'morning':'night';$('#condition').value=state.condition;weather();};
 $('#headway').onchange=()=>{state.headway=Number($('#headway').value)===210?210:300;resetStreetLife();const p=fleetPlan(state.headway);toast(`${p.count} running services${p.convoy===2?' · two-vehicle convoys':''}`);};
 
-function reset(mode=$('#mode').value){for(const a of ai)delete a.control;resetAvatar();audio.cancelAnnouncement();if(vehicle.flipped){vehicle.sections.reverse();vehicle.flipped=false;}vehicle.isAI=false;state.returning=false;state.depotRoute=false;state.depotSelected=false;state.depotOutbound=false;state.depotExitDir=1;state.branchCurve=depotCurve;vehicle.terminal=null;Object.assign(state,{screen:'driving',trip:0,parkingAwarded:[],announced:[],contextSpoken:[],speedSetting:0,mode,condition:$('#condition').value,s:stopTarget(STOPS[0]),v:0,lat:5.4,steer:0,yaw:0,park:true,door:0,doorTarget:0,doorSide:1,ramp:0,rampTarget:0,index:0,phase:'approach',dwell:0,pax:0,score:0,energy:0,regen:0,battery:92,time:0,cruise:false,guide:true,mobileBrake:false,cam:0,indicator:0,accel:0,travel:0,served:[],skipped:[],missed:[],incidents:0,penalties:0,crashed:false,eventLog:[],priority:false,loopS:0,loopDone:false,requestAck:false,hold:0,lastKerb:-10,lastCrash:-10,lastHarsh:-10,speedingT:0,freeSpeed:0,walkTip:false,frameTimes:[],frames:0});$('#speed-control').value=0;$('#target-speed').value=0;keys.clear();vehicle.yaws.fill(0);vehicle.posed=false;resetOrbit();firstCamera=true;walkerObjects.forEach(p=>p.progress=0);resetStreetLife();traffic.forEach((c,i)=>{c.lat=c.start;c.v=0;});signalObjects.forEach(s=>s.passed=false);if(mode==='turnback'){state.loopS=0;state.lat=0;state.s=0;state.park=true;}if(mode==='explore'){state.s=35;state.lat=1.9;}if(mode==='free'){Object.assign(state,freeSpawn($('#spawn-location').value));orbit.pitch=state.freePitch;state.s=state.freeS;state.lat=1.9;}ffRate=1;state.arrivals=[];makeSchedule();document.body.dataset.mode=mode;weather();show('driving');if(mode==='control')controlRoom.reset();poseTram(vehicle,state.s,state.lat,false,0,mode==='turnback');audio.initAudio();if(tipsEnabled)toast(mode==='turnback'?'Nai Wai loop · release brake and complete a smooth circuit':mode==='explore'?'Explore the line · move mouse to look, scroll to zoom':mode==='free'?'Free roam · WASD move · Shift boost · Space/Ctrl altitude':'Welcome aboard · E to open the left doors at Nai Wai');if(mode==='free'&&state.freeWalk){state.mode='explore';document.body.dataset.mode='explore';toggleAvatar();const q=groundAt(state.freeX,state.freeZ,state.freeS);Object.assign(player,{x:state.freeX,z:state.freeZ,y:q.y,s:q.s,heading:state.freeHeading});orbit.yaw=state.freeHeading;show('driving');}if(mode==='passenger')board(ai.filter(a=>a.active&&a.dir===1&&!a.terminal).sort((a,b)=>a.s-b.s)[0],true);}
+function reset(mode=$('#mode').value){for(const a of ai)delete a.control;resetAvatar();audio.cancelAnnouncement();if(vehicle.flipped){vehicle.sections.reverse();vehicle.flipped=false;}vehicle.isAI=false;state.returning=false;state.depotRoute=false;state.depotSelected=false;state.depotOutbound=false;state.depotExitDir=1;state.branchCurve=depotCurve;vehicle.terminal=null;Object.assign(state,{screen:'driving',trip:0,parkingAwarded:[],announced:[],contextSpoken:[],speedSetting:0,mode,condition:$('#condition').value,s:stopTarget(STOPS[0]),v:0,lat:5.4,steer:0,yaw:0,park:true,door:0,doorTarget:0,doorSide:1,ramp:0,rampTarget:0,index:0,phase:'approach',dwell:0,pax:0,score:0,energy:0,regen:0,battery:92,time:0,cruise:false,guide:true,mobileBrake:false,cam:0,indicator:0,accel:0,travel:0,served:[],skipped:[],missed:[],incidents:0,penalties:0,crashed:false,eventLog:[],priority:false,loopS:0,loopDone:false,requestAck:false,hold:0,lastKerb:-10,lastCrash:-10,lastHarsh:-10,speedingT:0,freeSpeed:0,walkTip:false,frameTimes:[],frames:0});$('#speed-control').value=0;$('#target-speed').value=0;keys.clear();vehicle.yaws.fill(0);vehicle.posed=false;resetOrbit();firstCamera=true;walkerObjects.forEach(p=>p.progress=0);resetStreetLife();traffic.forEach((c,i)=>{c.lat=c.start;c.v=0;});signalObjects.forEach(s=>s.passed=false);if(mode==='turnback'){state.loopS=0;state.lat=0;state.s=0;state.park=true;}if(mode==='explore'){state.s=35;state.lat=1.9;}if(mode==='free'){Object.assign(state,freeSpawn($('#spawn-location').value));orbit.pitch=state.freePitch;state.s=state.freeS;state.lat=1.9;}ffRate=1;state.arrivals=[];makeSchedule();document.body.dataset.mode=mode;weather();show('driving');if(mode==='control')controlRoom.reset();poseTram(vehicle,state.s,state.lat,false,0,mode==='turnback');audio.initAudio();if(tipsEnabled)toast(mode==='turnback'?'Nai Wai loop · release brake and complete a smooth circuit':mode==='explore'?'Explore the line · move mouse to look, scroll to zoom':mode==='free'?'Free roam · WASD move · Shift boost · Space/Ctrl altitude':'Welcome aboard · E to open the left doors at Nai Wai');if(mode==='free'&&state.freeWalk){state.mode='explore';document.body.dataset.mode='explore';toggleAvatar();const q=groundAt(state.freeX,state.freeZ,state.freeS);Object.assign(player,{x:state.freeX,z:state.freeZ,y:q.y,s:q.s,heading:state.freeHeading});orbit.yaw=state.freeHeading;show('driving');if(state.freeCar){const q=nearestLane(player.x,player.z,80);if(q){placeCar(q);enterCar();}}}if(mode==='passenger')board(ai.filter(a=>a.active&&a.dir===1&&!a.terminal).sort((a,b)=>a.s-b.s)[0],true);}
 function show(screen){if(screen==='menu'){resetAvatar();if(['driving','paused','complete'].includes(state.screen))menuStage('choose');}if(screen!=='driving')document.exitPointerLock?.();if(screen!=='menu'&&homeOpen)homePanel(null);state.screen=screen;$('#menu').classList.toggle('hidden',screen!=='menu');$('#hud').classList.toggle('hidden',!['driving','paused'].includes(screen));$('#pause-sheet').classList.toggle('hidden',screen!=='paused');if(screen==='paused')pmOpened();if(screen==='driving')lockMouse();$('#report').classList.toggle('hidden',screen!=='complete');document.body.dataset.screen=screen;for(const el of document.querySelectorAll('#camera,#score-panel,#cluster,#route-strip,#buttons,#dwell'))el.classList.toggle('hidden',state.mode==='free'||state.mode==='passenger'&&el.id!=='camera');}
 function penalty(message,points=20){state.score=Math.max(0,state.score-points);state.penalties++;(state.eventLog ||= []).push({time:state.time,message,points});toast(message+' −'+points);audio.playWarning();}
 // Trilingual like every other announcement: braking/curves use the recorded handrail message.
@@ -838,8 +851,8 @@ function actors(dt){const subjectS=viewS();
  }
  // City traffic: one step of the lane-graph cars (recycled around the camera, out of its view), then their models follow.
  const cityLive=state.mode!=='control'&&cityTraffic;
- if(cityLive){const dir=camera.getWorldDirection(new T.Vector3()),fl=Math.hypot(dir.x,dir.z)||1,blockers=noCab()?[]:vehicle.sections.map(b=>({x:b.position.x,z:b.position.z,r:5.5}));
-  if(state.avatar!=='drive'&&state.mode!=='free')blockers.push({x:player.x,z:player.z,r:.8});
+ if(cityLive){const dir=camera.getWorldDirection(new T.Vector3()),fl=Math.hypot(dir.x,dir.z)||1,blockers=noCab()?[]:vehicle.sections.map(b=>({x:b.position.x,z:b.position.z,r:5.5,w:1.5}));
+  if(state.avatar==='foot'&&state.mode!=='free')blockers.push({x:player.x,z:player.z,r:.8,w:.5});if(playerCar.active)blockers.push({x:playerCar.x,z:playerCar.z,r:2.4,w:1});
   const env={focus:{x:camera.position.x,z:camera.position.z},view:{x:camera.position.x,z:camera.position.z,fx:dir.x/fl,fz:dir.z/fl},blockers};
   for(let t=Math.min(dt,1.5);t>1e-4;t-=.1)cityTraffic.step(Math.min(.1,t),env);cityPeople.step(Math.min(dt,.25),env);}
  for(const w of cityWalkers){const h=w.h;w.group.visible=!!(cityLive&&h.path)&&Math.hypot(h.x-camera.position.x,h.z-camera.position.z)<150;
@@ -949,7 +962,7 @@ function makeAvatar(){player.group??=streetModel('pedestrian_0');player.group.na
 function parkBike(b,parked){b.group.getObjectByName('seated_rider').visible=!parked;placeBike(b);}
 function placeBike(b){if(b.parking){b.group.position.set(b.parking.x,b.parking.y+.035,b.parking.z);b.group.rotation.y=b.parking.heading;return;}const r=cycleSample(b.s);b.group.position.set(r.x+r.lx*b.lat,r.groundY+cycleBridgeHeight(b.s)+.035,r.z+r.lz*b.lat);b.group.rotation.y=r.heading+(b.dir===1?0:Math.PI);}
 
-function resetAvatar(){if(player.sit)standUp();if(player.tram)rideGlass(player.tram,false);if(player.bike){player.bike.v=0;parkBike(player.bike,true);}Object.assign(player,{tram:null,bike:null});state.avatar='drive';if(player.group)player.group.visible=false;}
+function resetAvatar(){if(player.sit)standUp();if(player.tram)rideGlass(player.tram,false);if(player.bike){player.bike.v=0;parkBike(player.bike,true);}Object.assign(player,{tram:null,bike:null});state.avatar='drive';if(player.group)player.group.visible=false;playerCar.active=false;playerCar.v=0;if(playerCar.group)playerCar.group.visible=false;}
 const near2d=(p,max)=>Math.hypot(p.x-player.x,p.z-player.z)<max;
 function nearestTram(){let best=null,bd=6;for(const t of [...(noCab()?[]:[vehicle]),...ai.filter(a=>a.active)])for(const g of t.sections){const d=Math.hypot(g.position.x-player.x,g.position.z-player.z);if(d<bd&&Math.abs(g.position.y-player.y)<3){bd=d;best=t;}}return best;}
 const nearestBike=()=>bikes.filter(b=>b!==player.bike&&near2d(b.group.position,2.5)).sort((a,b)=>a.group.position.distanceTo(player.group.position)-b.group.position.distanceTo(player.group.position))[0];
@@ -960,11 +973,15 @@ function leave(g,hint){const right=new T.Vector3(1,0,0).applyQuaternion(g.quater
 function toggleAvatar(){if(state.mode==='free'||!player.group)return;if(player.sit)standUp();
  if(state.avatar==='drive'){if(Math.abs(state.v)>.2){toast('Stop the vehicle before getting out / 請先停車');return;}state.cruise=false;state.park=true;audio.setDrive(0,false);orbit.pitch=0;orbit.zoom=1;leave(vehicle.sections[0],state.s);toast('On foot · WASD walk · Shift run · Space jump · X sit · mouse look · Enter at a parked bike or stopped ART · E talk',7);return;}
  if(state.avatar==='ride'){alight();return;}
+ if(state.avatar==='car'){if(Math.abs(playerCar.v)>.5){toast('Stop the car before getting out / 請先停車');return;}// out on the driver's (right) side
+  const x=playerCar.x+Math.cos(playerCar.yaw)*1.8,z=playerCar.z-Math.sin(playerCar.yaw)*1.8,g=groundAt(x,z,project(x,z));Object.assign(player,{x,z,y:g.y,s:g.s,v:0,heading:playerCar.yaw});state.avatar='foot';player.walkInput=null;orbit.yaw=player.heading;player.group.visible=true;return;}
+ if(playerCar.active&&Math.hypot(playerCar.x-player.x,playerCar.z-player.z)<4.5){enterCar();return;}
  if(state.avatar==='bike'){const b=player.bike;b.v=0;parkBike(b,true);player.bike=null;const r=cycleSample(b.s),q=b.group.position.clone().addScaledVector(new T.Vector3(r.lx,0,r.lz),-b.dir*1.1),g=groundAt(q.x,q.z,b.s);Object.assign(player,{x:q.x,z:q.z,y:g.y,s:g.s,v:0});state.avatar='foot';player.walkInput=null;orbit.yaw=player.heading;player.group.visible=true;return;}
  const bike=nearestBike(),tram=bike?null:nearestTram();
  if(bike){bike.parking=null;const r=cycleSample(bike.s);bike.dir=-Math.sin(orbit.yaw)*r.tx-Math.cos(orbit.yaw)*r.tz>=0?1:-1;bike.lat=bike.dir*.85;bike.v=0;player.bike=bike;parkBike(bike,false);orbit.yaw=bike.group.rotation.y;state.avatar='bike';player.group.visible=false;toast('Cycling · W pedal · S brake (again to turn round) · A/D change side');return;}
  if(tram===vehicle){state.avatar='drive';player.group.visible=false;resetOrbit();firstCamera=true;toast('Back in the cab / 返回駕駛室');return;}
  if(tram){if(Math.abs(tram.v)>.5){toast('Wait for it to stop / 請等車停定');return;}board(tram,false);return;}
+ {const q=state.mode==='explore'&&cityLanes?nearestLane(player.x,player.z,25):null;if(q){placeCar(q);toast('Your car is on the road beside you · Enter to drive / 你的車已停在旁邊，按 Enter 駕駛',5);return;}}
  toast('Walk up to an ART vehicle or a parked bike, then press Enter');}
 // X sits: on the nearest free bench within 1.8 m, otherwise on the ground. Any movement key or Space stands up.
 function toggleSit(){if(state.avatar!=='foot')return;if(player.sit){standUp();return;}if(player.jumpY>0)return;
@@ -994,7 +1011,7 @@ function talk(){if(state.avatar==='ride'){toast('Passenger: “'+passengerLine(9
  const p=nearestPerson();if(!p){toast('Nobody close enough to talk to');return;}const n=player.talks.get(p.g)||0;player.talks.set(p.g,n+1);
  if(state.avatar==='foot')player.heading=Math.atan2(player.x-p.g.position.x,player.z-p.g.position.z);{const line=passengerLine(p.id,n,{condition:state.condition});toast('Passenger: “'+line+'”');bubbles.say(p.g,['',line],4);}}
 function padLabel(){if(state.avatar==='drive'&&state.mode!=='free'&&stick!==null)releaseStick();
- const key=state.avatar==='foot'?avatarPrompt()[2]:state.avatar,label={drive:'Walk',ride:'Alight',bike:'Park','bike-near':'Ride','tram-near':nearestTram()===vehicle?'Drive':'Board'}[key]||'Enter';
+ const key=state.avatar==='foot'?avatarPrompt()[2]:state.avatar,label={drive:'Walk',ride:'Alight',bike:'Park',car:'Get out','car-near':'Drive','bike-near':'Ride','tram-near':nearestTram()===vehicle?'Drive':'Board'}[key]||'Enter';
  $('#pad-enter small').textContent=label;if(state.avatar==='ride')$('#pad-sit small').textContent=player.ride.seat===null?'Sit':'Stand';$('#pad-up small').textContent=state.mode==='free'?'Up':'Jump';}
 function avatarPrompt(){if(state.avatar==='ride'){const r=player.ride,t=player.tram;
   if(r.seat!==null)return ['Seated · X stand up · WASD stand and walk · C view · E chat',1,'ride'];
@@ -1002,7 +1019,9 @@ function avatarPrompt(){if(state.avatar==='ride'){const r=player.ride,t=player.t
   if(DOOR_Z.some(z=>Math.abs(r.Z-sectionOf(r.Z)*PITCH-z)<1.1))return [Math.abs(t.v)<.3?'Enter · exit the vehicle / 按 Enter 下車':'Enter to exit once the vehicle stops / 停車後按 Enter 下車',1,'ride'];
   if(nearestSeat(r.Z,r.x,riderSeats,2.4)!==null)return ['X · sit down / 按 X 坐低 · WASD walk the aisle · C view',1,'ride'];
   return ['Standing · WASD walk the aisle to a free seat · C view · E chat',1,'ride'];}
+ if(state.avatar==='car')return ['Driving · W S A D · Space handbrake · Enter to get out / 按 Enter 落車',1,'car'];
  if(state.avatar==='bike')return ['Cycling · W pedal · S brake, again to turn round · Enter to park the bike',1,'bike'];
+ if(playerCar.active&&Math.hypot(playerCar.x-player.x,playerCar.z-player.z)<4.5)return ['Enter · drive the car / 按 Enter 駕駛',1,'car-near'];
  if(nearestBike())return ['Enter · take the bike',1,'bike-near'];const tram=nearestTram();
  if(tram)return [tram===vehicle?'Enter · take the driver’s seat':'Enter · board this ART / 按 Enter 上車',1,'tram-near'];
  if(nearestPerson())return ['E · talk to this person',1,'talk'];
@@ -1014,6 +1033,9 @@ function updateAvatar(dt){const has=(...c)=>c.some(k=>keys.has(k)),f=(has('KeyW'
   if(r.seat!==null&&(f||side)){r.seat=null;r.x=0;r.yaw+=orbit.yaw;orbit.yaw=0;}
   if(r.seat===null&&(f||side)){const Y=r.yaw+orbit.yaw,k=(run?2.2:1.2)*dt;Object.assign(r,aisleStep(r.Z,r.x,(-f*Math.cos(Y)-side*Math.sin(Y))*k,(-f*Math.sin(Y)+side*Math.cos(Y))*k));}
   const st=t.terminal?null:STOPS[t.stopIndex];for(const cue of rideCues(r.cues,{stop:st,dir:t.dir,distance:st?(stopTarget(st,t.dir)-t.s)*t.dir:0,dwell:t.dwell}))playCue(cue,st);return;}
+ if(state.avatar==='car'){const c=playerCar;for(let t=dt;t>1e-4;t-=.03)stepCar(c,{throttle:f,steer:-side,brake:has('Space')},Math.min(.03,t),carWorld);
+  const g=groundAt(c.x,c.z,project(c.x,c.z));c.y=g.y;poseCar();animateRoadWheels(c.group,c.v*dt);contact(c.group,c.width,c.length,1.5,'Player car');
+  if(Math.abs(c.v)>.5)orbit.yaw+=Math.atan2(Math.sin(c.yaw-orbit.yaw),Math.cos(c.yaw-orbit.yaw))*Math.min(1,dt*3);Object.assign(player,{x:c.x,y:c.y,z:c.z,s:g.s,heading:c.yaw});return;}
  if(state.avatar==='bike'){const b=player.bike;
   // S brakes; pressed again at a standstill it turns the bike around.
   if(f<0&&b.v===0&&!b.turning){b.dir*=-1;b.lat=-b.lat;}b.turning=f<0;
@@ -1034,7 +1056,7 @@ function rideCamera(){const r=player.ride,g=rideSection(player.tram,r.Z),q=r.sea
  const eye=g.localToWorld(new T.Vector3(q?r.x*.8:r.x,q?q.y+SIT_EYE:FLOOR_Y+STAND_EYE,r.Z-sectionOf(r.Z)*PITCH)),dir=new T.Vector3(-Math.sin(Y)*Math.cos(P),Math.sin(P),-Math.cos(Y)*Math.cos(P)).applyQuaternion(g.quaternion);
  rideGlass(player.tram,true);camera.fov=82;camera.near=.05;camera.updateProjectionMatrix();return {target:eye,focus:eye.clone().addScaledVector(dir,10)};}
 function rideView(){const r=player.ride;r.outside=!r.outside;rideGlass(player.tram,!r.outside);firstCamera=true;toast(r.outside?'Outside view · C to go back inside':'Inside view / 車廂視角');}
-function avatarCamera(){if(rideInside())return rideCamera();const ride=state.avatar==='ride',bike=state.avatar==='bike',dist=(ride?17:bike?5.5:4.2)*orbit.zoom,e=clamp(.28-orbit.pitch,-.25,1.3),focus=new T.Vector3(player.x,player.y+(ride?2.6:bike?1.5:player.group?.userData.height*.886||1.55),player.z),back=new T.Vector3(Math.sin(orbit.yaw)*Math.cos(e),Math.sin(e),Math.cos(orbit.yaw)*Math.cos(e));
+function avatarCamera(){if(rideInside())return rideCamera();const ride=state.avatar==='ride',bike=state.avatar==='bike',car=state.avatar==='car',dist=(ride?17:car?9.5:bike?5.5:4.2)*orbit.zoom,e=clamp(.28-orbit.pitch,-.25,1.3),focus=new T.Vector3(player.x,player.y+(ride?2.6:car?1.9:bike?1.5:player.group?.userData.height*.886||1.55),player.z),back=new T.Vector3(Math.sin(orbit.yaw)*Math.cos(e),Math.sin(e),Math.cos(orbit.yaw)*Math.cos(e));
  const target=focus.clone().addScaledVector(back,dist);target.y=Math.max(target.y,groundAt(target.x,target.z,player.s).y+.35);camera.fov=55;camera.near=.2;camera.updateProjectionMatrix();return {target,focus};}
 
 // Menu attract mode: live AI service with a cinematic camera. Cuts every 7 s between five shots and hops to another
@@ -1124,7 +1146,7 @@ async function boot(){try{let loaded=0;
  // alone, so the environment keeps hills and planting off them like any built lot.
  const cityBlocks=cityPlots(furniture.network,lots),plotLand=cityBlocks.map(p=>{const g=p.gap/2+1,q=(a,b)=>[p.c[0]+p.u[0]*a+p.v[0]*b,p.c[1]+p.u[1]*a+p.v[1]*b];return {id:p.id,zone:'plot',style:'residential',model:{type:'massing'},poly:[q(-p.w/2-g,-p.d/2-8),q(p.w/2+g,-p.d/2-8),q(p.w/2+g,p.d/2+4),q(-p.w/2-g,p.d/2+4)]};});
  environment=buildEnvironment(scene,streetKit,{occupied:occupiedBy([...lots,...plotLand]),furniture});scene.add(await loadFurnitureModels(furniture,{loader,url:src=>import.meta.env.BASE_URL+'street/models/'+src}));loadingScreen.update(2,'Loading surroundings');
- const drawn=networkMask(furniture.network,renderedGround);// lot buildings and trees keep off streets and paving drawn in the street editor
+ const drawn=cityMask=networkMask(furniture.network,renderedGround);// lot buildings and trees keep off streets and paving drawn in the street editor
  const lotGroup=await buildLots(lots.filter(l=>!kitLot(l)),{kit:streetKit,ground:renderedGround,allowed:(x,z,r)=>sceneryClear(x,z,r)&&!drawn.buildingBlocked(x,z,r),allowedKept:(x,z,r)=>sceneryClear(x,z,r),allowedLow:(x,z,r)=>sceneryClear(x,z,r,true)&&!drawn.blocked(x,z,r),modelUrl:src=>import.meta.env.BASE_URL+'lots/models/'+src});scene.add(lotGroup);
  // City rebuild: residential, commercial, mixed-use, industrial, enterprise-park and village lots from the sandbox modern kit.
  const kitSites=cityBlocks.map(p=>({id:p.id,poly:p.poly.map(([x,z])=>({x,z})),yaw:p.yaw,y:p.y-.15,modern:p.type,seed:p.seed}));// kit ground floor (y 0.15) on the plinth
@@ -1189,7 +1211,7 @@ const controlRoom=createControlRoom({state,renderer,scene,getFleet:()=>ai,getSig
  for(const a of depotVehicles)for(const g of a.sections)g.visible=Math.abs(s-DEPOT.s)<700;
 }});
 setUiTheme(document.body.dataset.uiTheme);
-window.__sgmts={get riders(){return riders;},get cityTraffic(){return cityTraffic;},get cityPeople(){return cityPeople;},updateRiders,bubbles,solid,crowdPeople,player,controlRoom,fitOneLine,state,atmosphere,STOPS,LENGTH,END_STOP,sample,LOOP,renderer,scene,camera,errors,reset,action,stopTarget,dockError,get ready(){return ready;},get vehicle(){return vehicle;},get manifest(){return manifest;},get signals(){return signalObjects;},get environment(){return environment;},get railway(){return railway;},railwaySoundStatus:audio.railwaySoundStatus,get traffic(){return traffic;},get ai(){return ai;},get crossers(){return crossers;},get cyclists(){return cyclists;},actors,update,terminalStep,terminalLength,weather,lightScene,nextDispatch,get depotVehicles(){return depotVehicles;},get walkers(){return walkerObjects;},get sitters(){return sitters;},get joggers(){return joggers;},get plazaPeople(){return plazaPeople;},seats,toggleSit,player,bikes,toggleAvatar,talk,updateAvatar,orbit,keys,aim,get birds(){return birds;},get stations(){return stations;},CAMERAS,signalAt,JUNCTIONS,setCamera:n=>{state.cam=n;resetOrbit();firstCamera=true;},pose:()=>poseTram(vehicle,state.s,state.lat),musicStatus:audio.musicStatus,announcementStatus:audio.announcementStatus,announce:audio.announce,proof:false,simulationRate:1,get ff(){return ffRate;},ffBlock,hudOverlaps,coach:()=>{const st=STOPS[state.index];return coach(st,st?(stopTarget(st)-state.s)*travelDirection():0,state.mode==='turnback',state.mode==='explore');},makeSchedule,clockText,NOSE};
+window.__sgmts={get riders(){return riders;},get cityTraffic(){return cityTraffic;},playerCar,get cityPeople(){return cityPeople;},updateRiders,bubbles,solid,crowdPeople,player,controlRoom,fitOneLine,state,atmosphere,STOPS,LENGTH,END_STOP,sample,LOOP,renderer,scene,camera,errors,reset,action,stopTarget,dockError,get ready(){return ready;},get vehicle(){return vehicle;},get manifest(){return manifest;},get signals(){return signalObjects;},get environment(){return environment;},get railway(){return railway;},railwaySoundStatus:audio.railwaySoundStatus,get traffic(){return traffic;},get ai(){return ai;},get crossers(){return crossers;},get cyclists(){return cyclists;},actors,update,terminalStep,terminalLength,weather,lightScene,nextDispatch,get depotVehicles(){return depotVehicles;},get walkers(){return walkerObjects;},get sitters(){return sitters;},get joggers(){return joggers;},get plazaPeople(){return plazaPeople;},seats,toggleSit,player,bikes,toggleAvatar,talk,updateAvatar,orbit,keys,aim,get birds(){return birds;},get stations(){return stations;},CAMERAS,signalAt,JUNCTIONS,setCamera:n=>{state.cam=n;resetOrbit();firstCamera=true;},pose:()=>poseTram(vehicle,state.s,state.lat),musicStatus:audio.musicStatus,announcementStatus:audio.announcementStatus,announce:audio.announce,proof:false,simulationRate:1,get ff(){return ffRate;},ffBlock,hudOverlaps,coach:()=>{const st=STOPS[state.index];return coach(st,st?(stopTarget(st)-state.s)*travelDirection():0,state.mode==='turnback',state.mode==='explore');},makeSchedule,clockText,NOSE};
 boot();
 
 function drawMinimap(){const c=$('#minimap');if(c.height!==190)c.height=190;drawNearbyMap(c.getContext('2d'));}

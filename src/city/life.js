@@ -71,7 +71,7 @@ export function laneGraph(net,crossings=[]){const pieces=[],sources=[],nodes=[];
  return {pieces,sources,nodes};}
 
 // Cars. opts: {count, seed, signal(crossing) → true when the road phase is green, time() for crossroads phases}.
-// step(dt, {focus:{x,z}, blockers:[{x,z,r}], view:{x,z,fx,fz} (camera, for respawns out of sight)}).
+// step(dt, {focus:{x,z}, blockers:[{x,z,r,w?}], view:{x,z,fx,fz} (camera, for respawns out of sight)}).
 export function createTraffic(graph,{count=40,seed=7,signal=()=>true,fleet=[{length:4.6,width:1.9}]}={}){
  let rs=seed>>>0;const rnd=()=>{rs=Math.imul(rs^rs>>>15,2246822507)+0x9e3779b9>>>0;return (rs>>>8)/16777216;};
  const lanes=graph.pieces.filter(p=>p.kind==='lane'&&p.len>12),cars=[],stats={respawns:0,redRuns:0,exits:0};let clock=0;
@@ -112,15 +112,15 @@ export function createTraffic(graph,{count=40,seed=7,signal=()=>true,fleet=[{len
    const rest=p.len-c.s;if(p.kind==='cross'&&p.hold!=null&&c.s<p.hold+.3&&!signal(p.crossing)){gap=Math.min(gap,p.hold-c.s);held=true;}
    if(c.next?.node&&p.kind==='lane'&&rest<45){if(c.next.rule==='signal'){if(!signal(c.next.crossing)){gap=Math.min(gap,rest+c.next.hold);held=true;}}else if(!clear(c,c.next)){gap=Math.min(gap,rest);held=!!c.next.node.signal&&stage(c.next.node)!==c.next.approach;}}
    // anything in the way: cars ahead in my lane, cars crossing my path, the player's vehicles and people
-   const look=(ox,oz,half,same,parked)=>{const dx=ox-c.x,dz=oz-c.z,ahead=dx*c.tx+dz*c.tz,side=Math.abs(dx*c.tz-dz*c.tx);if(ahead<=0)return;
-    if(same){if(side<2&&ahead<45)gap=Math.min(gap,ahead-c.length/2-half-2.5);}else if(side<2.3+half&&ahead<c.length/2+half+5+c.v*1.3)gap=Math.min(gap,ahead-c.length/2-half-(parked?2.5:1.5));};
+   const look=(ox,oz,half,same,parked,wide=half)=>{const dx=ox-c.x,dz=oz-c.z,ahead=dx*c.tx+dz*c.tz,side=Math.abs(dx*c.tz-dz*c.tx);if(ahead<=0)return;// wide: the obstacle's half-width across my path
+    if(same){if(side<2&&ahead<45)gap=Math.min(gap,ahead-c.length/2-half-2.5);}else if(side<(parked?c.width/2+.5:2.3)+wide&&ahead<c.length/2+half+5+c.v*1.3)gap=Math.min(gap,ahead-c.length/2-half-(parked?2.5:1.5));};
    // merging: another movement into the same lane — whoever is nearer to it leads, the other follows at a car's distance
    const into=p.kind!=='lane'?p.next[0]:c.next&&c.next.kind!=='lane'?c.next.next[0]:null,mine=p.kind!=='lane'?rest:rest+(c.next?.len??0);
    for(const o of cars){if(o===c||!o.piece||Math.abs(o.x-c.x)>50||Math.abs(o.z-c.z)>50)continue;
     if(into&&o.piece.kind!=='lane'&&o.piece!==p&&o.piece.next[0]===into){const theirs=o.piece.len-o.s;if(theirs<mine||theirs===mine&&o.id<c.id)gap=Math.min(gap,mine-theirs-(c.length+o.length)/2-2.5);continue;}
     const cos=o.tx*c.tx+o.tz*c.tz;
     if(cos>.5)look(o.x,o.z,o.length/2,true);else if(cos>-.5&&(o.piece.kind!=='lane'||o.id<c.id))look(o.x,o.z,o.length/2,false);}
-   for(const b of blockers)look(b.x,b.z,b.r,false,true);
+   for(const b of blockers)look(b.x,b.z,b.r,false,true,b.w??b.r);// {x,z,r along my path,w across it}: a car in the next lane is no obstacle
    // speed: accelerate to the limit, brake to stop in the gap
    const vmax=Math.min(p.vmax,c.next&&c.next.kind!=='lane'&&rest<25?Math.max(c.next.vmax,Math.sqrt(Math.max(0,2*1.8*rest)+c.next.vmax**2)):99),target=gap<=.2?0:Math.min(vmax,Math.sqrt(2*2.6*Math.max(0,gap-.2)));
    c.v=target>c.v?Math.min(target,c.v+1.9*dt):Math.max(target,c.v-4.5*dt);c.wait=c.v<.3&&!held?c.wait+dt:0;c.held=held;
