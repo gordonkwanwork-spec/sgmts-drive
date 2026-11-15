@@ -90,9 +90,11 @@ export function junctions(network,ground){const all=(network?.roads||[]).map(r=>
   const d=j.end?j.A.F.at(-1).d-reach:reach;
   if(d>8&&d<j.A.F.at(-1).d-8&&!j.A.r.crossings.some(c=>Math.abs(c-d)<12)){j.A.r.crossings.push(d);j.crossingD=d;if(j.signal)j.A.r.signalCrossings.push(d);}
   // The host's own approaches at a crossroads cross it just beyond the kerb returns on both sides.
-  if(j.signal&&j.B.r.standard==='sandbox'){j.hostX=Math.max(...cs.map(c=>Math.abs(c.tB)))+3.5;
-   for(const sd of [-1,1]){const dd=j.at.d+sd*j.hostX;if(!j.B.r.crossings.some(c=>Math.abs(c-dd)<6)){j.B.r.crossings.push(dd);j.B.r.signalCrossings.push(dd);}}}
+  if(j.signal&&j.B.r.standard==='sandbox')j.hostX=Math.max(...cs.map(c=>Math.abs(c.tB)))+3.5;
  }
+ // Both arms of a crossroads share them (j.host = {lo, hi} chainages on the host): beyond the outermost kerb return on each side.
+ for(const j of out)if(j.hostX!=null&&!j.host){const g=out.filter(k=>k.hostX!=null&&k.B===j.B&&Math.abs(k.at.d-j.at.d)<5),host={lo:Math.min(...g.map(k=>k.at.d-k.hostX)),hi:Math.max(...g.map(k=>k.at.d+k.hostX))};
+  for(const k of g)k.host=host;for(const dd of [host.lo,host.hi])if(!j.B.r.crossings.some(c=>Math.abs(c-dd)<6)){j.B.r.crossings.push(dd);j.B.r.signalCrossings.push(dd);}}
  return {roads:all,joins:out};}
 
 // 2D helpers
@@ -178,6 +180,9 @@ export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Gr
  const up=(mat,pts)=>{const a=pts.reduce((t,p,i)=>{const q=pts[(i+1)%pts.length];return t+p[0]*q[2]-q[0]*p[2];},0);out.tri(mat,a>0?pts:[...pts].reverse());};// a face-up polygon
  const paint=(o,mat,d,l,lift=.01)=>{const f=frameAt(o.F,d);return [f.x+f.lx*l,f.y+streetLevel(o.r,d,l)+(f.crossSlope||0)*l+lift,f.z+f.lz*l];};
  const lanesOf=P=>P.carriageway>12?2:1;
+ // Junction control hardware (signal poles, Give Way signs) as data for environment.js: {kind, x, y, z, yaw, …}, front = local −Z.
+ const controls=[],spot=(o,d,lat,lift=0)=>{const f=frameAt(o.F,d);return {x:f.x+f.lx*lat,y:f.y+streetLevel(o.r,d,lat)+(f.crossSlope||0)*lat+lift,z:f.z+f.lz*lat};};
+ const toward=(x,z)=>Math.atan2(-x,-z),facing=(o,d,dir)=>{const f=frameAt(o.F,d);return toward(-dir*f.tx,-dir*f.tz);};// facing: toward drivers travelling dir
  // Median (central reserve): kerbed and planted, its top 150 mm above the crowned carriageway edge, rounded noses.
  function median(o,p,q,m){const {r,F}=o,R=m/2,a=p+R,b=q-R,K=.15,edge=(d,sd)=>{const f=frameAt(F,d);return f.y+streetLevel(r,d,sd*R)+(f.crossSlope||0)*sd*R;};
   for(const sd of [-1,1]){addKerb(b-a,t=>{const d=a+t,f=frameAt(F,d),base=edge(d,sd);return {x:f.x+f.lx*sd*R,z:f.z+f.lz*sd*R,nx:-f.lx*sd,nz:-f.lz*sd,y:base+K,base};});
@@ -196,9 +201,12 @@ export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Gr
   const s0=starts.get(r.id+':0'),s1=starts.get(r.id+':1');
   for(const j of joins.filter(j=>j.A===o)){const dir=j.end?1:-1,line=j.end?L-s1.carriageway:s0.carriageway;
    if(j.signal&&j.crossingD!=null){const d=j.crossingD-dir*(1.65+2);anchors.push({d,dir,kind:'stop'});cuts.push(dir>0?[d,hi+1]:[lo-1,d]);}// stop line ≈ 2 m behind the near stud row
-   else anchors.push({d:line,dir,kind:j.B.r.loop?'ring':'giveway'});}
-  for(const j of joins.filter(j=>j.B===o&&j.signal&&j.hostX!=null)){const e=j.hostX+1.65+2;if(anchors.some(a=>Math.abs(a.d-(j.at.d-e))<1))continue;
-   anchors.push({d:j.at.d-e,dir:1,kind:'stop'},{d:j.at.d+e,dir:-1,kind:'stop'});cuts.push([j.at.d-e,j.at.d+e]);}
+   else{anchors.push({d:line,dir,kind:j.B.r.loop?'ring':'giveway'});
+    // TS102 Give Way sign on the nearside, 0.6 m behind the kerb: 1.5 m before the line (guide §6), or just clear of the kerb return
+    const s=j.end?s1:s0,t=s?.foot?.[-1],d=t==null?line-dir*1.5:dir>0?Math.min(line-1.5,L-t-.5):Math.max(line+1.5,t+.5);
+    controls.push({kind:'giveway',...spot(o,d,dir*(h+.6)),yaw:facing(o,d,dir)});}}
+  for(const j of joins.filter(j=>j.B===o&&j.host)){const a=j.host.lo-3.65,b=j.host.hi+3.65;if(anchors.some(x=>Math.abs(x.d-a)<1))continue;
+   anchors.push({d:a,dir:1,kind:'stop'},{d:b,dir:-1,kind:'stop'});cuts.push([a,b]);}
   // Corridor crossings: continue the arm's 4 m warning lines (src/city/crossings.js) at the same phase, out to 7 marks.
   for(const [tie,end] of [[r.tie,0],[r.endTie,1]]){if(!tie)continue;const j=[...JUNCTIONS,...UNDERPASSES].find(c=>c.c===tie.junction);if(j.underpass)continue;
    const D=j.extent-Math.abs(crossingGeometry(j).stopD[tie.side])-.2;anchors.push(end?{d:L+D,dir:1,kind:'corridor'}:{d:-D,dir:-1,kind:'corridor'});}
@@ -232,8 +240,10 @@ export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Gr
  // One city carriageway: crossfall from the centre (or each median edge) to the kerbs, the median, and its markings.
  function carriageway(o,c0,c1,s0,s1){const {r,P,F}=o,L=F.at(-1).d,h=P.carriageway/2,m=P.median||0,lvl=(d,l)=>streetLevel(r,d,l);
   const head=r.turningRadius?L-Math.sqrt(Math.max(0,r.turningRadius**2-h**2)):c1;// where the carriageway opens into a turning head
-  let medians=[];if(m){const gaps=joins.filter(j=>j.B===o).map(j=>{const half=j.signal&&j.hostX!=null?j.hostX+1.75:j.A.P.carriageway/2+CORNER+1.5;return [j.at.d-half,j.at.d+half];});
-   medians=minus(c0+(s0?CORNER+6:3),Math.min(c1-(s1?CORNER+6:3),head-6),gaps).filter(([p,q])=>q-p>m+2);}
+  let medians=[];if(m){const gaps=joins.filter(j=>j.B===o).map(j=>{const half=j.A.P.carriageway/2+CORNER+1.5;return j.host?[j.host.lo-1.75,j.host.hi+1.75]:[j.at.d-half,j.at.d+half];});
+   // at a signalised arm the median runs up to the crossing, its nose carrying the second primary signal
+   const arm=e=>joins.find(j=>j.A===o&&!!j.end===e&&j.signal&&j.crossingD!=null),a0=arm(false),a1=arm(true);
+   medians=minus(a0?a0.crossingD+1.75:c0+(s0?CORNER+6:3),Math.min(a1?a1.crossingD-1.75:c1-(s1?CORNER+6:3),head-6),gaps).filter(([p,q])=>q-p>m+2);}
   for(const [a,b] of m?[[-h,-m/2],[m/2,h]]:[[-h,0],[0,h]])strip(out,M.road,F,c0,c1,a,b,lvl);
   if(m)for(const [p,q] of minus(c0,c1,medians.map(([p,q])=>[p+m/2,q-m/2])))for(const [a,b] of [[-m/2,0],[0,m/2]])strip(out,M.road,F,p,q,a,b,lvl);// across median gaps, and under the round noses
   for(const [p,q] of medians)median(o,p,q,m);
@@ -256,6 +266,18 @@ export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Gr
     if(h>0&&hk){const point=t=>{const f=frameAt(F,p+t);return {x:f.x+f.lx*lo,z:f.z+f.lz*lo,nx:f.lx*sd,nz:f.lz*sd,y:f.y+streetLevel(r,p+t,lo+sd*.00001)+(f.crossSlope||0)*lo,base:f.y+Y.road+(f.crossSlope||0)*lo};};addKerb(q-p,point);edges.push({road:r,kind:'edge',side:sd,from:p,to:q,length:q-p,point,crossings:r.crossings.filter(c=>c>p&&c<q).map(c=>c-p)});strip(out,mats.channel||M.kerb,F,p,q,lo-sd*.3,lo,Y.road+.001);}
     else if(h>0)face(out,M.kerb,F,p,q,lo,Y.road,Y.raised,-sd);
     face(out,M.kerb,F,p,q,hi,-.3,hk?streetLevel(r,0,hi):Y.raised,sd);}}} 
+ // Traffic signals at the city crossroads (sandbox LAYOUTS.md, TPDM V4 2.2.3.1). Each approach: a primary on the nearside kerb 1 m
+ // beyond its stop line, carrying the pedestrian head for that crossing; a second primary on the median nose of a divided road; a
+ // pedestrian pole at the crossing's far kerb; and its secondary back to back on the opposite approach's offside pole (the median
+ // nose where the road ahead is divided, else the kerb pole). stage / ped.stage name the src/city/life.js stage that shows green.
+ for(const j of joins.filter(j=>j.host)){const node={x:j.at.x,z:j.at.z};if(controls.some(c=>c.node&&Math.hypot(c.node.x-node.x,c.node.z-node.z)<6))continue;
+  const arms=joins.filter(k=>k.B===j.B&&k.signal&&Math.abs(k.at.d-j.at.d)<5),ap=[1,-1].map(dir=>({o:j.B,dir,d:dir>0?j.host.lo-2.6:j.host.hi+2.6,stage:'major',ped:'side'}));
+  for(const [i,k] of arms.entries()){const dir=k.end?1:-1;ap.push({o:k.A,dir,d:k.crossingD-dir*2.6,stage:'arm'+i,ped:'major'});}// arms lie on opposite sides of the host
+  ap.forEach((a,i)=>{const {o,dir,d}=a,h=o.P.carriageway/2,m=o.P.median||0,f=frameAt(o.F,d),b=ap[i^1];
+   controls.push({kind:'signal',...spot(o,d,dir*(h+.8)),yaw:facing(o,d,dir),stage:a.stage,back:m?null:b.stage,ped:{stage:a.ped,yaw:toward(-dir*f.lx,-dir*f.lz)},node});// each pedestrian head faces the far kerb
+   controls.push({kind:'signal',...spot(o,d,-dir*(h+.8)),yaw:toward(dir*f.lx,dir*f.lz),pedOnly:true,ped:{stage:a.ped},node});
+   if(m)controls.push({kind:'signal',...spot(o,d,dir*m/2,.15),x:f.x,z:f.z,yaw:facing(o,d,dir),stage:a.stage,back:b.stage,node});});}
+ g.userData.controls=controls;
  // Crossings: dropped kerb and yellow blister tactile at each end. Signal crossings (crossroads) add the two stud rows and
  // the yellow stripes (RM1075 / RM1076, TPDM V3 Diag 5.7.3.1); cautionary crossings at priority junctions have no markings.
  const crossings=[];

@@ -220,7 +220,7 @@ export function placeFurniture(data,{batch,kitParts,railAllowed=()=>true}){const
     signals.push({group:head,bulbs:[lenses.signal_ped_stop,{material:new T.MeshBasicMaterial()},lenses.signal_ped_go],axis:'pedestrian',crossing,junction:it.params.junction,id:it.id+'-pedestrian',sharedPole:true});
    }},
  };
- for(const it of data.items||[]){try{const P=pose(it);if(isModel(it.type)){if(it.params?.light)light(P,0,it.params.light,0,it,it.params.light);continue;}const build=BUILD[it.type];if(!build)throw Error('unknown type '+it.type);build(P,it);}catch(e){errors.push(`${it.id}: ${e.message}`);}}
+ for(const it of data.items||[]){try{const P=it.at||pose(it);/* it.at: a world pose {x,y,z,yaw} (city junction signals) */if(isModel(it.type)){if(it.params?.light)light(P,0,it.params.light,0,it,it.params.light);continue;}const build=BUILD[it.type];if(!build)throw Error('unknown type '+it.type);build(P,it);}catch(e){errors.push(`${it.id}: ${e.message}`);}}
  for(const run of data.runs||[]){if(run.type!=='railing')continue;try{const P=runPoints(run);let segment=[];
   const flush=()=>{if(segment.length>1){const points=segment;railRun(points.map(p=>new T.Vector3(p.x,p.y,p.z)),i=>chunkOf(points[i]),run.ends||[true,true]);}segment=[];};
   for(let i=1;i<P.length;i++){if(railAllowed(run,P[i-1],P[i])){if(!segment.length)segment.push(P[i-1]);segment.push(P[i]);}else flush();}flush();}catch(e){errors.push(`${run.id}: ${e.message}`);}}

@@ -20,7 +20,7 @@ import {terminalCurve,depotCurve,depotExitCurve} from './routes.js';
 import {sideCrossing,crossingGeometry} from './alignment.js';
 import {crossingRoutes} from './city/traffic-routes.js';
 import {cityGraph,cityFootways} from './city/life-headless.js';
-import {createTraffic,createPeople} from './city/life.js';
+import {createTraffic,createPeople,stageAt} from './city/life.js';
 import {stepCar} from './city/drive.js';
 import {zoneRule,plotPaving,setLotSampler} from './city/blocks.js';
 import {cityPlots} from './city/plots-headless.js';
@@ -257,6 +257,7 @@ const junctions=JUNCTIONS;
 // Signal heads come from the street furniture data (traffic_signal items, params.junction + axis); phases stay per junction.
 function makeSignals(){
  for(const j of junctions){const r=sample(j.s);if(!j.underpass&&r.elevated)continue;signalObjects.push({...j,s:j.s-j.stop,centre:j.s,passed:false,heads:[]});}
+ for(const h of environment.citySignals)if(!h.sharedPole)scene.add(h.group);
  for(const head of environment.signals){const sig=signalObjects.find(s=>s.c===head.junction);if(!sig){console.warn('Signal head',head.id,'has no junction',head.junction);continue;}if(!head.sharedPole)scene.add(head.group);sig.heads.push(head);}
 }
 function signalAt(sig,side=false){if(state.mode==='control'&&sig?.control)return aspect(sig.control,side?'road':'tram');const t=((state.time+sig.offset)%42+42)%42;return side?(t>=30&&t<39?'go':t>=39&&t<40?'amber':'stop'):(t<25?'go':t<28?'amber':'stop');}
@@ -885,6 +886,11 @@ function actors(dt){const subjectS=viewS();
  }
 
  for(const sig of signalObjects)for(const head of sig.heads){const phase=head.axis==='pedestrian'?(head.crossing==='side'?((state.mode==='control'?aspect(sig.control,'road'):signalAt(sig,true))==='stop'?'go':'stop'):state.mode==='control'?aspect(sig.control,'ped'):signalAt(sig)==='stop'?'go':'stop'):signalAt(sig,head.axis==='side'),lit=phase==='go'?2:phase==='amber'?1:0;head.bulbs.forEach((b,i)=>b.material.color.setHex(i===lit?[0xff4633,0xffd65b,0x55ff95][i]:0x1a2120));}
+ // City crossroads heads follow the city traffic's stages: red+amber before green and amber after it; the green man flashes for 5 s.
+ if(cityTraffic)for(const h of environment.citySignals){h.n??=cityLanes.nodes.filter(n=>n.signal).reduce((a,n)=>Math.hypot(n.x-h.node.x,n.z-h.node.z)<Math.hypot(a.x-h.node.x,a.z-h.node.z)?n:a);
+  const s=stageAt(h.n,cityTraffic.clock),on=h.ped?(h.stage==='major'?s.stage==='major':/^arm/.test(s.stage)):s.stage===h.stage,soon=!h.ped&&s.stage===null&&s.next===h.stage&&s.left<=2;
+  const lit=h.ped?[!on,false,on&&(s.left>5||elapsed%.6<.3)]:[!on,on?s.left<=3:soon,on&&s.left>3];// soon implies red, so red + amber
+  h.bulbs.forEach((b,i)=>b.material.color.setHex(lit[i]?[0xff4633,0xffd65b,0x55ff95][i]:0x1a2120));}
 
 }
 const cabDisplay=document.createElement('canvas');cabDisplay.width=512;cabDisplay.height=320;const cabTexture=new T.CanvasTexture(cabDisplay);cabTexture.colorSpace=T.SRGBColorSpace;cabTexture.flipY=false;

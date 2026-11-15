@@ -6,7 +6,7 @@ import fs from 'node:fs';
 const ctx2d=new Proxy({},{get:(_,k)=>k==='measureText'?()=>({width:0}):k==='createLinearGradient'?()=>({addColorStop(){}}):()=>{},set:()=>true});
 globalThis.document??={createElement:()=>({getContext:()=>ctx2d,width:0,height:0})};
 const {cityGraph}=await import('../city/life-headless.js');
-const {createTraffic}=await import('../city/life.js');
+const {createTraffic,stageAt}=await import('../city/life.js');
 const {project,sample,roadSection}=await import('../alignment.js');
 const network=JSON.parse(fs.readFileSync(new URL('../../public/street/furniture.json',import.meta.url))).network;
 const g=cityGraph(network),lanes=g.pieces.filter(p=>p.kind==='lane');
@@ -44,4 +44,7 @@ for(const seed of [7,21]){let green=true;const T=createTraffic(g,{count:50,seed,
  for(const p of paths)for(const q of p.pts)assert.ok(!onRoad(q.x,q.z),`footway line of ${p.road} is on a carriageway at ${q.x.toFixed(0)},${q.z.toFixed(0)}`);
  const P=createPeople(paths,{count:28}),walked=new Map();for(let i=0;i<1200;i++){P.step(.05,{});for(const h of P.people)walked.set(h.id,(walked.get(h.id)||0)+(h.moved||0));}
  for(const h of P.people){assert.ok(h.path&&Number.isFinite(h.x+h.y+h.z),'person placed');assert.ok(walked.get(h.id)>30,`person ${h.id} walked only ${walked.get(h.id).toFixed(0)} m in a minute`);assert.ok(!onRoad(h.x,h.z),'person on a carriageway');}}
+// Crossroads stages (the signal heads show these): major → all-red → arm0 → all-red → arm1 → all-red, 63 s, next stage named.
+{const seq=[];for(let t=0;t<63;t+=.5){const s=stageAt({id:0},t),k=s.stage??'red>'+s.next;if(seq.at(-1)!==k)seq.push(k);assert.ok(s.left>0&&s.left<=26);}
+ assert.deepEqual(seq,['major','red>arm0','arm0','red>arm1','arm1','red>major']);}
 console.log(`city-life checks passed: ${lanes.length} lanes (${(lanes.reduce((s,p)=>s+p.len,0)/1000).toFixed(1)} km), ${g.pieces.filter(p=>p.kind==='turn').length} junction movements, 2 × 5 min of traffic clean`);

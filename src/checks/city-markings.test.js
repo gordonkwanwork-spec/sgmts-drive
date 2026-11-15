@@ -27,4 +27,13 @@ assert.ok(cr.filter(c=>c.kind==='cautionary').length>=15,'cautionary crossings a
 assert.equal(joins.filter(j=>j.signal).length,6,'six crossroads arms');
 // 4. Yellow kerb lines exist along the city kerbs (two lines per kerb on distributors).
 const yl=g.children.filter(m=>m.material===yellow).reduce((s,m)=>s+m.geometry.index.count/3,0);assert.ok(yl>20000,`yellow kerb-line triangles ${yl}`);
-console.log(`city-markings checks passed: no downward faces, ${checked} median samples, ${cr.length} crossings (${cr.filter(c=>c.kind==='signal').length} signal)`);
+// 5. Junction control hardware: a TS102 Give Way sign at every priority / roundabout entry, and at each crossroads four approaches
+// with a kerb primary (carrying the pedestrian head), a pedestrian pole at the far kerb, a median primary where divided, and the
+// secondaries back to back. Every pole and sign stands on its footway or median, not in the carriageway.
+const ctl=g.userData.controls,gw=ctl.filter(c=>c.kind==='giveway'),sig=ctl.filter(c=>c.kind==='signal');
+assert.equal(gw.length,joins.filter(j=>!j.signal).length,'one Give Way sign per priority or roundabout entry');
+assert.equal(sig.filter(c=>c.pedOnly).length,12,'pedestrian poles: one per signal crossing');
+assert.equal(sig.filter(c=>c.ped&&!c.pedOnly).length,12,'kerb primaries: one per approach');
+assert.equal(sig.filter(c=>c.back).length,12,'a secondary for every approach');
+for(const c of [...gw,...sig]){const y=H(c.x,c.z);assert.ok(y!==null&&Math.abs(y-c.y)<.08,`${c.kind} at ${c.x.toFixed(1)},${c.z.toFixed(1)}: surface ${y?.toFixed(2)} vs ${c.y.toFixed(2)}`);}
+console.log(`city-markings checks passed: no downward faces, ${checked} median samples, ${cr.length} crossings (${cr.filter(c=>c.kind==='signal').length} signal), ${gw.length} Give Way signs, ${sig.length} signal poles`);

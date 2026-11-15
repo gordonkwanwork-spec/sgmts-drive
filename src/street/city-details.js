@@ -45,5 +45,17 @@ export function cityDetails(networkGroup,{batch,kitParts,fences,lampPositions,ma
  for(const c of (networkGroup.userData.crossings||[]).filter(c=>c.kind==='zebra'))for(const side of [-1,1]){// none now: city crossings are signal or cautionaryconst {f,half}=c,lat=side*(half+.65),P=new T.Vector3(f.x+f.lx*lat+f.tx*3.8,f.y+.18,f.z+f.lz*lat+f.tz*3.8),ch=Math.floor(project(P.x,P.z)/240);
   batch('city-zebra-pole',poleGeo,mats.metal,P.clone().add(new T.Vector3(0,1.25,0)),ONE,new T.Euler(),ch);batch('city-zebra-beacon',globeGeo,beacon,P.clone().add(new T.Vector3(0,2.6,0)),ONE,new T.Euler(),ch);
  }
- networkGroup.userData.details={panels,lamps,gullies};return networkGroup.userData.details;
+ // TS102 Give Way (sandbox road-signs.js): inverted triangle 600 mm high, red border, 讓 / GIVE WAY, lower edge 2.3 m, on its own post.
+ const H=.6,W=H/Math.sin(Math.PI/3),tri=new T.Shape([new T.Vector2(-W/2,H/2),new T.Vector2(0,-H/2),new T.Vector2(W/2,H/2)]);
+ const face=new T.ShapeGeometry(tri),uv=face.attributes.uv,fp=face.attributes.position;for(let i=0;i<fp.count;i++)uv.setXY(i,fp.getX(i)/W+.5,fp.getY(i)/H+.5);face.rotateY(Math.PI);// front: local −Z
+ const back=new T.ShapeGeometry(tri),postGeo=new T.CylinderGeometry(.038,.038,1,8),c=document.createElement('canvas');c.width=256;c.height=222;const x=c.getContext('2d');
+ const path=k=>{const cx=128,cy=74,p=[[0,0],[256,0],[128,222]];x.beginPath();p.forEach(([a,b],i)=>x[i?'lineTo':'moveTo'](cx+(a-cx)*k,cy+(b-cy)*k));x.closePath();};
+ path(1);x.fillStyle='#c8102e';x.fill();path(.7);x.fillStyle='#fff';x.fill();x.fillStyle='#151515';x.textAlign='center';x.textBaseline='middle';
+ x.font='bold 46px "PingFang HK","Microsoft JhengHei",sans-serif';x.fillText('讓',128,52);x.font='bold 20px Arial,Helvetica,sans-serif';x.fillText('GIVE WAY',128,90);
+ const map=new T.CanvasTexture(c);map.colorSpace=T.SRGBColorSpace;const signMat=new T.MeshStandardMaterial({map,roughness:.45}),backMat=new T.MeshStandardMaterial({color:0x9aa09c,roughness:.55,metalness:.2});
+ let signs=0;for(const s of (networkGroup.userData.controls||[]).filter(c=>c.kind==='giveway')){const P=new T.Vector3(s.x,s.y,s.z),ch=Math.floor(project(s.x,s.z)/240),rot=new T.Euler(0,s.yaw,0),fwd=new T.Vector3(-Math.sin(s.yaw),0,-Math.cos(s.yaw));
+  batch('city-sign-post',postGeo,mats.galvanised,P.clone().add(new T.Vector3(0,1.45,0)),new T.Vector3(1,2.9,1),rot,ch);
+  batch('city-sign-giveway',face,signMat,P.clone().add(new T.Vector3(0,2.3+H/2,0)).addScaledVector(fwd,.05),ONE,rot,ch);
+  batch('city-sign-back',back,backMat,P.clone().add(new T.Vector3(0,2.3+H/2,0)).addScaledVector(fwd,.045),ONE,rot,ch);signs++;}
+ networkGroup.userData.details={panels,lamps,gullies,signs};return networkGroup.userData.details;
 }
