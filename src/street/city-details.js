@@ -42,7 +42,7 @@ export function cityDetails(networkGroup,{batch,kitParts,fences,lampPositions,ma
  }
  // Amber globes identify the unsignalised local-street zebra crossings.
  const poleGeo=new T.CylinderGeometry(.045,.045,2.5,8),globeGeo=new T.SphereGeometry(.16,12,8),beacon=new T.MeshStandardMaterial({color:0xffa31a,emissive:0xff8500,emissiveIntensity:.5});
- for(const c of networkGroup.userData.crossings||[])for(const side of [-1,1]){const {f,half}=c,lat=side*(half+.65),P=new T.Vector3(f.x+f.lx*lat+f.tx*3.8,f.y+.18,f.z+f.lz*lat+f.tz*3.8),ch=Math.floor(project(P.x,P.z)/240);
+ for(const c of (networkGroup.userData.crossings||[]).filter(c=>c.kind==='zebra'))for(const side of [-1,1]){// none now: city crossings are signal or cautionaryconst {f,half}=c,lat=side*(half+.65),P=new T.Vector3(f.x+f.lx*lat+f.tx*3.8,f.y+.18,f.z+f.lz*lat+f.tz*3.8),ch=Math.floor(project(P.x,P.z)/240);
   batch('city-zebra-pole',poleGeo,mats.metal,P.clone().add(new T.Vector3(0,1.25,0)),ONE,new T.Euler(),ch);batch('city-zebra-beacon',globeGeo,beacon,P.clone().add(new T.Vector3(0,2.6,0)),ONE,new T.Euler(),ch);
  }
  networkGroup.userData.details={panels,lamps,gullies};return networkGroup.userData.details;

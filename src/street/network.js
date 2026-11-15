@@ -1,4 +1,4 @@
-import {zebraStripes,zebraControl} from './sandbox/street-rules.js';
+import {signalCrossingMarkings} from './sandbox/street-rules.js';
 // Drawn street network: roads and paved/planted areas authored in the street editor (Road and Area tools) and stored in
 // public/street/furniture.json under `network`. The game (environment.js) and the editor both build it from here.
 //   roads: [{id, preset, footway, name?, pts:[[x,z]…]}]  centrelines (straight legs, rounded corners), left = +lateral
@@ -7,7 +7,7 @@ import {zebraStripes,zebraControl} from './sandbox/street-rules.js';
 // both kerbs turn the corner on a 6 m radius. Nothing may be drawn on the SGMTS corridor reserve (reserveClash).
 import * as T from 'three';
 import {sweptKerbs} from './kerbs.js';
-import {sample,JUNCTIONS,UNDERPASSES,crossingAxes} from '../alignment.js';
+import {sample,JUNCTIONS,UNDERPASSES,crossingAxes,crossingGeometry} from '../alignment.js';
 import {TessellateModifier} from 'three/addons/modifiers/TessellateModifier.js';
 import {corridorReserve,pointInPolygon} from '../lots/wand.js';
 import {circleIntersects} from '../lots/geometry.js';
@@ -67,7 +67,7 @@ export function nearestOn(F,x,z){let best=null,bd=Infinity;for(const f of F){con
 
 // T-junctions: an end of road A within JOIN m of road B's centreline (away from B's own ends).
 const JOIN=1;
-export function junctions(network,ground){const all=(network?.roads||[]).map(r=>({r:{...r,crossings:[],junctionDistances:r.tie?[0]:[]},P:presetOf(r),F:frames(r,ground)})).filter(o=>o.F.length>1),out=[];
+export function junctions(network,ground){const all=(network?.roads||[]).map(r=>({r:{...r,crossings:[],signalCrossings:[],junctionDistances:r.tie?[0]:[]},P:presetOf(r),F:frames(r,ground)})).filter(o=>o.F.length>1),out=[];
  for(const A of all)for(const end of [0,1]){const e=end?A.F.at(-1):A.F[0];
   for(const B of all){if(B===A)continue;const n=nearestOn(B.F,e.x,e.z);if(n.dist>JOIN||n.d<2||n.d>B.F.at(-1).d-2)continue;
    // into A, away from the junction
@@ -81,10 +81,17 @@ export function junctions(network,ground){const all=(network?.roads||[]).map(r=>
    if(road.r.standard==='sandbox'&&u<1&&!(road===j.B&&j.B.ring)){const axis=road===j.B?[j.at.tx,j.at.tz]:j.end?[-j.a[0],-j.a[1]]:j.a,along=f.d-at;f.x=(j.at.x+axis[0]*along)*(1-u)+f.x*u;f.z=(j.at.z+axis[1]*along)*(1-u)+f.z*u;const tx=axis[0]*(1-u)+f.tx*u,tz=axis[1]*(1-u)+f.tz*u,l=Math.hypot(tx,tz);f.tx=tx/l;f.tz=tz/l;f.lx=f.tz;f.lz=-f.tx;}
   }
  }
+ // Control (TPDM V3 5.6): two side roads meeting one host at the same point are a signal-controlled crossroads; any other
+ // join is a priority junction (give way), or a roundabout entry where the host is a ring.
+ for(const j of out)j.signal=!j.B.r.loop&&out.some(k=>k!==j&&k.B===j.B&&Math.abs(k.at.d-j.at.d)<5);
  for(const j of out){j.A.r.junctionDistances.push(j.end?j.A.F.at(-1).d:0);j.B.r.junctionDistances.push(j.at.d);
-  if(j.A.r.standard!=='sandbox')continue;const cs=[corner(j,1),corner(j,-1)].filter(Boolean),reach=Math.max(...cs.map(c=>c.uA))+6;
+  if(j.A.r.standard!=='sandbox')continue;const cs=[corner(j,1),corner(j,-1)].filter(Boolean),reach=Math.max(...cs.map(c=>c.uA))+3.5;
+  // Each arm's crossing sits just behind its kerb returns: a signal crossing at crossroads, else a cautionary one (dropped kerb).
   const d=j.end?j.A.F.at(-1).d-reach:reach;
-  if(d>8&&d<j.A.F.at(-1).d-8&&!j.A.r.crossings.some(c=>Math.abs(c-d)<12))j.A.r.crossings.push(d);
+  if(d>8&&d<j.A.F.at(-1).d-8&&!j.A.r.crossings.some(c=>Math.abs(c-d)<12)){j.A.r.crossings.push(d);j.crossingD=d;if(j.signal)j.A.r.signalCrossings.push(d);}
+  // The host's own approaches at a crossroads cross it just beyond the kerb returns on both sides.
+  if(j.signal&&j.B.r.standard==='sandbox'){j.hostX=Math.max(...cs.map(c=>Math.abs(c.tB)))+3.5;
+   for(const sd of [-1,1]){const dd=j.at.d+sd*j.hostX;if(!j.B.r.crossings.some(c=>Math.abs(c-dd)<6)){j.B.r.crossings.push(dd);j.B.r.signalCrossings.push(dd);}}}
  }
  return {roads:all,joins:out};}
 
@@ -109,10 +116,13 @@ function corner(j,c){const {A,B,at,side:s,a}=j,hB=B.P.carriageway/2,fB=B.P.footp
  return {outline:[add(T1,m,fB),...arc.map(p=>A.r.standard==='sandbox'?add(p,[C[0]-p[0],C[1]-p[1]],.125/R):p),add(T2,q,fA),O],arc,road:[isect(add(J,m,hB),tB,add(J,q,hA),a),...arc],centre:C,radius:R,tB:dot([T1[0]-J[0],T1[1]-J[1]],tB),uA:dot([T2[0]-J[0],T2[1]-J[1]],a)};}
 
 // Geometry buffers per material.
-function sink(){const bufs=new Map();
+// flat(mat): materials of horizontal surfaces (road, paving, paint, planting). Their triangles are made to face up as they are
+// added: a junction fill polygon wound the other way would otherwise be culled and show the terrain through the road.
+function sink(flat=()=>false){const bufs=new Map();
+ const upright=(b,from)=>{for(let k=from;k<b.idx.length;k+=3){const [i,j,l]=[b.idx[k],b.idx[k+1],b.idx[k+2]],P=b.pos,ax=P[i*3],az=P[i*3+2],ny=(P[j*3+2]-az)*(P[l*3]-ax)-(P[j*3]-ax)*(P[l*3+2]-az);if(ny<0){b.idx[k+1]=l;b.idx[k+2]=j;}}};
  const buf=(mat,pos)=>{let cells=bufs.get(mat);if(!cells)bufs.set(mat,cells=new Map());const cell=Math.floor(pos[0]/240)+','+Math.floor(pos[2]/240);let b=cells.get(cell);if(!b)cells.set(cell,b={pos:[],idx:[]});return b;};
- return {tri(mat,pts){if(!pts.length)return;const b=buf(mat,pts[0]),n=b.pos.length/3;for(const p of pts)b.pos.push(...p);for(let i=1;i+1<pts.length;i++)b.idx.push(n,n+i+1,n+i);},
- raw(mat,pos,idx){if(!pos.length)return;const b=buf(mat,pos),n=b.pos.length/3;for(const v of pos)b.pos.push(v);for(const i of idx)b.idx.push(i+n);},
+ return {tri(mat,pts){if(!pts.length)return;const b=buf(mat,pts[0]),n=b.pos.length/3,k0=b.idx.length;for(const p of pts)b.pos.push(...p);for(let i=1;i+1<pts.length;i++)b.idx.push(n,n+i+1,n+i);if(flat(mat))upright(b,k0);},
+ raw(mat,pos,idx){if(!pos.length)return;const b=buf(mat,pos),n=b.pos.length/3,k0=b.idx.length;for(const v of pos)b.pos.push(v);for(const i of idx)b.idx.push(i+n);if(flat(mat))upright(b,k0);},
  meshes(name){return [...bufs].flatMap(([mat,cells])=>[...cells].map(([cell,{pos,idx}])=>{const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setAttribute('uv',new T.Float32BufferAttribute(Array.from({length:pos.length/3*2},(_,i)=>pos[(i>>1)*3+(i&1?2:0)]/5),2));g.setIndex(idx);g.computeVertexNormals();const m=new T.Mesh(g,mat);m.name=name;m.userData.cell=cell;m.receiveShadow=true;return m;}));}};
 }
 // Strip between laterals la..lb along F from d0 to d1, at height y(f)+dy; up=true faces up.
@@ -145,9 +155,9 @@ export function surfaceSampler(meshes){const B=16,bins=new Map();
 // mats: {road, walk, walkGrey, walkBuff, grass, white, kerb} (environment.js materials; plain fallbacks otherwise).
 export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Group();g.name='Drawn street network';if(!network){activeSurface=()=>null;return g;}
  const fallback=(c,r=.95)=>new T.MeshStandardMaterial({color:c,roughness:r});
- const M={road:mats.road||fallback(0x4b4f4d,.9),red:mats.walk||fallback(0x97604f),grey:mats.walkGrey||fallback(0x8d918c),buff:mats.walkBuff||fallback(0xb5a98c),grass:mats.grass||fallback(0x55663c,1),white:mats.white||fallback(0xece8d3,.8),kerb:mats.concrete||Object.assign(fallback(0xc6c2ac,.9),{side:T.DoubleSide})};// kerb faces are seen from either side
+ const M={yellow:mats.yellow||fallback(0xf2c230,.7),road:mats.road||fallback(0x4b4f4d,.9),red:mats.walk||fallback(0x97604f),grey:mats.walkGrey||fallback(0x8d918c),buff:mats.walkBuff||fallback(0xb5a98c),grass:mats.grass||fallback(0x55663c,1),white:mats.white||fallback(0xece8d3,.8),kerb:mats.concrete||Object.assign(fallback(0xc6c2ac,.9),{side:T.DoubleSide})};// kerb faces are seen from either side
  const jointMat=mats.kerbJoint||fallback(0x656960,1);
- const out=sink(),edges=[],{roads,joins}=junctions(network,ground),cuts=new Map(),starts=new Map();// cuts: road → side → [[d0,d1]] footpath gaps; starts: road → end → {carriageway, footpath by corner}
+ const flatMats=new Set([M.road,M.red,M.grey,M.buff,M.grass,M.white,M.yellow,mats.tactile,mats.channel].filter(Boolean)),out=sink(m=>flatMats.has(m)),edges=[],{roads,joins}=junctions(network,ground),cuts=new Map(),starts=new Map();// cuts: road → side → [[d0,d1]] footpath gaps; starts: road → end → {carriageway, footpath by corner}
  function addKerb(length,point){if(length>120){for(let a=0;a<length;a+=120)addKerb(Math.min(120,length-a),t=>point(a+t));return;}for(const [i,g] of sweptKerbs(length,point).entries()){out.raw(i?jointMat:M.kerb,[...g.attributes.position.array],[...g.index.array]);g.dispose();}}
  for(const j of joins){const cs=[1,-1].map(c=>({c,k:corner(j,c)})).filter(x=>x.k);
   const along=cs.map(x=>j.at.d+x.k.tB);if(along.length===2){const key=j.B;if(!cuts.has(key))cuts.set(key,{1:[],[-1]:[]});cuts.get(key)[j.side].push([Math.min(...along),Math.max(...along)]);}
@@ -164,9 +174,74 @@ export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Gr
   const hA=j.A.P.carriageway/2;if(hA>0){const tB=[j.at.tx,j.at.tz],L1=add([j.at.x,j.at.z],[j.at.lx*j.side,j.at.lz*j.side],hB),u=starts.get(j.A.r.id+':'+j.end).carriageway;
    const q=[j.a[1],-j.a[0]],e1=add(add([j.at.x,j.at.z],j.a,u),q,hA),e2=add(add([j.at.x,j.at.z],j.a,u),q,-hA),p1=isect(e1,j.a,L1,tB),p2=isect(e2,j.a,L1,tB);
    if(p1&&p2){const quad=[e1,e2,p2,p1],a=quad.reduce((s,p,i)=>{const r=quad[(i+1)%4];return s+p[0]*r[1]-r[0]*p[1];},0),ring=a>0?quad:[...quad].reverse();out.tri(M.road,ring.map(p=>[p[0],y+Y.road,p[1]]));}}}
+ // ---- City (sandbox-standard) carriageways: crossfall, central median, Hong Kong road markings (sandbox ROAD-MARKINGS-GUIDE.md).
+ const up=(mat,pts)=>{const a=pts.reduce((t,p,i)=>{const q=pts[(i+1)%pts.length];return t+p[0]*q[2]-q[0]*p[2];},0);out.tri(mat,a>0?pts:[...pts].reverse());};// a face-up polygon
+ const paint=(o,mat,d,l,lift=.01)=>{const f=frameAt(o.F,d);return [f.x+f.lx*l,f.y+streetLevel(o.r,d,l)+(f.crossSlope||0)*l+lift,f.z+f.lz*l];};
+ const lanesOf=P=>P.carriageway>12?2:1;
+ // Median (central reserve): kerbed and planted, its top 150 mm above the crowned carriageway edge, rounded noses.
+ function median(o,p,q,m){const {r,F}=o,R=m/2,a=p+R,b=q-R,K=.15,edge=(d,sd)=>{const f=frameAt(F,d);return f.y+streetLevel(r,d,sd*R)+(f.crossSlope||0)*sd*R;};
+  for(const sd of [-1,1]){addKerb(b-a,t=>{const d=a+t,f=frameAt(F,d),base=edge(d,sd);return {x:f.x+f.lx*sd*R,z:f.z+f.lz*sd*R,nx:-f.lx*sd,nz:-f.lz*sd,y:base+K,base};});
+   strip(out,mats.channel||M.kerb,F,a,b,sd*(R+.3),sd*R,(d,l)=>streetLevel(r,d,l)+.001);}
+  strip(out,M.grass,F,a,b,-R+.125,R-.125,(d)=>streetLevel(r,d,R)+K);
+  for(const [c,dir] of [[a,-1],[b,1]]){const f=frameAt(F,c),base=edge(c,1),at=(phi,rad)=>[f.x+f.tx*dir*rad*Math.cos(phi)+f.lx*rad*Math.sin(phi),f.z+f.tz*dir*rad*Math.cos(phi)+f.lz*rad*Math.sin(phi)];
+   addKerb(Math.PI*R,t=>{const phi=-Math.PI/2+t/R,[x,z]=at(phi,R);return {x,z,nx:-dir*f.tx*Math.cos(phi)-f.lx*Math.sin(phi),nz:-dir*f.tz*Math.cos(phi)-f.lz*Math.sin(phi),y:base+K,base};});
+   const rim=Array.from({length:13},(_,i)=>at(-Math.PI/2+i*Math.PI/12,R-.125));for(let i=1;i<rim.length;i++)up(M.grass,[[f.x,base+K,f.z],[rim[i-1][0],base+K,rim[i-1][1]],[rim[i][0],base+K,rim[i][1]]]);}}
+ // Arrow glyphs (local metres: x along travel, tip at +2; y to the driver's left), 4 m long, 300 mm shaft (Cap 374G Fig 509).
+ const SHAFT=y=>[[-2,y-.15],[.8,y-.15],[.8,y+.15],[-2,y+.15]],HEAD=[[.8,-.6],[2,0],[.8,.6]];
+ const turn=s=>{const A=[-.4,0],B=[.4,.9*s],v=[B[0]-A[0],B[1]-A[1]],l=Math.hypot(...v),n=[-v[1]/l*.15,v[0]/l*.15],t=[.25,s],tl=Math.hypot(...t),u=[t[0]/tl,t[1]/tl],w=[-u[1]*.45,u[0]*.45];
+  return [[[A[0]+n[0],A[1]+n[1]],[B[0]+n[0],B[1]+n[1]],[B[0]-n[0],B[1]-n[1]],[A[0]-n[0],A[1]-n[1]]],[[B[0]+w[0],B[1]+w[1]],[B[0]+u[0]*.9,B[1]+u[1]*.9],[B[0]-w[0],B[1]-w[1]]]];};// diagonal branch off the shaft, head turned to that side
+ const GLYPH={straight:[SHAFT(0),HEAD],'straight-left':[SHAFT(0),HEAD,...turn(1)],'straight-right':[SHAFT(0),HEAD,...turn(-1)],all:[SHAFT(0),HEAD,...turn(1),...turn(-1)]};
+ // Lines on one road. Anchors are the stop / give-way lines on it: {d, dir (travel direction approaching the line), kind}.
+ function markings(o,lo,hi,m,medians){const {r,P,F}=o,L=F.at(-1).d,h=P.carriageway/2,W=M.white,anchors=[],cuts=[];
+  const s0=starts.get(r.id+':0'),s1=starts.get(r.id+':1');
+  for(const j of joins.filter(j=>j.A===o)){const dir=j.end?1:-1,line=j.end?L-s1.carriageway:s0.carriageway;
+   if(j.signal&&j.crossingD!=null){const d=j.crossingD-dir*(1.65+2);anchors.push({d,dir,kind:'stop'});cuts.push(dir>0?[d,hi+1]:[lo-1,d]);}// stop line ≈ 2 m behind the near stud row
+   else anchors.push({d:line,dir,kind:j.B.r.loop?'ring':'giveway'});}
+  for(const j of joins.filter(j=>j.B===o&&j.signal&&j.hostX!=null)){const e=j.hostX+1.65+2;if(anchors.some(a=>Math.abs(a.d-(j.at.d-e))<1))continue;
+   anchors.push({d:j.at.d-e,dir:1,kind:'stop'},{d:j.at.d+e,dir:-1,kind:'stop'});cuts.push([j.at.d-e,j.at.d+e]);}
+  // Corridor crossings: continue the arm's 4 m warning lines (src/city/crossings.js) at the same phase, out to 7 marks.
+  for(const [tie,end] of [[r.tie,0],[r.endTie,1]]){if(!tie)continue;const j=[...JUNCTIONS,...UNDERPASSES].find(c=>c.c===tie.junction);if(j.underpass)continue;
+   const D=j.extent-Math.abs(crossingGeometry(j).stopD[tie.side])-.2;anchors.push(end?{d:L+D,dir:1,kind:'corridor'}:{d:-D,dir:-1,kind:'corridor'});}
+  const holes=(r.crossings||[]).map(c=>[c-3.3,c+3.3]),n=P.lines==='lanes'?lanesOf(P):0,lane=(h-m/2)/Math.max(1,n);
+  // RM1103 centre line (3 m / 5 m) on two-way single carriageways; RM1101 lane lines (1 m / 5 m) between same-direction lanes.
+  const lines=P.lines==='centre'?[{l:0,dirs:[1,-1],on:3,off:5}]:n>1?[1,-1].flatMap(sd=>Array.from({length:n-1},(_,k)=>({l:sd*(m/2+lane*(k+1)),dirs:[sd],on:1,off:5}))):[];
+  const segs=(a,b,list)=>{let outv=[[a,b]];for(const [p,q] of list)outv=outv.flatMap(([u,v])=>q<=u||p>=v?[[u,v]]:[...(p>u?[[u,p]]:[]),...(q<v?[[q,v]]:[])]);return outv.filter(([u,v])=>v-u>.05);};
+  for(const ln of lines){const zones=anchors.filter(a=>ln.dirs.includes(a.dir)).map(a=>({...a,a:a.dir>0?a.d-42:a.d,b:a.dir>0?a.d:a.d+42}));const marks=[];
+   // RM1104 warning line: 4 m / 2 m, 7 marks behind the line, the module starting at the line
+   for(const z of zones)for(let k=0;k<7;k++)marks.push(z.dir>0?[z.d-6*k-4,z.d-6*k]:[z.d+6*k,z.d+6*k+4]);
+   const pitch=ln.on+ln.off;
+   for(const [p,q] of segs(lo,hi,zones.map(z=>[z.a,z.b]))){const below=zones.some(z=>z.dir<0&&Math.abs(z.b-p)<.01),above=zones.some(z=>z.dir>0&&Math.abs(z.a-q)<.01);
+    if(!below&&above)for(let e=q+2-ln.off;e-ln.on>p-1e-6;e-=pitch)marks.push([e-ln.on,e]);
+    else for(let st=below?p-2+ln.off:p+ln.off/2;st+ln.on<q+1e-6;st+=pitch)marks.push([st,st+ln.on]);}
+   for(const [a,b] of marks)for(const [p,q] of segs(Math.max(a,lo),Math.min(b,hi),[...cuts,...holes]))strip(out,W,F,p,q,ln.l-.05,ln.l+.05,(d,x)=>streetLevel(r,d,x)+.008);}
+  const halfOf=dir=>[dir*(m?m/2+.15:.05),dir*(h-.15)];// approach (dir) or exit (−dir) half, kerb to centre line / median
+  for(const A of anchors){const sg=A.dir,[l0,l1]=halfOf(sg),dash=(row0,row1,la,lb)=>{for(let x=0;x<Math.abs(lb-la)-.2;x+=.9){const u=la+Math.sign(lb-la)*x,v=la+Math.sign(lb-la)*Math.min(x+.6,Math.abs(lb-la));strip(out,W,F,Math.min(row0,row1),Math.max(row0,row1),Math.min(u,v),Math.max(u,v),(d,l)=>streetLevel(r,d,l)+.009);}};
+   if(A.d<lo-1||A.d>hi+1)continue;
+   if(A.kind==='stop'){// RM1011, 200 mm, across the approach lanes; lane arrows at 15 m and 45 m (TPDM V3 Table 5.6.3.1)
+    strip(out,W,F,Math.min(A.d,A.d+sg*.2),Math.max(A.d,A.d+sg*.2),Math.min(l0,l1),Math.max(l0,l1),(d,l)=>streetLevel(r,d,l)+.009);
+    const nl=P.lines==='lanes'?lanesOf(P):1;for(const back of [17,47]){const dc=A.d-sg*back;if(dc<lo+2||dc>hi-2||holes.some(([p,q])=>dc>p-2&&dc<q+2))continue;
+     for(let k=0;k<nl;k++){const lat=sg*(m/2+(h-m/2)/nl*(k+.5)),g=GLYPH[nl===1?'all':k===nl-1?'straight-left':'straight-right'];
+      for(const poly of g)up(W,poly.map(([x,y])=>paint(o,W,dc+sg*x,lat+sg*y,.011)));}}}
+   if(A.kind==='giveway'||A.kind==='ring'){// RM1013: two rows of 600/300 dashes, 200 mm, 200 mm apart, on the major road's kerb line
+    for(const [r0,r1] of [[0,.2],[.4,.6]])dash(A.d-sg*r0,A.d-sg*r1,l0,l1);
+    if(A.kind==='giveway'){const [e0,e1]=halfOf(-sg);dash(A.d,A.d-sg*.1,e0,e1);// RM1106 junction edge line across the exit half
+     // RM1115 give-way triangle per approach lane: 3.6 m × 1.2 m, base 2 m before the line, point towards the driver
+     const nl=P.lines==='lanes'?lanesOf(P):1;for(let k=0;k<nl;k++){const lat=sg*(m/2+(h-m/2)/nl*(k+.5)),b0=A.d-sg*2,tip=A.d-sg*5.6;
+      up(W,[paint(o,W,b0,lat-.6,.011),paint(o,W,b0,lat+.6,.011),paint(o,W,b0-sg*.6,lat+.4,.011),paint(o,W,b0-sg*.6,lat-.4,.011)]);
+      for(const s of [-1,1])up(W,[paint(o,W,b0-sg*.6,lat+s*.4,.011),paint(o,W,b0-sg*.6,lat+s*.25,.011),paint(o,W,tip,lat,.011),paint(o,W,tip+sg*.25,lat+s*.08,.011)]);}}}}}
+ // One city carriageway: crossfall from the centre (or each median edge) to the kerbs, the median, and its markings.
+ function carriageway(o,c0,c1,s0,s1){const {r,P,F}=o,L=F.at(-1).d,h=P.carriageway/2,m=P.median||0,lvl=(d,l)=>streetLevel(r,d,l);
+  const head=r.turningRadius?L-Math.sqrt(Math.max(0,r.turningRadius**2-h**2)):c1;// where the carriageway opens into a turning head
+  let medians=[];if(m){const gaps=joins.filter(j=>j.B===o).map(j=>{const half=j.signal&&j.hostX!=null?j.hostX+1.75:j.A.P.carriageway/2+CORNER+1.5;return [j.at.d-half,j.at.d+half];});
+   medians=minus(c0+(s0?CORNER+6:3),Math.min(c1-(s1?CORNER+6:3),head-6),gaps).filter(([p,q])=>q-p>m+2);}
+  for(const [a,b] of m?[[-h,-m/2],[m/2,h]]:[[-h,0],[0,h]])strip(out,M.road,F,c0,c1,a,b,lvl);
+  if(m)for(const [p,q] of minus(c0,c1,medians.map(([p,q])=>[p+m/2,q-m/2])))for(const [a,b] of [[-m/2,0],[0,m/2]])strip(out,M.road,F,p,q,a,b,lvl);// across median gaps, and under the round noses
+  for(const [p,q] of medians)median(o,p,q,m);
+  markings(o,c0,Math.min(c1,head-1),m,medians);}
  for(const o of roads){const {r,P,F}=o,L=F.at(-1).d,h=P.carriageway/2,fw=M[r.footway||'red'],gap=cuts.get(o)||{1:[],[-1]:[]},s0=starts.get(r.id+':0'),s1=starts.get(r.id+':1');
   const c0=s0?s0.carriageway:0,c1=L-(s1?s1.carriageway:0);
-  if(h>0){if(r.standard==='sandbox'){strip(out,M.road,F,c0,c1,-h,0,(d,l)=>streetLevel(r,d,l));strip(out,M.road,F,c0,c1,0,h,(d,l)=>streetLevel(r,d,l));}else strip(out,M.road,F,c0,c1,-h,h,Y.road);
+  if(h>0&&r.standard==='sandbox')carriageway(o,c0,c1,s0,s1);
+  else if(h>0){strip(out,M.road,F,c0,c1,-h,h,Y.road);
    // A central median opens where a side road joins (turning gap), so the mouth stays at carriageway level.
    if(P.median){const gaps=joins.filter(j=>j.B===o).map(j=>{const half=j.A.P.carriageway/2+CORNER+1.5;return [j.at.d-half,j.at.d+half];});
     // where this road itself joins another, its median nose stands back from the mouth (kerb returns and turning room)
@@ -181,19 +256,20 @@ export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Gr
     if(h>0&&hk){const point=t=>{const f=frameAt(F,p+t);return {x:f.x+f.lx*lo,z:f.z+f.lz*lo,nx:f.lx*sd,nz:f.lz*sd,y:f.y+streetLevel(r,p+t,lo+sd*.00001)+(f.crossSlope||0)*lo,base:f.y+Y.road+(f.crossSlope||0)*lo};};addKerb(q-p,point);edges.push({road:r,kind:'edge',side:sd,from:p,to:q,length:q-p,point,crossings:r.crossings.filter(c=>c>p&&c<q).map(c=>c-p)});strip(out,mats.channel||M.kerb,F,p,q,lo-sd*.3,lo,Y.road+.001);}
     else if(h>0)face(out,M.kerb,F,p,q,lo,Y.road,Y.raised,-sd);
     face(out,M.kerb,F,p,q,hi,-.3,hk?streetLevel(r,0,hi):Y.raised,sd);}}} 
- // White zebra stripes, independent stud rows, and yellow 300 mm tactile tiles.
+ // Crossings: dropped kerb and yellow blister tactile at each end. Signal crossings (crossroads) add the two stud rows and
+ // the yellow stripes (RM1075 / RM1076, TPDM V3 Diag 5.7.3.1); cautionary crossings at priority junctions have no markings.
  const crossings=[];
- for(const {r,P,F} of roads)for(const d of r.crossings||[]){const h=P.carriageway/2,f=frameAt(F,d);crossings.push({road:r.id,d,f,half:h});
-  for(const bar of zebraStripes(P.carriageway).whites)strip(out,M.white,F,d-1.5,d+1.5,bar.z-bar.d/2,bar.z+bar.d/2,(a,l)=>streetLevel(r,a,l)+.01);
+ for(const {r,P,F} of roads)for(const d of r.crossings||[]){const h=P.carriageway/2,f=frameAt(F,d),signal=(r.signalCrossings||[]).includes(d);crossings.push({road:r.id,d,f,half:h,kind:signal?'signal':'cautionary'});
   for(const side of [-1,1])strip(out,mats.tactile||M.buff,F,d-1.5,d+1.5,side*(h+.3),side*(h+.9),(a,l)=>streetLevel(r,a,l)+.012);
-  const mark=(a,l,b,m,width)=>{const A=frameAt(F,a),B=frameAt(F,b),pts=[[A,l-width/2,a],[A,l+width/2,a],[B,m+width/2,b],[B,m-width/2,b]].map(([f,lat,d])=>[f.x+f.lx*lat,f.y+streetLevel(r,d,lat)+(f.crossSlope||0)*lat+.011,f.z+f.lz*lat]);const area=pts.reduce((sum,p,i)=>{const q=pts[(i+1)%pts.length];return sum+p[0]*q[2]-q[0]*p[2];},0);out.tri(M.white,area>0?pts:pts.reverse());};
-  for(const end of [-1,1]){const available=Math.min(18.75,end<0?d-1.7:F.at(-1).d-d-1.7,...r.junctionDistances.filter(at=>(at-d)*end>0).map(at=>Math.abs(at-d)-12));const control=zebraControl(available);if(!control)continue;
-   for(const side of [-1,1])for(const a of control.marks){const start=d+end*(1.6+a),mid=start+end*control.X/2,finish=start+end*control.X;mark(start,side*(h-.45),mid,side*(h-.85),.1);mark(mid,side*(h-.85),finish,side*(h-.45),.1);}
-   const at=d+end*(1.6+1.1),side=-end;strip(out,M.white,F,at-.1,at+.1,side*.2,side*(h-.3),(a,l)=>streetLevel(r,a,l)+.01);
-  }
-  for(const end of [-1,1])for(let lat=-h+.5;lat<h-.4;lat+=.7)strip(out,M.white,F,d+end*1.65-.05,d+end*1.65+.05,lat-.05,lat+.05,(a,l)=>streetLevel(r,a,l)+.015);
-
- }
+  if(!signal)continue;const mk=signalCrossingMarkings({at:d,width:3.2,roadWidth:2*h,edgeMargin:.5});
+  for(const b of mk.bars)strip(out,M.yellow,F,b.x-b.w/2,b.x+b.w/2,b.z-b.d/2,b.z+b.d/2,(a,l)=>streetLevel(r,a,l)+.01);
+  for(const b of mk.studs)strip(out,M.white,F,b.x-b.w/2,b.x+b.w/2,b.z-b.d/2,b.z+b.d/2,(a,l)=>streetLevel(r,a,l)+.014);}
+ // Yellow kerb lines (RM1040 double / RM1041 single, 100 mm, the first 100 mm off the kerb face): double throughout on district
+ // distributors and within 30 m of a junction or crossing; single elsewhere. They follow every kerb return and turning head.
+ for(const e of edges){if(e.road.standard!=='sandbox')continue;const P=presetOf(e.road),dist=P.median>0,near=e.road.junctionDistances.concat(e.road.crossings);
+  const n=Math.max(2,Math.ceil(e.length)),rows=t=>dist||e.kind!=='edge'||near.some(c=>Math.abs(e.from+t-c)<30)?[[.1,.2],[.3,.4]]:[[.1,.2]];
+  for(let i=1;i<=n;i++){const t0=e.length*(i-1)/n,t1=e.length*i/n,a=e.point(t0),b=e.point(t1),rw=rows((t0+t1)/2);
+   for(const [u,v] of rw){const q=(p,o)=>[p.x-p.nx*o,p.base+.012+.025*o,p.z-p.nz*o];up(M.yellow,[q(a,u),q(b,u),q(b,v),q(a,v)]);}}}
  g.userData.crossings=crossings;
  // OZP turning heads: an illustrative circular carriageway with a separate paved rim.
  // Reserve the complete disc in networkMask as well, so scenery cannot grow through it.
