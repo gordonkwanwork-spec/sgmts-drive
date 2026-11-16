@@ -18,7 +18,7 @@ assert.ok(g.sources.length>=6,'traffic enters at the map edges');
 // (cars keep their lane, so the kerb lanes of the dual roads are fed from the map-edge entries)
 const reach=new Set([lanes[0],...g.sources]),queue=[...reach];while(queue.length)for(const q of queue.pop().next)if(!reach.has(q)){reach.add(q);queue.push(q);}
 const lost=lanes.filter(p=>!reach.has(p));assert.equal(lost.length,0,`unreachable lanes: ${lost.slice(0,5).map(p=>p.road.r.id+(p.dir>0?'+':'−')).join(' ')}`);
-assert.equal(g.nodes.filter(n=>n.kind==='crossing').length,6,'six corridor crossings');assert.equal(g.nodes.filter(n=>n.kind==='crossroads').length,3);assert.equal(g.nodes.filter(n=>n.kind==='ring').length,4,'four roundabout entries');
+assert.equal(g.nodes.filter(n=>n.kind==='crossing').length,6,'six corridor crossings');assert.equal(g.nodes.filter(n=>n.kind==='signal'&&n.arms===2).length,3,'three signal crossroads');assert.ok(g.nodes.filter(n=>n.kind==='signal'&&n.arms===1).length>=6,'signalised major T-junctions');assert.equal(g.nodes.filter(n=>n.kind==='ring').length,4,'four roundabout entries');
 // Lanes never lie on the ART carriageway: the only pieces over it are the six crossings (the two only meet at shared junctions).
 for(const p of g.pieces)if(p.kind!=='cross')for(const q of p.pts){const s=project(q.x,q.z),c=sample(s);if(Math.abs(q.y-c.y)<3)assert.ok(Math.hypot(q.x-c.x,q.z-c.z)>roadSection(s).right+1,`${p.kind} on ${p.road?.r.id||p.node?.kind} runs on the corridor at ${q.x.toFixed(0)},${q.z.toFixed(0)}`);}
 // Turns slow down, straight-ahead movements keep the street's speed, and lane geometry is finite.

@@ -7,7 +7,7 @@
 // distributors; a controller cabinet at each signal junction; TS102 Give Way signs (network.js controls).
 import * as T from 'three';
 import {railingBuilder} from './furniture.js';
-import {presetOf} from './network.js';
+import {presetOf,frameAt} from './network.js';
 import {hydrant,treePit,busStop,SHELTER_HALF} from './sandbox/amenities.js';
 import {project} from '../alignment.js';
 const hash=s=>{let h=2166136261;for(const ch of s)h=Math.imul(h^ch.charCodeAt(0),16777619)>>>0;return h/4294967296;};
@@ -20,7 +20,7 @@ export function cityDetails(networkGroup,{batch,kitParts,fences,lampPositions,ma
  const offset=(edge,t,d=.28)=>{const p=edge.point(t);return new T.Vector3(p.x+p.nx*d,p.y+Math.max(0,d-.125)*.025,p.z+p.nz*d);};
  const place=(name,list,P,yaw)=>list.forEach((q,i)=>batch(name+'-'+i,q.geometry,q.material,P,ONE,new T.Euler(0,yaw,0),chunk(P.x,P.z)));
  const kerbYaw=p=>Math.atan2(p.nx,p.nz);// local +Z into the footway, −Z to the road
- let panels=0,lamps=0,gullies=0,bins=0,hydrants=0,treeCount=0,shelters=0,cabinets=0;
+ let panels=0,lamps=0,gullies=0,bins=0,hydrants=0,treeCount=0,shelters=0,cabinets=0,shrubs=0;
  const edges=networkGroup.userData.edges||[],straight=edges.filter(e=>e.kind==='edge'),used=new Set(),crossings=networkGroup.userData.crossings||[],controls=networkGroup.userData.controls||[];
  for(const e of straight){e.items=[];e.lamps=[];}
  const district=e=>e.district??=(()=>{const p=e.point(e.length/2);return districtAt(p.x+p.nx*12,p.z+p.nz*12);})();
@@ -92,6 +92,10 @@ export function cityDetails(networkGroup,{batch,kitParts,fences,lampPositions,ma
  for(const c of controls.filter(c=>c.kind==='signal'&&c.stage==='major'&&c.ped&&!c.pedOnly)){if(controls.some(o=>o.cabinet&&o.node===c.node))continue;c.cabinet=true;
   const up=[-Math.sin(c.yaw),-Math.cos(c.yaw)],out=[Math.sin(c.ped.yaw),Math.cos(c.ped.yaw)],P=new T.Vector3(c.x+up[0]*2.5+out[0]*.6,c.y,c.z+up[1]*2.5+out[1]*.6);
   kit('cabinet_controller',P,c.ped.yaw+Math.PI,null,chunk(P.x,P.z));cabinets++;}
+ // Median planters (network.js): a clipped hedge of low shrubs filling the bed, as lumpy overlapping clumps 0.5–0.8 m high.
+ const clump=new T.IcosahedronGeometry(1,1),hedge=[0x4f7a3a,0x5d8a42,0x46703a].map(c=>new T.MeshStandardMaterial({color:c,roughness:.9,flatShading:true}));
+ for(const pl of networkGroup.userData.planters||[])for(let d=pl.from+.5;d<pl.to-.4;d+=.9){const f=frameAt(pl.F,d),u=hash(pl.road+d.toFixed(1)),h=.5+.3*u,P=new T.Vector3(f.x,f.y+pl.y(d)+h*.35,f.z);
+  batch('city-hedge-'+(Math.floor(u*3)),clump,hedge[Math.floor(u*3)],P,new T.Vector3(pl.width*.5,h*.65,.75),new T.Euler(0,Math.atan2(f.tx,f.tz)+(u-.5)*.3,0),chunk(P.x,P.z));shrubs++;}
  // TS102 Give Way (sandbox road-signs.js): inverted triangle 600 mm high, red border, 讓 / GIVE WAY, lower edge 2.3 m, on its own post.
  const H=.6,W=H/Math.sin(Math.PI/3),tri=new T.Shape([new T.Vector2(-W/2,H/2),new T.Vector2(0,-H/2),new T.Vector2(W/2,H/2)]);
  const face=new T.ShapeGeometry(tri),uv=face.attributes.uv,fp=face.attributes.position;for(let i=0;i<fp.count;i++)uv.setXY(i,fp.getX(i)/W+.5,fp.getY(i)/H+.5);face.rotateY(Math.PI);// front: local −Z
@@ -104,5 +108,5 @@ export function cityDetails(networkGroup,{batch,kitParts,fences,lampPositions,ma
   batch('city-sign-post',postGeo,mats.galvanised,P.clone().add(new T.Vector3(0,1.45,0)),new T.Vector3(1,2.9,1),rot,ch);
   batch('city-sign-giveway',face,signMat,P.clone().add(new T.Vector3(0,2.3+H/2,0)).addScaledVector(fwd,.05),ONE,rot,ch);
   batch('city-sign-back',back,backMat,P.clone().add(new T.Vector3(0,2.3+H/2,0)).addScaledVector(fwd,.045),ONE,rot,ch);signs++;}
- networkGroup.userData.details={panels,lamps,gullies,signs,bins,hydrants,trees:treeCount,shelters,cabinets};return networkGroup.userData.details;
+ networkGroup.userData.details={panels,lamps,gullies,signs,bins,hydrants,trees:treeCount,shelters,cabinets,shrubs};return networkGroup.userData.details;
 }

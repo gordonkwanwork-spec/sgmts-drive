@@ -4,7 +4,7 @@
 // the host centreline), and loop round the D3/D5 roundabout. Checks: no road touches a logistics lot or the corridor reserve;
 // other lot overlaps are reported. Run: node scripts/build-city-network.mjs [--overlay out.png]
 import fs from 'node:fs';
-import {frames,nearestOn,centreline,halfWidth,reserveClash,tieFrame,presetOf} from '../src/street/network.js';
+import {frames,frameAt,nearestOn,centreline,halfWidth,reserveClash,tieFrame,presetOf} from '../src/street/network.js';
 import {JUNCTIONS,UNDERPASSES,RAILWAY,railSample} from '../src/alignment.js';
 import {pointInPolygon} from '../src/lots/wand.js';
 const ctx2d=new Proxy({},{get:(_,k)=>k==='measureText'?()=>({width:0}):k==='createLinearGradient'?()=>({addColorStop(){}}):()=>{},set:()=>true});
@@ -46,7 +46,7 @@ const ROADS=[
  {id:'gic-access',name:'G/IC access',...ACCESS,turningRadius:11,join:'crossing-west',pts:[[-45,-1542],[-55,-1450],[-60,-1362]]},
  // Road D6 beside the railway: from the crossing road south to the station, then east to Tin Ha Road.
  // Road D6 runs 24 m west of the railway viaduct to a turning head north of the station (it never passes under the deck).
- {id:'d6',name:'Road D6',zh:'D6號路',...D(16.6,2),turningRadius:14,join:'crossing-east',pts:[[285,-1452],[257,-1300],[236,-1240],[215,-1175],[190,-1100],[180,-1070]]},
+ {id:'d6',name:'Road D6',zh:'D6號路',...D(16.6,2),loose:4,turningRadius:14,join:'crossing-east',pts:[[285,-1452],[257,-1300],[236,-1240],[215,-1175],[190,-1100],[180,-1070]]},
  {id:'ra1-access',name:'R(A)1 access',...ACCESS,turningRadius:11,join:'d6',pts:[[205,-1140],[150,-1157],[106,-1172]]},
  // Station north road: the OZP cul-de-sac east of the railway, from Tin Ha Road.
  {id:'station-north',name:'Station north road',...LOCAL,turningRadius:12,join:'tin-ha',pts:[[604,-916],[560,-918],[450,-922],[288,-927]]},
@@ -75,7 +75,7 @@ const ROADS=[
 // Logistics lots get 2.5 m. ponytail: ray-casts every lot edge per point (O(points × edges)); fine for a one-off build script.
 const edges=lots.flatMap(l=>l.poly.map((p,i)=>[p,l.poly[(i+1)%l.poly.length],LOGISTICS.has(l.id)]));
 // The railway viaduct (9 m either side of its centreline) counts as a lot edge, so a road beside it centres clear of the piers.
-const RAIL=[];for(let s=RAILWAY.start;s<=RAILWAY.end;s+=10){const p=railSample(s);RAIL.push([p.x,p.z]);}
+const RAIL=[];for(let s=RAILWAY.start;s<=RAILWAY.end;s+=2){const p=railSample(s);RAIL.push([p.x,p.z]);}
 for(const side of [-9,9])for(let i=1;i<RAIL.length;i++){const [ax,az]=RAIL[i-1],[bx,bz]=RAIL[i],L=Math.hypot(bx-ax,bz-az);if(L<.1)continue;const nx=-(bz-az)/L*side,nz=(bx-ax)/L*side;edges.push([[ax+nx,az+nz],[bx+nx,bz+nz],true]);}
 const ray=(px,pz,nx,nz,max)=>{let best=max,logi=false;for(const [a,b,lg] of edges){const ex=b[0]-a[0],ez=b[1]-a[1],den=nx*ez-nz*ex;if(Math.abs(den)<1e-9)continue;
  const t=((a[0]-px)*ez-(a[1]-pz)*ex)/den,u=((a[0]-px)*nz-(a[1]-pz)*nx)/den;if(t>0&&t<best&&u>=0&&u<=1){best=t;logi=lg;}}return {d:best,logi};};
@@ -101,27 +101,68 @@ for(const R of ROADS){let pts=R.pts.map(p=>[...p]);
 // control point LEAD m out, before the road's own line resumes. R.at / R.atEnd: a shared point, so two roads meeting a
 // host there from opposite sides form a crossroads. Each road is finally smoothed (Chaikin corner cutting, which keeps the
 // end tangents), so approaches and reserve-centring leave sweeping curves, not kinks.
-const LEAD=34,NECK=10,SKEW=14*Math.PI/180,done=new Map();
+const ZONE=26,LEAD=34,NECK=10,SKEW=20*Math.PI/180,done=new Map();// TPDM: junction angle 70–110°
 // Douglas–Peucker: drop control points that sit within tol m of the line through their neighbours (reserve-centring jitter).
 const simplify=(P,tol)=>{if(P.length<3)return P;const [a,b]=[P[0],P.at(-1)],L=Math.hypot(b[0]-a[0],b[1]-a[1])||1;let worst=0,k=0;
  for(let i=1;i<P.length-1;i++){const d=Math.abs((P[i][0]-a[0])*(b[1]-a[1])-(P[i][1]-a[1])*(b[0]-a[0]))/L;if(d>worst){worst=d;k=i;}}
  return worst<=tol?[a,b]:[...simplify(P.slice(0,k+1),tol).slice(0,-1),...simplify(P.slice(k),tol)];};
 const chaikin=(P,n=3)=>{for(;n-->0&&P.length>2;){const Q=[P[0]];for(let i=0;i<P.length-1;i++){const a=P[i],b=P[i+1];Q.push([.75*a[0]+.25*b[0],.75*a[1]+.25*b[1]],[.25*a[0]+.75*b[0],.25*a[1]+.75*b[1]]);}Q.push(P.at(-1));P=Q;}return P;};
+// Gordon (16 Nov): no kinks, roads must be smooth. The control line (reserve-centred, simplified) is filleted: every corner
+// becomes a circular arc of the road's minimum radius tangent to both legs, with straight runs between. Corners too close to
+// fit their arcs are merged into one corner where they turn the same way (the intersection of the outer legs); an S-bend that
+// cannot fit shares the room with smaller radii (reported). s0 / s1: metres at each end that stay straight (junction necks,
+// corridor stubs).
+const RMIN=r=>presetOf(r).median>0?60:45;
+const unit=(a,b)=>{const l=Math.hypot(b[0]-a[0],b[1]-a[1])||1;return [(b[0]-a[0])/l,(b[1]-a[1])/l,l];};
+const meet=(a,b,c,d)=>{const r=[b[0]-a[0],b[1]-a[1]],q=[d[0]-c[0],d[1]-c[1]],den=r[0]*q[1]-r[1]*q[0];if(Math.abs(den)<1e-9)return null;const t=((c[0]-a[0])*q[1]-(c[1]-a[1])*q[0])/den;return [a[0]+r[0]*t,a[1]+r[1]*t];};
+function fillet(V,rmin,s0,s1,report,straight=[]){V=V.map(p=>[...p]).filter((p,i,a)=>!i||Math.hypot(p[0]-a[i-1][0],p[1]-a[i-1][1])>.5);
+ const defl=i=>{const [ax,az]=unit(V[i-1],V[i]),[bx,bz]=unit(V[i],V[i+1]);return Math.atan2(ax*bz-az*bx,ax*bx+az*bz);};
+ const R=V.map(()=>rmin),T=i=>i<=0||i>=V.length-1?0:R[i]*Math.tan(Math.abs(defl(i))/2);
+ // Room on segment i: fs for vertex i's arc (from the segment start), fe for vertex i+1's arc (from its end); straight ends cap them.
+ const room=i=>{const len=unit(V[i],V[i+1])[2];return {len,fs:Math.max(0,len-(i===V.length-2?s1:0)),fe:Math.max(0,len-(i===0?s0:0))};};
+ const shrink=k=>(cap)=>{R[k]=Math.max(5,cap/Math.max(1e-6,Math.tan(Math.abs(defl(k))/2)));report(R[k]);};
+ for(let pass=0;pass<600;pass++){let fixed=true;
+  for(let i=0;i<V.length-1&&fixed;i++){const {len,fs,fe}=room(i),a=T(i),b=T(i+1);if(a<=fs+1e-6&&b<=fe+1e-6&&a+b<=len+1e-6)continue;fixed=false;
+   if(i===0&&b>fe+1e-6&&V.length>3){// the first corner hard against the straight start: slide it out along the start line
+    const [ux,uz]=unit(V[0],V[1]),need=len+(b-fe)+.5;if(unit(V[0],V[2])[2]>need+T(2)+1){V[1]=[V[0][0]+ux*need,V[0][1]+uz*need];break;}
+    const X=V.length>3?meet(V[0],V[1],V[3],V[2]):null;if(X&&(X[0]-V[0][0])*ux+(X[1]-V[0][1])*uz>need){V.splice(1,2,X);R.splice(1,2,rmin);break;}}
+   if(i===V.length-2&&a>fs+1e-6&&V.length>3){const e=V.length-1,[ux,uz]=unit(V[e],V[e-1]),need=len+(a-fs)+.5;if(unit(V[e],V[e-2])[2]>need+T(e-2)+1){V[e-1]=[V[e][0]+ux*need,V[e][1]+uz*need];break;}
+    const X=meet(V[e],V[e-1],V[e-3],V[e-2]);if(X&&(X[0]-V[e][0])*ux+(X[1]-V[e][1])*uz>need){V.splice(e-2,2,X);R.splice(e-2,2,rmin);break;}}
+   if(a+b>len+1e-6&&a<=fs+1e-6&&b<=fe+1e-6&&i>0&&i<V.length-2){const da=defl(i),db=defl(i+1);
+    if(Math.sign(da)===Math.sign(db)&&Math.abs(da+db)<Math.PI*.9){const X=meet(V[i-1],V[i],V[i+2],V[i+1]);if(X){V.splice(i,2,X);R.splice(i,2,rmin);break;}}
+    const f=len/(a+b);R[i]*=f;R[i+1]*=f;report(Math.min(R[i],R[i+1]));break;}
+   if(a>fs+1e-6)shrink(i)(fs);if(b>fe+1e-6)shrink(i+1)(fe);if(T(i)+T(i+1)>len+1e-6){const f=len/(T(i)+T(i+1));R[i]*=f;R[i+1]*=f;report(Math.min(R[i],R[i+1]));}break;}
+  if(fixed)break;}
+ const out=[V[0]];let run=0;const line=(p,q)=>{const L=Math.hypot(q[0]-p[0],q[1]-p[1]),n=Math.max(1,Math.ceil(L/2));straight.push([run,run+L]);run+=L;for(let k=1;k<=n;k++)out.push([p[0]+(q[0]-p[0])*k/n,p[1]+(q[1]-p[1])*k/n]);};
+ for(let i=1;i<V.length-1;i++){const t=T(i),[ax,az]=unit(V[i-1],V[i]),p=[V[i][0]-ax*t,V[i][1]-az*t],th=defl(i);line(out.at(-1),p);if(Math.abs(th)<1e-4)continue;
+  const sg=Math.sign(th),c=[p[0]-az*R[i]*sg,p[1]+ax*R[i]*sg],a0=Math.atan2(p[1]-c[1],p[0]-c[0]),n=Math.max(1,Math.ceil(R[i]*Math.abs(th)/2));
+  for(let k=1;k<=n;k++){const ang=a0+th*k/n;out.push([c[0]+Math.cos(ang)*R[i],c[1]+Math.sin(ang)*R[i]]);}run+=R[i]*Math.abs(th);}
+ line(out.at(-1),V.at(-1));return out;}
 function finish(id){if(done.has(id))return done.get(id);const {R,road}=byId.get(id);done.set(id,road);if(R.loop)return road;
- let body=road.pts.map(p=>[...p]),head=[],tail=[];
+ let mid=road.pts.map(p=>[...p]),head=[],tail=[],s0=0,s1=0;
  // corridor ties: the 28 m stub stays on the arm axis; a control point 50 m out keeps the curve tangent to it
- if(R.tie){const f=tieFrame(R.tie);head=[body[0]];body=[body[1],[f.x+f.tx*50,f.z+f.tz*50],...body.slice(2).filter(p=>(p[0]-f.x)*f.tx+(p[1]-f.z)*f.tz>70)];}
- if(R.end){const f=tieFrame(R.end);tail=[body.at(-1)];body=[...body.slice(0,-2).filter(p=>(p[0]-f.x)*f.tx+(p[1]-f.z)*f.tz>70),[f.x+f.tx*50,f.z+f.tz*50],body.at(-2)];}
+ if(R.tie){const f=tieFrame(R.tie);head=[mid[0],mid[1],[f.x+f.tx*50,f.z+f.tz*50]];mid=mid.slice(2).filter(p=>(p[0]-f.x)*f.tx+(p[1]-f.z)*f.tz>70);}
+ if(R.end){const f=tieFrame(R.end);tail=[[f.x+f.tx*50,f.z+f.tz*50],mid.at(-2),mid.at(-1)];mid=mid.slice(0,-2).filter(p=>(p[0]-f.x)*f.tx+(p[1]-f.z)*f.tz>70);}
+ mid=simplify(mid,R.loose??10);// drop the reserve-centring wiggles: the road's own line as a few long legs
  for(const [hostId,atEnd,at] of [[R.join,false,R.at],[R.joinEnd,true,R.atEnd]]){if(!hostId)continue;const host=finish(hostId);// hosts first: their final line is what we meet
-  const f=nearestOn(frames(host),...(at||(atEnd?body.at(-1):body[0]))).f,J=[f.x,f.z],ref=atEnd?body[Math.max(0,body.length-5)]:body[Math.min(body.length-1,4)];
-  // Leave along the host's normal, turned up to SKEW towards the road's own line (a 76–90° junction instead of an S-bend).
+  const line=atEnd?[...head,...mid].reverse():[...mid,...tail],Q0=atEnd?[...mid].reverse():[...mid],HF=frames(host),d0=nearestOn(HF,...(at||line[0]||(atEnd?road.pts.at(-1):road.pts[0]))).d;
+  // The host is straight through the mouth (network.js straightens it there for the kerb returns; on a curve that is a kink):
+  // slide the junction along the host to the nearest straight run with ZONE m clear either side.
+  const runs=STRAIGHT.get(hostId)||[[0,HF.at(-1).d]],fits=runs.filter(([a,b])=>b-a>=2*ZONE).map(([a,b])=>Math.max(a+ZONE,Math.min(b-ZONE,d0))).sort((x,y)=>Math.abs(x-d0)-Math.abs(y-d0));
+  const dj=host.loop?d0:fits.length?fits[0]:d0;/* a roundabout keeps its arms where they are */if(!host.loop&&!fits.length)notes0.push(`${road.id} joins ${hostId} on a bend (no straight ${2*ZONE} m run)`);else if(Math.abs(dj-d0)>1)notes0.push(`${road.id} junction moved ${(dj-d0).toFixed(0)} m along ${hostId} onto a straight`);
+  const f=frameAt(HF,dj),J=[f.x,f.z],ref=line.find(q=>Math.hypot(q[0]-J[0],q[1]-J[1])>30)||line.at(-1);
+  // Leave along the host's normal, turned up to SKEW towards the road's own line (a 70–110° junction, TPDM).
   const s=Math.sign((ref[0]-J[0])*f.lx+(ref[1]-J[1])*f.lz)||1,n=[f.lx*s,f.lz*s],rl=Math.hypot(ref[0]-J[0],ref[1]-J[1])||1,d=[(ref[0]-J[0])/rl,(ref[1]-J[1])/rl];
   const turn=Math.max(-SKEW,Math.min(SKEW,Math.atan2(n[0]*d[1]-n[1]*d[0],n[0]*d[0]+n[1]*d[1]))),c=Math.cos(turn),k=Math.sin(turn),dir=[n[0]*c-n[1]*k,n[0]*k+n[1]*c];
-  const hw=halfWidth(host)/c,out=t=>[J[0]+dir[0]*t,J[1]+dir[1]*t],A=out(hw+LEAD);
-  const far=q=>Math.hypot(q[0]-A[0],q[1]-A[1])>28&&((q[0]-J[0])*dir[0]+(q[1]-J[1])*dir[1])>(hw+LEAD)*.6;
-  const rest=(atEnd?body.slice(0,-1):body.slice(1)).filter((q,i,a)=>far(q)||(atEnd?i===0&&a.length<2:false));
-  if(atEnd){tail=[J];body=[...rest,A,out(hw+NECK)];}else{head=[J];body=[out(hw+NECK),A,...rest];}}
- road.pts=[...head,...chaikin(simplify(body,R.loose??5)),...tail];return road;}
+  const neck=halfWidth(host)/c+NECK,out=t=>[J[0]+dir[0]*t,J[1]+dir[1]*t],proj=q=>(q[0]-J[0])*dir[0]+(q[1]-J[1])*dir[1];
+  // The neck runs straight to `neck` m; the road turns onto its own line at the corner where the neck's line meets the road's
+  // first leg beyond it (20 m past the neck when they do not meet ahead). Points behind the corner are dropped.
+  let Q=Q0.filter(q=>proj(q)>neck+10);const X=Q.length>1?meet(J,out(1),Q[0],Q[1]):null,corner=X&&proj(X)>neck&&proj(X)<neck+150?X:out(neck+20);
+  Q=Q.filter(q=>proj(q)>proj(corner)+5);
+  if(atEnd){mid=[...Q.reverse(),corner];tail=[J];s1=neck;}else{mid=[corner,...Q];head=[J];s0=neck;}}
+ let least=Infinity;const st=[];road.pts=fillet([...head,...mid,...tail],R.rmin??RMIN(road),s0,s1,r=>least=Math.min(least,r),st);STRAIGHT.set(R.id,st.filter(([a,b])=>b-a>1));
+ if(least<(R.rmin??RMIN(road)))notes0.push(`${road.id}: a ${least.toFixed(0)} m bend (minimum ${R.rmin??RMIN(road)} m)`);return road;}
+const notes0=[],STRAIGHT=new Map();// road id → straight runs [from, to] along it (m)
 for(const R of ROADS)finish(R.id);
 // Round to centimetres, except the exact corridor tie points (the arm seams must meet to the micron) and junction ends.
 const exact=(r,R,i,n)=>(R.tie||R.join)&&i===0||(R.end||R.joinEnd)&&i===n-1;
@@ -139,11 +180,11 @@ for(const r of out){
  else{const clash=reserveClash(centreline(r.pts).slice(2),{width:halfWidth(r)});if(clash)fails.push(`${r.id} enters the corridor reserve at ${clash.map(v=>v.toFixed(0))}`);}
  const pts=sampleRoad(r);
  // Only the Road D8 underpass passes the railway (beside VB1, between the piers); everything else stays 6 m off the deck line.
- if(!/d8-(west|east)$/.test(r.id)){const hit=pts.find(p=>RAIL.some(q=>Math.hypot(p[0]-q[0],p[1]-q[1])<6));if(hit)fails.push(`${r.id} runs under the railway viaduct at ${hit.map(v=>v.toFixed(0))}`);}
+ if(!/d8-(west|east)$/.test(r.id)){const hit=pts.filter((_,i)=>i%3===1).find(p=>RAIL.some(q=>Math.hypot(p[0]-q[0],p[1]-q[1])<halfWidth(r)+6));/* centreline within half width + 6 m, as city-network.test.js */if(hit)fails.push(`${r.id} runs under the railway viaduct at ${hit.map(v=>v.toFixed(0))}`);}
  for(const lot of lots){const hits=pts.filter(p=>pointInPolygon(p,lot.poly));if(!hits.length)continue;
   notes.push((LOGISTICS.has(lot.id)?'LOGISTICS LOT EDGE · ':'')+`${r.id} overlaps ${lot.id} (${lot.zone}) at ${hits.length} sample points, e.g. ${hits[0].map(v=>v.toFixed(0))}`);}
 }
-console.log(`Checked against ${keepBuildings.length} logistics building footprints.`);console.log(notes.join('\n')||'No lot overlaps.');
+console.log(notes0.join('\n')||'Every bend meets its minimum radius.');console.log(`Checked against ${keepBuildings.length} logistics building footprints.`);console.log(notes.join('\n')||'No lot overlaps.');
 if(fails.length){console.error('FAIL\n'+fails.join('\n'));if(!process.argv.includes('--force'))process.exit(1);}
 data.network={source:'OZP S/HSK/2A road reserves traced on the project underlay; city rebuild 2026-11-14',scope:'SGMTS corridor plus the OZP road network around it; logistics lots untouched',roads:out,
  areas:[{id:'roundabout-island',finish:'grass',pts:Array.from({length:24},(_,i)=>{const a=i/24*Math.PI*2,r=RING.r-presetOf({preset:'local',carriageway:8}).carriageway/2-.6;return [+(RING.x+Math.cos(a)*r).toFixed(2),+(RING.z+Math.sin(a)*r).toFixed(2)];})}]};

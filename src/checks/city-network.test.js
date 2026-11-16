@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 const ctx2d=new Proxy({},{get:(_,k)=>k==='measureText'?()=>({width:0}):k==='createLinearGradient'?()=>({addColorStop(){}}):()=>{},set:()=>true});
 globalThis.document??={createElement:()=>({getContext:()=>ctx2d,width:0,height:0})};
-const {junctions,presetOf,nearestOn,reserveClash,centreline,halfWidth}=await import('../street/network.js');
+const {junctions,presetOf,nearestOn,reserveClash,centreline,halfWidth,frameAt}=await import('../street/network.js');
 const {project,sample,RAILWAY,railSample}=await import('../alignment.js');
 const {renderedGround}=await import('../environment.js');
 const {D5_MOUTH}=await import('../depot.js');
@@ -20,9 +20,9 @@ for(const {r,F} of roads){if(r.loop)continue;
  for(const end of [0,1]){const f=end?F.at(-1):F[0],kind=(end?r.endTie:r.tie)?'tie':joined.has(r.id+':'+end)?'join':end&&r.turningRadius?'head':'edge';
   if(kind==='edge'){const c=sample(project(f.x,f.z));assert.ok(Math.hypot(f.x-c.x,f.z-c.z)>250,`${r.id} end ${end} is loose at ${f.x.toFixed(0)},${f.z.toFixed(0)}`);}}}
 
-// 2. Junctions are square (75° or more) and at least 60 m apart along their host, except the two arms of a crossroads.
+// 2. Junctions meet at 70° or more (TPDM: 70–110°) and at least 60 m apart along their host, except the two arms of a crossroads.
 for(const j of joins){const cos=Math.abs(j.a[0]*j.at.tx+j.a[1]*j.at.tz),angle=Math.acos(Math.min(1,cos))*180/Math.PI;
- assert.ok(angle>=75,`${j.A.r.id} meets ${j.B.r.id} at ${angle.toFixed(0)}°`);}
+ assert.ok(angle>=69.5,`${j.A.r.id} meets ${j.B.r.id} at ${angle.toFixed(0)}°`);}
 for(const a of joins)for(const b of joins){if(a===b||a.B!==b.B)continue;const gap=Math.abs(a.at.d-b.at.d);
  assert.ok(gap<5&&a.side!==b.side||gap>=(a.B.r.loop?40:60),`${a.A.r.id} and ${b.A.r.id} join ${a.B.r.id} only ${gap.toFixed(0)} m apart`);}// roundabout arms: 40 m of ring between centres
 const crossroads=joins.filter(a=>joins.some(b=>b!==a&&b.B===a.B&&Math.abs(a.at.d-b.at.d)<5));
@@ -59,4 +59,8 @@ for(const {r,F} of roads)for(let i=20;i<F.length;i++){const g=Math.abs(F[i].y-F[
 const d5=byId.get('city-d5-west'),m=nearestOn(d5.F,D5_MOUTH.x,D5_MOUTH.z);
 assert.ok(Math.abs(m.dist-d5.P.carriageway/2)<.5,`depot service road mouth is ${m.dist.toFixed(1)} m from Road D5's centreline`);
 assert.ok(Math.abs(m.f.y+.18-D5_MOUTH.y)<.25,`depot service road mouth level ${D5_MOUTH.y} vs Road D5 footway ${(m.f.y+.18).toFixed(2)}`);
+// Smooth roads (Gordon, 16 Nov: no kinks): over any 12 m of a street as drawn, the circumradius stays at or above 38 m on a dual
+// carriageway and 28 m on a local road (filleted at 60 / 45 m in build-city-network.mjs; junction mouths straightened in network.js).
+{const rad=(a,b,c)=>{const A=Math.hypot(b.x-c.x,b.z-c.z),B=Math.hypot(a.x-c.x,a.z-c.z),C=Math.hypot(a.x-b.x,a.z-b.z),cr=Math.abs((b.x-a.x)*(c.z-a.z)-(b.z-a.z)*(c.x-a.x));return cr<1e-9?Infinity:A*B*C/(2*cr);};
+ for(const {r,P,F} of roads){if(r.loop)continue;const min=P.median>0?38:28;for(let d=6;d<F.at(-1).d-6;d+=1){const R=rad(frameAt(F,d-6),frameAt(F,d),frameAt(F,d+6));assert.ok(R>=min,`${r.id} bends at ${R.toFixed(0)} m radius at d=${d}`);}}}
 console.log(`city-network checks passed: ${roads.length} streets, ${km.toFixed(1)} km, ${joins.length} junction arms`);

@@ -46,7 +46,7 @@ export function laneGraph(net,crossings=[]){const pieces=[],sources=[],nodes=[];
  const pick=(from,to)=>to[Math.min(from.k,to.length-1)]??to[0],add=(node,t)=>{if(t)node.turns.push(t);};// pick: lane k of a corridor crossing
  // one lane opening onto more: a movement into each (they fan out, so every lane of a dual road is fed); otherwise lane k → lane k
  const fan=(node,a,out,extra)=>{const nA=a.road.r.loop?1:lanesOf(a.road.P);if(nA===1&&out.length>1)out.forEach((b,k)=>add(node,turn(a,out,{...extra,to:k})));else add(node,turn(a,out,extra));};// lane k goes to lane k (or the nearest one that exists)
- for(const o of net.roads)for(const n of info.get(o).list){if(n.kind==='host'){const node={id:nodes.length,kind:n.arms.length>1&&!o.r.loop?'crossroads':o.r.loop?'ring':'priority',x:n.arms[0].at.x,z:n.arms[0].at.z,major:[],minor:[],turns:[],signal:n.arms.length>1&&!o.r.loop};nodes.push(node);
+ for(const o of net.roads)for(const n of info.get(o).list){if(n.kind==='host'){const node={id:nodes.length,kind:o.r.loop?'ring':n.arms.some(j=>j.signal)?'signal':'priority',x:n.arms[0].at.x,z:n.arms[0].at.z,major:[],minor:[],turns:[],signal:!o.r.loop&&n.arms.some(j=>j.signal),arms:n.arms.length};nodes.push(node);
    const hostIn=n.in||[],hostOut=n.out||[];node.major=hostIn;node.minor=n.arms.flatMap(j=>armLanes(j,true));
    for(const a of hostIn){{const on=hostOut.filter(b=>b.dir===a.dir);if(on.length)add(node,turn(a,on,{node,rule:'major',approach:'major'}));}
     for(const j of n.arms){const out=armLanes(j,false);if(out.length)fan(node,a,out,({node,rule:'major',approach:'major'}));}}
@@ -72,9 +72,10 @@ export function laneGraph(net,crossings=[]){const pieces=[],sources=[],nodes=[];
 
 // Crossroads stage at a clock time: {stage ('major' | 'arm0' | 'arm1' | null for all-red), left (s to the next change), next}.
 // The signal heads (environment.js citySignals) show these; amber is a stage's last 3 s, red + amber the last 2 s before it.
-const STAGES=[['major',0,26],['arm0',29,43],['arm1',46,60]];
-export function stageAt(n,clock){const t=((clock+n.id*11)%63+63)%63;for(const [stage,a,b] of STAGES)if(t>=a&&t<b)return {stage,left:b-t};
- const k=STAGES.findIndex(([,a])=>a>t);return {stage:null,next:STAGES[k<0?0:k][0],left:(k<0?63:STAGES[k][1])-t};}
+// A signalised T runs two stages (major 30 s, the side road 14 s, 50 s cycle); a crossroads three (63 s).
+const STAGES={1:[['major',0,30],['arm0',33,47]],2:[['major',0,26],['arm0',29,43],['arm1',46,60]]},CYCLE={1:50,2:63};
+export function stageAt(n,clock){const S=STAGES[n.arms??2]||STAGES[2],C=CYCLE[n.arms??2]||63,t=((clock+n.id*11)%C+C)%C;for(const [stage,a,b] of S)if(t>=a&&t<b)return {stage,left:b-t};
+ const k=S.findIndex(([,a])=>a>t);return {stage:null,next:S[k<0?0:k][0],left:(k<0?C:S[k][1])-t};}
 // Cars. opts: {count, seed, signal(crossing) → true when the road phase is green, time() for crossroads phases}.
 // step(dt, {focus:{x,z}, blockers:[{x,z,r,w?}], view:{x,z,fx,fz} (camera, for respawns out of sight)}).
 export function createTraffic(graph,{count=40,seed=7,signal=()=>true,fleet=[{length:4.6,width:1.9}]}={}){
