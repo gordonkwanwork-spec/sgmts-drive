@@ -36,4 +36,12 @@ assert.equal(sig.filter(c=>c.pedOnly).length,12,'pedestrian poles: one per signa
 assert.equal(sig.filter(c=>c.ped&&!c.pedOnly).length,12,'kerb primaries: one per approach');
 assert.equal(sig.filter(c=>c.back).length,12,'a secondary for every approach');
 for(const c of [...gw,...sig]){const y=H(c.x,c.z);assert.ok(y!==null&&Math.abs(y-c.y)<.08,`${c.kind} at ${c.x.toFixed(1)},${c.z.toFixed(1)}: surface ${y?.toFixed(2)} vs ${c.y.toFixed(2)}`);}
-console.log(`city-markings checks passed: no downward faces, ${checked} median samples, ${cr.length} crossings (${cr.filter(c=>c.kind==='signal').length} signal), ${gw.length} Give Way signs, ${sig.length} signal poles`);
+// 6. Street furniture (city-details.js, sandbox dress rules): a bin at every crossing, hydrants at most ~100 m apart along each
+// street, bus shelters on the distributors only, a controller cabinet per signal junction; railings follow need, not every kerb.
+const {cityDetails}=await import('../street/city-details.js');
+const det=cityDetails(g,{batch:()=>{},kitParts:()=>[],fences:[],lampPositions:[],mats:{},plantTree:()=>{}});
+assert.equal(det.bins,cr.length,'one litter bin per crossing');assert.equal(det.cabinets,3,'a controller cabinet at each signal junction');
+assert.ok(det.shelters>=5&&det.shelters<=25,`bus shelters ${det.shelters}`);assert.ok(det.trees>100,`street trees ${det.trees}`);
+const kerb=g.userData.edges.filter(e=>e.kind==='edge').reduce((s,e)=>s+e.length,0)/2;assert.ok(det.hydrants>=kerb/110,`hydrants ${det.hydrants} for ${kerb.toFixed(0)} m of street`);
+const railed=det.panels*1.5,all=g.userData.edges.reduce((s,e)=>s+e.length,0);assert.ok(railed<all*.8&&railed>all*.25,`railing on ${(100*railed/all).toFixed(0)} % of the kerbs`);
+console.log(`city-markings checks passed: no downward faces, ${checked} median samples, ${cr.length} crossings (${cr.filter(c=>c.kind==='signal').length} signal), ${gw.length} Give Way signs, ${sig.length} signal poles; furniture ${JSON.stringify(det)}`);

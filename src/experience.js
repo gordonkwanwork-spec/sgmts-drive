@@ -1152,7 +1152,10 @@ async function boot(){try{let loaded=0;
  // City rebuild 2: buildings are plots cut from the street frontages (src/city/blocks.js). They are planned first, from data
  // alone, so the environment keeps hills and planting off them like any built lot.
  const cityBlocks=cityPlots(furniture.network,lots),plotLand=cityBlocks.map(p=>{const g=p.gap/2+1,q=(a,b)=>[p.c[0]+p.u[0]*a+p.v[0]*b,p.c[1]+p.u[1]*a+p.v[1]*b];return {id:p.id,zone:'plot',style:'residential',model:{type:'massing'},poly:[q(-p.w/2-g,-p.d/2-8),q(p.w/2+g,-p.d/2-8),q(p.w/2+g,p.d/2+4),q(-p.w/2-g,p.d/2+4)]};});
- environment=buildEnvironment(scene,streetKit,{occupied:occupiedBy([...lots,...plotLand]),furniture});scene.add(await loadFurnitureModels(furniture,{loader,url:src=>import.meta.env.BASE_URL+'street/models/'+src}));loadingScreen.update(2,'Loading surroundings');
+ // District behind each kerb for the street furniture rules: the OZP use of the nearest plot (sandbox res / com / ind).
+ const DISTRICT={residential:'res',village:'res',civic:'res',commercial:'com',mixed:'com',enterprise:'ind',industry:'ind',utility:'ind'};
+ const districtAt=(x,z)=>{let best=null,bd=35;for(const p of cityBlocks){const d=Math.hypot(p.c[0]-x,p.c[1]-z);if(d<bd){bd=d;best=p;}}return DISTRICT[best?.group]||'res';};
+ environment=buildEnvironment(scene,streetKit,{occupied:occupiedBy([...lots,...plotLand]),furniture,districtAt});scene.add(await loadFurnitureModels(furniture,{loader,url:src=>import.meta.env.BASE_URL+'street/models/'+src}));loadingScreen.update(2,'Loading surroundings');
  const drawn=cityMask=networkMask(furniture.network,renderedGround);// lot buildings and trees keep off streets and paving drawn in the street editor
  const lotGroup=await buildLots(lots.filter(l=>!kitLot(l)),{kit:streetKit,ground:renderedGround,allowed:(x,z,r)=>sceneryClear(x,z,r)&&!drawn.buildingBlocked(x,z,r),allowedKept:(x,z,r)=>sceneryClear(x,z,r),allowedLow:(x,z,r)=>sceneryClear(x,z,r,true)&&!drawn.blocked(x,z,r),modelUrl:src=>import.meta.env.BASE_URL+'lots/models/'+src});scene.add(lotGroup);
  // City rebuild: residential, commercial, mixed-use, industrial, enterprise-park and village lots from the sandbox modern kit.
