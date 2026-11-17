@@ -55,11 +55,13 @@ export const busStop=travel=>once('bus-stop'+travel,()=>{const g=new T.Group(),c
  const x0=COLS[0]+.15,x1=COLS.at(-1)-.15,s=mat('#c9cdcf',{metalness:.7,roughness:.35}),gl=mat('#bcd3d6',{transparent:true,opacity:.28,roughness:.08,metalness:.1,depthWrite:false});
  box(g,s,0,1.08,col,x1-x0,.028,.025);box(g,s,0,.1,col,x1-x0,.025,.025);box(g,gl,0,.12,col,x1-x0,.96,.01);for(let x=x0;x<=x1+1e-6;x+=(x1-x0)/12)box(g,s,x,.1,col,.025,1,.028);
  for(const [a,b] of [[-1.65,-.6],[.6,1.65]]){box(g,gl,(a+b)/2,1.12,col,b-a,1.03,.01);box(g,s,(a+b)/2,2.15,col,b-a,.025,.028);for(const x of [a,b])box(g,s,x,1.1,col,.025,1.07,.028);}
- const mk=new T.Group();mk.position.y=-.148;mk.rotation.x=Math.atan(.025);g.add(mk);// on the carriageway: 150 mm below the paving, rising 2.5 % with the crossfall
- const white=mat('#ecebe4',{roughness:.8}),Lm=13,Wm=3,dash=(x,z,w,d)=>box(mk,white,x,0,z,w,.006,d);
+ return g;});
+// The franchised bus stop marking (RM1047/1048) in the same kerb frame, flat at y = 0: the caller drapes every vertex onto the road
+// surface (the road climbs and crowns under a 13 m box). White broken box 3 m out, open to the kerb; 站 / 巴士 / STOP / BUS along travel.
+export function busStopMarks(travel){const g=new T.Group(),white=mat('#ecebe4',{roughness:.8}),Lm=13,Wm=3,flat=(m,x,z,w,d)=>{const q=new T.Mesh(new T.PlaneGeometry(w,d).rotateX(-Math.PI/2),m);q.position.set(x,0,z);g.add(q);return q;},dash=(x,z,w,d)=>flat(white,x,z,w,d);
  for(let x=-Lm/2;x<Lm/2-1;x+=2)dash(x+.5,-Wm+.05,1,.1);dash(Lm/2-.5,-Wm+.05,1,.1);for(const e of [-1,1])for(const z0 of [-Wm,-1])dash(e*(Lm/2-.05),z0+.5,.1,1);
  let at=-Lm/2+.7;for(const [label,len,cn] of [['站',2.7,1],['巴士',2.7,1],['STOP',1.6],['BUS',1.6]]){const across=cn?2.2:2;
-  const m=plate('rm-'+label,across/len,1,(cx,Wc,Hc)=>{cx.fillStyle='#ecebe4';cx.font=`bold ${Hc}px ${cn?'"PingFang HK","Heiti TC",sans-serif':'"Helvetica Neue",Arial,sans-serif'}`;const w=cx.measureText(label).width||Wc;cx.setTransform(Wc*.94/w,0,0,1,Wc/2,Hc*.55);cx.textAlign='center';cx.textBaseline='middle';cx.fillText(label,0,0);});
-  Object.assign(m,{transparent:true,depthWrite:false,roughness:.8});
-  const q=new T.Mesh(new T.PlaneGeometry(across,len).rotateX(-Math.PI/2),m);q.position.set(travel*(at+len/2),.007,-Wm/2);q.rotation.y=-travel*Math.PI/2;mk.add(q);at+=len+1;}
- return g;});
+  const m=plate('rm-'+label,across/len,1,(cx,Wc,Hc)=>{cx.fillStyle='#ecebe4';cx.font=`bold ${Hc*.86}px ${cn?'"PingFang HK","Heiti TC",sans-serif':'"Helvetica Neue",Arial,sans-serif'}`;const w=cx.measureText(label).width||Wc;cx.setTransform(Wc*.86/w,0,0,1,Wc/2,Hc*.52);cx.textAlign='center';cx.textBaseline='middle';cx.fillText(label,0,0);});
+  Object.assign(m,{transparent:false,alphaTest:.5,roughness:.8,polygonOffset:true,polygonOffsetFactor:-2});m.map.generateMipmaps=true;
+  flat(m,travel*(at+len/2),-Wm/2,across,len).rotation.y=-travel*Math.PI/2;at+=len+1;}
+ return g;}

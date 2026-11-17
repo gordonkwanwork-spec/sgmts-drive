@@ -512,8 +512,11 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
 
    for(const edge of [-2.12,2.12]){const rail=cycleRibbon(a,b,edge-.035,edge+.035,1.15),mesh=new T.Mesh(rail,mats.galvanised);mesh.name='Cycle ramp handrail';scene.add(mesh);}
    for(let q=a;q<=b;q+=5){const c=cycleSample(q),height=cycleBridgeHeight(q);for(const edge of [-2.12,2.12])box('cycle-ramp-post',mats.galvanised,c.x+c.lx*edge,c.groundY+height+.57,c.z+c.lz*edge,.06,1.14,.06,c.heading,Math.floor(q/240));}
-   // Ground-level spur skirts the staircase and arrives at the lift entrance.
-   const along=side*(length/2+24),q=cs+along,road=sample(q),outer=-(roadSection(q).right+3.75),start=new T.Vector3(road.x+road.lx*outer,road.groundY+.30,road.z+road.lz*outer),finish=g.localToWorld(new T.Vector3(9, .30,-along));
+   // Ground-level spur from the lift entrance straight across to the footway of the road the bridge spans (Gordon, 17 Nov: the old
+   // spur aimed at a corridor footpath that does not exist where the corridor is elevated, so it ended in the grass).
+   const along=side*(length/2+24),finish=g.localToWorld(new T.Vector3(9, .30,-along)),X=crossingGeometry(j),rel=[finish.x-X.C.x,finish.z-X.C.z];
+   const dd=Math.max(-j.extent+2,Math.min(j.extent-2,rel[0]*X.u.x+rel[1]*X.u.z)),lat=Math.sign(rel[0]*X.n.x+rel[1]*X.n.z)*(j.halfWidth+j.footway*.6),sx=X.C.x+X.u.x*dd+X.n.x*lat,sz=X.C.z+X.u.z*dd+X.n.z*lat;
+   const start=new T.Vector3(sx,crossingY(j,sx,sz)+.2,sz);
    const path=new T.LineCurve3(start,finish),link=new T.Mesh(curveRibbon(path,-1.5,1.5,.015),mats.walk);link.name='Footbridge pedestrian approach';scene.add(link);
    const landing=new T.Mesh(new T.BoxGeometry(7,.15,26),mats.walk);landing.position.set(6.7,.225,side*(length/2+14));g.add(landing);
   }

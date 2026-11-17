@@ -8,7 +8,8 @@
 import * as T from 'three';
 import {railingBuilder} from './furniture.js';
 import {presetOf,frameAt} from './network.js';
-import {hydrant,treePit,busStop,SHELTER_HALF} from './sandbox/amenities.js';
+import {hydrant,treePit,busStop,busStopMarks,SHELTER_HALF} from './sandbox/amenities.js';
+import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {project} from '../alignment.js';
 const hash=s=>{let h=2166136261;for(const ch of s)h=Math.imul(h^ch.charCodeAt(0),16777619)>>>0;return h/4294967296;};
 // Kerbside treatment away from junctions and crossings (sandbox TREAT / WIDE). The sandbox's H5146A kerb planters need a 2 m bed
@@ -31,12 +32,16 @@ export function cityDetails(networkGroup,{batch,kitParts,fences,lampPositions,ma
 
  // Bus stops on the distributors: one per kerb run of 120 m or more, mid-block between two lamps, 30 m clear of junctions and
  // crossings on a straight kerb, at least 350 m from the next stop. The kerb railing opens along the shelter.
- const stops=[];
+ const stops=[],surface=networkGroup.userData.surfaceHeight,draped=new Map();
+ // Road markings laid over the drawn road: every vertex dropped onto the carriageway surface (it climbs and crowns), 12 mm above it.
+ const drape=(group,P,yaw)=>{group.position.copy(P);group.rotation.y=yaw;group.updateMatrixWorld(true);group.traverse(m=>{if(!m.isMesh)return;const g=m.geometry.clone().applyMatrix4(m.matrixWorld),pos=g.attributes.position;
+  for(let i=0;i<pos.count;i++){const y=surface?.(pos.getX(i),pos.getZ(i));pos.setY(i,(y??P.y-.15)+.012);}if(!draped.has(m.material))draped.set(m.material,[]);draped.get(m.material).push(g);});};
  for(const e of straight.filter(e=>wide(e)&&e.length>=120).sort((a,b)=>b.length-a.length)){
   const ok=t=>t>30&&t<e.length-30&&!(e.crossings||[]).some(c=>Math.abs(c-t)<30)&&(()=>{const a=e.point(t-SHELTER_HALF),b=e.point(t+SHELTER_HALF);return a.nx*b.nx+a.nz*b.nz>Math.cos(3*Math.PI/180);})();
   const t=Array.from({length:Math.floor(e.length/30)},(_,k)=>27+30*k).filter(ok).sort((a,b)=>Math.abs(a-e.length/2)-Math.abs(b-e.length/2))[0];if(t==null)continue;
   const p=e.point(t);if(stops.some(s=>Math.hypot(s.x-p.x,s.z-p.z)<350))continue;stops.push(p);
-  e.items.push({t,r:SHELTER_HALF+.5,kind:'shelter'});place('city-bus-stop',busStop(-1),new T.Vector3(p.x,p.y,p.z),kerbYaw(p));shelters++;}// traffic in the kerb lane runs along local −X
+  e.items.push({t,r:SHELTER_HALF+.5,kind:'shelter'});place('city-bus-stop',busStop(-1),new T.Vector3(p.x,p.y,p.z),kerbYaw(p));drape(busStopMarks(-1),new T.Vector3(p.x,p.y,p.z),kerbYaw(p));shelters++;}
+ for(const [material,list] of draped){const m=new T.Mesh(mergeGeometries(list),material);m.name='city-bus-stop-marking';m.receiveShadow=true;networkGroup.add(m);}// traffic in the kerb lane runs along local −X
 
  // Stitch straight edges and swept returns before laying out bays, so rounded
  // end panels appear only at genuine openings, never at a corner tangent.

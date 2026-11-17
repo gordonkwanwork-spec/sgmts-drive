@@ -191,7 +191,7 @@ export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Gr
  // footway, with rounded brick noses at least 6 m long (refuge and signal poles stand there) and, between the noses, a raised
  // concrete planter (walls 350 mm above the paving, 250 mm in from the kerb) planted with shrubs by city-details.js.
  const planters=[];
- function median(o,p,q,m){const {r,F}=o,R=m/2,a=p+R,b=q-R,K=.15,edge=(d,sd)=>{const f=frameAt(F,d);return f.y+streetLevel(r,d,sd*R)+(f.crossSlope||0)*sd*R;},top=d=>streetLevel(r,d,R)+K;
+ function median(o,p,q,m,open0=false,open1=false){const {r,F}=o,R=m/2,a=open0?p:p+R,b=open1?q:q-R,K=.15,edge=(d,sd)=>{const f=frameAt(F,d);return f.y+streetLevel(r,d,sd*R)+(f.crossSlope||0)*sd*R;},top=d=>streetLevel(r,d,R)+K;
   const pave=M.red;
   for(const sd of [-1,1]){addKerb(b-a,t=>{const d=a+t,f=frameAt(F,d),base=edge(d,sd);return {x:f.x+f.lx*sd*R,z:f.z+f.lz*sd*R,nx:-f.lx*sd,nz:-f.lz*sd,y:base+K,base};});
    strip(out,mats.channel||M.kerb,F,a,b,sd*(R+.3),sd*R,(d,l)=>streetLevel(r,d,l)+.001);}
@@ -204,7 +204,7 @@ export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Gr
    for(const [d,dir] of [[pa,-1],[pb,1]]){const f=frameAt(F,d),y0=f.y+top(d),pt=(l,y)=>[f.x+f.lx*l,y,f.z+f.lz*l],pos=[...pt(-wo,y0),...pt(wo,y0),...pt(-wo,y0+H),...pt(wo,y0+H)],idx=dir>0?[0,1,2,1,3,2]:[0,2,1,1,2,3];out.raw(M.kerb,pos,idx);
     up(M.kerb,[pt(-wo,y0+H),pt(wo,y0+H),[f.x+f.lx*wo+f.tx*dir*-.15,y0+H,f.z+f.lz*wo+f.tz*dir*-.15],[f.x-f.lx*wo+f.tx*dir*-.15,y0+H,f.z-f.lz*wo+f.tz*dir*-.15]]);}
    planters.push({road:r.id,F,from:pa+.15,to:pb-.15,width:2*wi,y:d=>top(d)+H-.06});}
-  for(const [c,dir] of [[a,-1],[b,1]]){const f=frameAt(F,c),base=edge(c,1),at=(phi,rad)=>[f.x+f.tx*dir*rad*Math.cos(phi)+f.lx*rad*Math.sin(phi),f.z+f.tz*dir*rad*Math.cos(phi)+f.lz*rad*Math.sin(phi)];
+  for(const [c,dir] of [[a,-1],[b,1]]){if(dir<0?open0:open1)continue;const f=frameAt(F,c),base=edge(c,1),at=(phi,rad)=>[f.x+f.tx*dir*rad*Math.cos(phi)+f.lx*rad*Math.sin(phi),f.z+f.tz*dir*rad*Math.cos(phi)+f.lz*rad*Math.sin(phi)];
    addKerb(Math.PI*R,t=>{const phi=-Math.PI/2+t/R,[x,z]=at(phi,R);return {x,z,nx:-dir*f.tx*Math.cos(phi)-f.lx*Math.sin(phi),nz:-dir*f.tz*Math.cos(phi)-f.lz*Math.sin(phi),y:base+K,base};});
    const rim=Array.from({length:13},(_,i)=>at(-Math.PI/2+i*Math.PI/12,R-.125));for(let i=1;i<rim.length;i++)up(pave,[[f.x,base+K,f.z],[rim[i-1][0],base+K,rim[i-1][1]],[rim[i][0],base+K,rim[i][1]]]);}}
  // Arrow glyphs (local metres: x along travel, tip at +2; y to the driver's left), 4 m long, 300 mm shaft (Cap 374G Fig 509).
@@ -218,7 +218,10 @@ export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Gr
   const s0=starts.get(r.id+':0'),s1=starts.get(r.id+':1');
   for(const j of joins.filter(j=>j.A===o)){const dir=j.end?1:-1,line=j.end?L-s1.carriageway:s0.carriageway;
    if(j.signal&&j.crossingD!=null){const d=j.crossingD-dir*(1.65+2),tee=joins.filter(k=>k.B===j.B&&k.signal&&Math.abs(k.at.d-j.at.d)<5).length===1;anchors.push({d,dir,kind:'stop',turns:{straight:!tee,left:true,right:true}});cuts.push(dir>0?[d,hi+1]:[lo-1,d]);}// stop line ≈ 2 m behind the near stud row
-   else{anchors.push({d:line,dir,kind:j.B.r.loop?'ring':'giveway'});
+   else{// Give way (Gordon, 17 Nov): the double line runs square across the whole side road, set back so it meets the main road's
+    // kerb line at the side road's far edge (on a skewed mouth the near edge then stands a little behind it).
+    const cs=Math.abs(j.a[0]*j.at.tx+j.a[1]*j.at.tz),sn=Math.abs(j.a[0]*j.at.lx+j.a[1]*j.at.lz)||1,back=j.B.r.loop?0:h*cs/sn;
+    anchors.push({d:line-dir*back,dir,kind:j.B.r.loop?'ring':'giveway'});
     // TS102 Give Way sign on the nearside, 0.6 m behind the kerb: 1.5 m before the line (guide §6), or just clear of the kerb return
     const s=j.end?s1:s0,t=s?.foot?.[-1],d=t==null?line-dir*1.5:dir>0?Math.min(line-1.5,L-t-.5):Math.max(line+1.5,t+.5);
     controls.push({kind:'giveway',...spot(o,d,dir*(h+.6)),yaw:facing(o,d,dir)});}}
@@ -249,8 +252,9 @@ export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Gr
      for(let k=0;k<nl;k++){const lat=sg*(m/2+(h-m/2)/nl*(k+.5)),T=A.turns||{straight:true,left:true,right:true},g=glyph(nl===1?T:k===nl-1?{straight:T.straight||!T.left,left:T.left}:{straight:T.straight||!T.right,right:T.right});// kerb lane: left (+ ahead), offside: right (+ ahead)
       for(const poly of g)up(W,poly.map(([x,y])=>paint(o,W,dc+sg*x,lat+sg*y,.011)));}}}
    if(A.kind==='giveway'||A.kind==='ring'){// RM1013: two rows of 600/300 dashes, 200 mm, 200 mm apart, on the major road's kerb line
-    for(const [r0,r1] of [[0,.2],[.4,.6]])dash(A.d-sg*r0,A.d-sg*r1,l0,l1);
-    if(A.kind==='giveway'){const [e0,e1]=halfOf(-sg);dash(A.d,A.d-sg*.1,e0,e1);// RM1106 junction edge line across the exit half
+    const spans=A.kind==='ring'?[[l0,l1]]:m?[[-(h-.15),-(m/2+.15)],[m/2+.15,h-.15]]:[[-(h-.15),h-.15]];// a roundabout entry: the entry lanes only
+    for(const [a,b] of spans)for(const [r0,r1] of [[0,.2],[.4,.6]])dash(A.d-sg*r0,A.d-sg*r1,Math.min(a,b),Math.max(a,b));
+    if(A.kind==='giveway'){
      // RM1115 give-way triangle per approach lane: 3.6 m × 1.2 m, base 2 m before the line, point towards the driver
      const nl=P.lines==='lanes'?lanesOf(P):1;for(let k=0;k<nl;k++){const lat=sg*(m/2+(h-m/2)/nl*(k+.5)),b0=A.d-sg*2,tip=A.d-sg*5.6;
       up(W,[paint(o,W,b0,lat-.6,.011),paint(o,W,b0,lat+.6,.011),paint(o,W,b0-sg*.6,lat+.4,.011),paint(o,W,b0-sg*.6,lat-.4,.011)]);
@@ -261,10 +265,10 @@ export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Gr
   let medians=[];if(m){const gaps=joins.filter(j=>j.B===o).map(j=>{const half=j.A.P.carriageway/2+CORNER+1.5;return j.host?[j.host.lo-1.75,j.host.hi+1.75]:[j.at.d-half,j.at.d+half];});
    // at a signalised arm the median runs up to the crossing, its nose carrying the second primary signal
    const arm=e=>joins.find(j=>j.A===o&&!!j.end===e&&j.signal&&j.crossingD!=null),a0=arm(false),a1=arm(true);
-   medians=minus(a0?a0.crossingD+1.75:c0+(s0?CORNER+6:3),Math.min(a1?a1.crossingD-1.75:c1-(s1?CORNER+6:3),head-6),gaps).filter(([p,q])=>q-p>m+2);}
+   medians=minus(a0?a0.crossingD+1.75:r.tie?0:c0+(s0?CORNER+6:3),Math.min(a1?a1.crossingD-1.75:r.endTie?L:c1-(s1?CORNER+6:3),head-6),gaps).filter(([p,q])=>q-p>m+2);}// a corridor arm's median runs on flush into the road's
   for(const [a,b] of m?[[-h,-m/2],[m/2,h]]:[[-h,0],[0,h]])strip(out,M.road,F,c0,c1,a,b,lvl);
   if(m)for(const [p,q] of minus(c0,c1,medians.map(([p,q])=>[p+m/2,q-m/2])))for(const [a,b] of [[-m/2,0],[0,m/2]])strip(out,M.road,F,p,q,a,b,lvl);// across median gaps, and under the round noses
-  for(const [p,q] of medians)median(o,p,q,m);
+  for(const [p,q] of medians)median(o,p,q,m,r.tie&&p<.01,r.endTie&&q>L-.01);
   markings(o,c0,Math.min(c1,head-1),m,medians);}
  for(const o of roads){const {r,P,F}=o,L=F.at(-1).d,h=P.carriageway/2,fw=M[r.footway||'red'],gap=cuts.get(o)||{1:[],[-1]:[]},s0=starts.get(r.id+':0'),s1=starts.get(r.id+':1');
   const c0=s0?s0.carriageway:0,c1=L-(s1?s1.carriageway:0);

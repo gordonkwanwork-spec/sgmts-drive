@@ -48,12 +48,12 @@ export function buildCrossings(scene,{mats,junctionBox}){
   // Straight kerb along e = τh (normal into the footway) from d0 to d1, dropping to a 25 mm lip across the crossing at dc.
   const armKerb=(τ,d0,d1,dc=null)=>{const s=Math.sign(d1-d0)||1,L=Math.abs(d1-d0);kerb(L,t=>{const d=d0+s*t,p=A(d,τ*h),drop=dc===null?0:.13*clamp(1-(Math.abs(d-dc)-1.5)/1.8,0,1);return {x:p.x,z:p.z,nx:n.x*τ,nz:n.z*τ,y:Y(p)+RAISED-drop,base:Y(p)+ROAD};});};
   const footDy=dc=>(d,e)=>RAISED-(dc===null?0:.13*clamp(1-(Math.abs(d-dc)-1.5)/1.8,0,1)*(1-(Math.abs(e)-h)/fw));
-  // Central median island (raised, paved) from d0 to d1 with K1 kerbs; a rounded nose at `nose` (one of d0/d1).
-  const median=(d0,d1,nose,planted=false)=>{if(!m||Math.abs(d1-d0)<.5)return;band(planted?mats.grass:mats.walkGrey||mats.walk,d0,d1,-m+.12,m-.12,RAISED);
+  // Central median island (raised, brick paved) from d0 to d1 with K1 kerbs; a rounded nose at `nose` (one of d0/d1).
+  const median=(d0,d1,nose,planted=false)=>{if(!m||Math.abs(d1-d0)<.5)return;band(mats.walk,d0,d1,-m+.12,m-.12,RAISED);/* brick paved like the city medians (Gordon, 16-17 Nov); the city road's median continues it flush at the arm end */
    for(const τ of [-1,1])kerb(Math.abs(d1-d0),t=>{const d=Math.min(d0,d1)+t,p=A(d,τ*m);return {x:p.x,z:p.z,nx:-n.x*τ,nz:-n.z*τ,y:Y(p)+RAISED,base:Y(p)+ROAD};});
    const cap=d=>kerb(2*m,t=>{const p=A(d,-m+t);return {x:p.x,z:p.z,nx:-u.x*Math.sign(d-(d0+d1)/2),nz:-u.z*Math.sign(d-(d0+d1)/2),y:Y(p)+RAISED,base:Y(p)+ROAD};});
    for(const d of [d0,d1])if(d!==nose&&Math.abs(d)<ext-.01)cap(d);
-   if(nose!==undefined){const dir=Math.sign(nose-(d0+d1)/2),pts=Array.from({length:13},(_,i)=>{const a=-Math.PI/2+i*Math.PI/12;return A(nose+dir*Math.cos(a)*m*.98,Math.sin(a)*m*.98);});fill(mats.walkGrey||mats.walk,pts,RAISED);
+   if(nose!==undefined){const dir=Math.sign(nose-(d0+d1)/2),pts=Array.from({length:13},(_,i)=>{const a=-Math.PI/2+i*Math.PI/12;return A(nose+dir*Math.cos(a)*m*.98,Math.sin(a)*m*.98);});fill(mats.walk,pts,RAISED);
     kerb(Math.PI*m,t=>{const a=-Math.PI/2+t/m,p=A(nose+dir*Math.cos(a)*m,Math.sin(a)*m);return {x:p.x,z:p.z,nx:-(u.x*dir*Math.cos(a)+n.x*Math.sin(a)),nz:-(u.z*dir*Math.cos(a)+n.z*Math.sin(a)),y:Y(p)+RAISED,base:Y(p)+ROAD};});}};
   // Lane lines between same-direction lanes: 4 m warning marks (6 m module) on the half approaching signals, else 1 m / 6 m.
   const laneLines=(σ,d0,d1,signals)=>{if(j.lanes<2)return;for(const τ of [-1,1]){const e=τ*(m+LANE),dash=signals&&τ===σ?4:1,module=6,s=Math.sign(d1-d0);
