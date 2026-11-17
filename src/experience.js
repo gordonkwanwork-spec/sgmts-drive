@@ -34,6 +34,7 @@ import {clone as cloneSkinned} from 'three/addons/utils/SkeletonUtils.js';
 import {createAtmosphere,ATMOS} from './atmosphere.js';
 import {Sky} from 'three/addons/objects/Sky.js';
 import {LENGTH,STOPS,sample,fromChainage,toChainage,LOOP,roadSection,project,projectFrame,END_STOP,CROSSINGS,cycleOffset,cycleHeight,DEPOT,laneOffset,curveRadius,returnOffset,CROSSOVER_START,cycleBridgeHeight,CYCLE_BRIDGES,cycleSample,footpathHeight,PLATFORM_RISE} from './alignment.js';
+import {addA1Lion} from './a1-lion.js';
 import {buildEnvironment,JUNCTIONS,UNDERPASSES,lampFade,sceneryClear,terrainLevel,renderedGround,stationAccess,setSceneryScale} from './environment.js';
 import {buildLots,occupiedBy,nightMaterials as lotNightMaterials} from './lots/massing.js';
 import {networkMask,surfaceSampler} from './street/network.js';
@@ -1155,7 +1156,7 @@ async function boot(){try{let loaded=0;
  // District behind each kerb for the street furniture rules: the OZP use of the nearest plot (sandbox res / com / ind).
  const DISTRICT={residential:'res',village:'res',civic:'res',commercial:'com',mixed:'com',enterprise:'ind',industry:'ind',utility:'ind'};
  const districtAt=(x,z)=>{let best=null,bd=35;for(const p of cityBlocks){const d=Math.hypot(p.c[0]-x,p.c[1]-z);if(d<bd){bd=d;best=p;}}return DISTRICT[best?.group]||'res';};
- environment=buildEnvironment(scene,streetKit,{occupied:occupiedBy([...lots,...plotLand]),furniture,districtAt});scene.add(await loadFurnitureModels(furniture,{loader,url:src=>import.meta.env.BASE_URL+'street/models/'+src}));loadingScreen.update(2,'Loading surroundings');
+ environment=buildEnvironment(scene,streetKit,{occupied:occupiedBy([...lots,...plotLand]),furniture,districtAt});addA1Lion({scene});scene.add(await loadFurnitureModels(furniture,{loader,url:src=>import.meta.env.BASE_URL+'street/models/'+src}));loadingScreen.update(2,'Loading surroundings');
  const drawn=cityMask=networkMask(furniture.network,renderedGround);// lot buildings and trees keep off streets and paving drawn in the street editor
  const lotGroup=await buildLots(lots.filter(l=>!kitLot(l)),{kit:streetKit,ground:renderedGround,allowed:(x,z,r)=>sceneryClear(x,z,r)&&!drawn.buildingBlocked(x,z,r),allowedKept:(x,z,r)=>sceneryClear(x,z,r),allowedLow:(x,z,r)=>sceneryClear(x,z,r,true)&&!drawn.blocked(x,z,r),modelUrl:src=>import.meta.env.BASE_URL+'lots/models/'+src});scene.add(lotGroup);
  // City rebuild: residential, commercial, mixed-use, industrial, enterprise-park and village lots from the sandbox modern kit.

@@ -218,10 +218,7 @@ export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Gr
   const s0=starts.get(r.id+':0'),s1=starts.get(r.id+':1');
   for(const j of joins.filter(j=>j.A===o)){const dir=j.end?1:-1,line=j.end?L-s1.carriageway:s0.carriageway;
    if(j.signal&&j.crossingD!=null){const d=j.crossingD-dir*(1.65+2),tee=joins.filter(k=>k.B===j.B&&k.signal&&Math.abs(k.at.d-j.at.d)<5).length===1;anchors.push({d,dir,kind:'stop',turns:{straight:!tee,left:true,right:true}});cuts.push(dir>0?[d,hi+1]:[lo-1,d]);}// stop line ≈ 2 m behind the near stud row
-   else{// Give way (Gordon, 17 Nov): the double line runs square across the whole side road, set back so it meets the main road's
-    // kerb line at the side road's far edge (on a skewed mouth the near edge then stands a little behind it).
-    const cs=Math.abs(j.a[0]*j.at.tx+j.a[1]*j.at.tz),sn=Math.abs(j.a[0]*j.at.lx+j.a[1]*j.at.lz)||1,back=j.B.r.loop?0:h*cs/sn;
-    anchors.push({d:line-dir*back,dir,kind:j.B.r.loop?'ring':'giveway'});
+   else{anchors.push({d:line,dir,kind:j.B.r.loop?'ring':'giveway',j});
     // TS102 Give Way sign on the nearside, 0.6 m behind the kerb: 1.5 m before the line (guide §6), or just clear of the kerb return
     const s=j.end?s1:s0,t=s?.foot?.[-1],d=t==null?line-dir*1.5:dir>0?Math.min(line-1.5,L-t-.5):Math.max(line+1.5,t+.5);
     controls.push({kind:'giveway',...spot(o,d,dir*(h+.6)),yaw:facing(o,d,dir)});}}
@@ -252,9 +249,14 @@ export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Gr
      for(let k=0;k<nl;k++){const lat=sg*(m/2+(h-m/2)/nl*(k+.5)),T=A.turns||{straight:true,left:true,right:true},g=glyph(nl===1?T:k===nl-1?{straight:T.straight||!T.left,left:T.left}:{straight:T.straight||!T.right,right:T.right});// kerb lane: left (+ ahead), offside: right (+ ahead)
       for(const poly of g)up(W,poly.map(([x,y])=>paint(o,W,dc+sg*x,lat+sg*y,.011)));}}}
    if(A.kind==='giveway'||A.kind==='ring'){// RM1013: two rows of 600/300 dashes, 200 mm, 200 mm apart, on the major road's kerb line
-    const spans=A.kind==='ring'?[[l0,l1]]:m?[[-(h-.15),-(m/2+.15)],[m/2+.15,h-.15]]:[[-(h-.15),h-.15]];// a roundabout entry: the entry lanes only
-    for(const [a,b] of spans)for(const [r0,r1] of [[0,.2],[.4,.6]])dash(A.d-sg*r0,A.d-sg*r1,Math.min(a,b),Math.max(a,b));
-    if(A.kind==='giveway'){
+    if(A.kind==='ring')for(const [r0,r1] of [[0,.2],[.4,.6]])dash(A.d-sg*r0,A.d-sg*r1,l0,l1);// a roundabout entry: across the entry lanes
+    if(A.kind==='giveway'){// Gordon, 17 Nov (Ka Wai Man Road photo): the double broken line lies along the main road's kerb line, parallel to
+     // the main road, across the whole opening of the lane coming out — from the kerb-return tangent to the side road's centre line.
+     // The half leading into the side road has no line.
+     const j=A.j,B=j.B,hB=B.P.carriageway/2,k=corner(j,sg);
+     if(k){const f0=frameAt(F,A.d),cen=(f0.x-j.at.x)*j.at.tx+(f0.z-j.at.z)*j.at.tz,lo2=Math.min(k.tB,cen),hi2=Math.max(k.tB,cen),y=j.at.y+Y.road+.012,sd=j.side;
+      const q=(dd,l)=>{const f=frameAt(B.F,j.at.d+dd);return [f.x+f.lx*l,y,f.z+f.lz*l];};
+      for(const [r0,r1] of [[.1,.3],[.5,.7]])for(let x=lo2;x<hi2-.05;x+=.9){const v=Math.min(x+.6,hi2);up(W,[q(x,sd*(hB+r0)),q(v,sd*(hB+r0)),q(v,sd*(hB+r1)),q(x,sd*(hB+r1))]);}}
      // RM1115 give-way triangle per approach lane: 3.6 m × 1.2 m, base 2 m before the line, point towards the driver
      const nl=P.lines==='lanes'?lanesOf(P):1;for(let k=0;k<nl;k++){const lat=sg*(m/2+(h-m/2)/nl*(k+.5)),b0=A.d-sg*2,tip=A.d-sg*5.6;
       up(W,[paint(o,W,b0,lat-.6,.011),paint(o,W,b0,lat+.6,.011),paint(o,W,b0-sg*.6,lat+.4,.011),paint(o,W,b0-sg*.6,lat-.4,.011)]);
