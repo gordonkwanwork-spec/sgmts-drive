@@ -152,13 +152,13 @@ export function createAtmosphere({renderer,scene,camera,sky,sun,ambient,quality}
  // Reflections and ambient light come from the actual sky, re-baked when the condition changes.
  const pmrem=new T.PMREMGenerator(renderer),envScene=new T.Scene(),ground=new T.Mesh(new T.CircleGeometry(900,32),new T.MeshBasicMaterial({color:0x4a5446,side:T.DoubleSide}));
  ground.rotation.x=-Math.PI/2;ground.position.y=-2;envScene.add(ground);let envTarget=null;
- let composer=null,bloom=null,cinematic=null;
+ let composer=null,bloom=null,cinematic=null;const passes={bloom:true,post:true};// Graphics panel switches (bloom; shafts, AO and grade)
  const size=new T.Vector2();
  function buildPost(){
   renderer.getSize(size);const target=new T.WebGLRenderTarget(size.x,size.y,{type:T.HalfFloatType,samples:4});target.depthTexture=new T.DepthTexture(size.x,size.y);target.depthTexture.type=T.UnsignedIntType;
   composer=new EffectComposer(renderer,target);composer.addPass(new RenderPass(scene,camera));
   bloom=new UnrealBloomPass(new T.Vector2(size.x/2,size.y/2),.2,.55,1.3);composer.addPass(bloom);
-  cinematic=new CinematicPass(camera);composer.addPass(cinematic);
+  cinematic=new CinematicPass(camera);composer.addPass(cinematic);bloom.enabled=passes.bloom;cinematic.enabled=passes.post;
  }
  let look={...LOOKS.morning},condition='morning',flash=0,nextFlash=12,cinematicOn=quality==='high',shift=[0,0];// player's sun offset in degrees [azimuth, height], kept across conditions
  // Aim the sun at the condition's preset plus the player's offset; every sun consumer reads ATMOS.uSunDir or look.sun.
@@ -175,6 +175,7 @@ export function createAtmosphere({renderer,scene,camera,sky,sun,ambient,quality}
  const api={clouds,night,
   get cinematic(){return cinematicOn;},
   setCinematic(on){cinematicOn=on;if(on&&!composer)buildPost();},
+  setPasses(p){Object.assign(passes,p);if(bloom)bloom.enabled=passes.bloom;if(cinematic)cinematic.enabled=passes.post;},
   // Cheap enough to call every slider tick; call bake() (re-lights reflections and ambient) once the slider settles.
   setSunShift(az,el,settled){shift=[az,el];aim();if(settled)bake();},
   get sunShift(){return shift;},

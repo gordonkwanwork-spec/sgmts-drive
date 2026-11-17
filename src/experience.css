@@ -711,3 +711,17 @@ body[data-ui-theme] #drive-options#drive-options button[data-hotkey]::after{back
 body[data-ui-theme] #drive-options#drive-options .music-picker label{font-size:.9em;font-weight:700;letter-spacing:.06em}
 body[data-ui-theme] #drive-options#drive-options :is(#service-details summary,#journey-music-playing,#telemetry span,#score-panel small){color:var(--m-mute)}
 body[data-ui-theme] #drive-options#drive-options .theme-toggle{border-radius:2px;padding:.6em 1.1em}
+/* Graphics panel (src/graphics-panel.js) and the performance overlay. */
+#gfx-panel{position:fixed;top:calc(20px + var(--round));right:calc(max(12px,env(safe-area-inset-right)) + var(--round) + 14px);width:min(340px,calc(100vw - var(--round) - 40px));max-height:calc(100dvh - var(--round) - 40px);overflow:auto;z-index:20;pointer-events:auto;background:var(--ui-panel,#1d2a2eee);color:var(--ui-text,#edf4ed);border:1px solid var(--ui-reflection,#ffffff33);border-radius:14px;padding:12px 14px;font:13px/1.35 system-ui,-apple-system,sans-serif;box-shadow:0 6px 20px var(--ui-shadow,#0006);backdrop-filter:blur(10px)}
+#gfx-panel h3{margin:0 0 4px;font-size:15px}
+#gfx-panel h4{margin:12px 0 4px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;opacity:.7}
+.gfx-chips{display:flex;flex-wrap:wrap;gap:4px}
+.gfx-chips button{padding:4px 9px;border-radius:8px;border:1px solid currentColor;background:transparent;color:inherit;font:inherit;cursor:pointer;opacity:.85}
+.gfx-chips button.active{background:#2f8f8a;border-color:#2f8f8a;color:#fff;opacity:1}
+.gfx-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin:6px 0}
+.gfx-row>span{flex:1 1 auto}.gfx-row label{font-size:12px;opacity:.85}
+.gfx-row input[type=range]{flex:1 1 100%}.gfx-row output{min-width:54px;text-align:right;font-variant-numeric:tabular-nums}
+.gfx-check{display:flex;gap:6px;align-items:flex-start;margin:5px 0}
+.gfx-metrics{display:grid;grid-template-columns:1fr 1fr;gap:0 10px;padding-left:2px}
+.gfx-metrics input:disabled+*,.gfx-metrics label:has(input:disabled){opacity:.45}
+#perf-stats{position:fixed;left:50%;transform:translateX(-50%);top:8px;z-index:30;pointer-events:none;white-space:pre;font:12px/1.4 ui-monospace,Menlo,monospace;background:#000b;color:#d6f5e8;padding:6px 10px;border-radius:8px}
