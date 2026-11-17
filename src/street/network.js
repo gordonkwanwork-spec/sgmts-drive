@@ -206,6 +206,7 @@ export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Gr
    planters.push({road:r.id,F,from:pa+.15,to:pb-.15,width:2*wi,y:d=>top(d)+H-.06});}
   for(const [c,dir] of [[a,-1],[b,1]]){if(dir<0?open0:open1)continue;const f=frameAt(F,c),base=edge(c,1),at=(phi,rad)=>[f.x+f.tx*dir*rad*Math.cos(phi)+f.lx*rad*Math.sin(phi),f.z+f.tz*dir*rad*Math.cos(phi)+f.lz*rad*Math.sin(phi)];
    addKerb(Math.PI*R,t=>{const phi=-Math.PI/2+t/R,[x,z]=at(phi,R);return {x,z,nx:-dir*f.tx*Math.cos(phi)-f.lx*Math.sin(phi),nz:-dir*f.tz*Math.cos(phi)-f.lz*Math.sin(phi),y:base+K,base};});
+   {const ch=mats.channel||M.kerb;for(let i=0;i<12;i++){const p0=-Math.PI/2+i*Math.PI/12,p1=p0+Math.PI/12,pt=(phi,rad)=>{const [x,z]=at(phi,rad);return [x,base+.001,z];};up(ch,[pt(p0,R),pt(p1,R),pt(p1,R+.3),pt(p0,R+.3)]);}}// the 300 mm channel runs on round the nose and joins up
    const rim=Array.from({length:13},(_,i)=>at(-Math.PI/2+i*Math.PI/12,R-.125));for(let i=1;i<rim.length;i++)up(pave,[[f.x,base+K,f.z],[rim[i-1][0],base+K,rim[i-1][1]],[rim[i][0],base+K,rim[i][1]]]);}}
  // Arrow glyphs (local metres: x along travel, tip at +2; y to the driver's left), 4 m long, 300 mm shaft (Cap 374G Fig 509).
  const SHAFT=y=>[[-2,y-.15],[.8,y-.15],[.8,y+.15],[-2,y+.15]],HEAD=[[.8,-.6],[2,0],[.8,.6]];
@@ -218,7 +219,9 @@ export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Gr
   const s0=starts.get(r.id+':0'),s1=starts.get(r.id+':1');
   for(const j of joins.filter(j=>j.A===o)){const dir=j.end?1:-1,line=j.end?L-s1.carriageway:s0.carriageway;
    if(j.signal&&j.crossingD!=null){const d=j.crossingD-dir*(1.65+2),tee=joins.filter(k=>k.B===j.B&&k.signal&&Math.abs(k.at.d-j.at.d)<5).length===1;anchors.push({d,dir,kind:'stop',turns:{straight:!tee,left:true,right:true}});cuts.push(dir>0?[d,hi+1]:[lo-1,d]);}// stop line ≈ 2 m behind the near stud row
-   else{anchors.push({d:line,dir,kind:j.B.r.loop?'ring':'giveway',j});
+   else{// at a priority junction the centre line runs on to the outer row of the give-way line (it meets the line, Gordon 17 Nov)
+    const sn=Math.abs(j.a[0]*j.at.lx+j.a[1]*j.at.lz)||1,dg=(j.B.P.carriageway/2+.7)/sn;
+    anchors.push({d:j.B.r.loop?line:j.end?L-dg:dg,dir,kind:j.B.r.loop?'ring':'giveway',j});
     // TS102 Give Way sign on the nearside, 0.6 m behind the kerb: 1.5 m before the line (guide §6), or just clear of the kerb return
     const s=j.end?s1:s0,t=s?.foot?.[-1],d=t==null?line-dir*1.5:dir>0?Math.min(line-1.5,L-t-.5):Math.max(line+1.5,t+.5);
     controls.push({kind:'giveway',...spot(o,d,dir*(h+.6)),yaw:facing(o,d,dir)});}}
@@ -228,7 +231,7 @@ export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Gr
   // Corridor crossings: continue the arm's 4 m warning lines (src/city/crossings.js) at the same phase, out to 7 marks.
   for(const [tie,end] of [[r.tie,0],[r.endTie,1]]){if(!tie)continue;const j=[...JUNCTIONS,...UNDERPASSES].find(c=>c.c===tie.junction);if(j.underpass)continue;
    const D=j.extent-Math.abs(crossingGeometry(j).stopD[tie.side])-.2;anchors.push(end?{d:L+D,dir:1,kind:'corridor'}:{d:-D,dir:-1,kind:'corridor'});}
-  const holes=(r.crossings||[]).map(c=>[c-3.3,c+3.3]),n=P.lines==='lanes'?lanesOf(P):0,lane=(h-m/2)/Math.max(1,n);
+  const holes=(r.signalCrossings||[]).map(c=>[c-3.3,c+3.3]),n=P.lines==='lanes'?lanesOf(P):0,lane=(h-m/2)/Math.max(1,n);
   // RM1103 centre line (3 m / 5 m) on two-way single carriageways; RM1101 lane lines (1 m / 5 m) between same-direction lanes.
   const lines=P.lines==='centre'?[{l:0,dirs:[1,-1],on:3,off:5}]:n>1?[1,-1].flatMap(sd=>Array.from({length:n-1},(_,k)=>({l:sd*(m/2+lane*(k+1)),dirs:[sd],on:1,off:5}))):[];
   const segs=(a,b,list)=>{let outv=[[a,b]];for(const [p,q] of list)outv=outv.flatMap(([u,v])=>q<=u||p>=v?[[u,v]]:[...(p>u?[[u,p]]:[]),...(q<v?[[q,v]]:[])]);return outv.filter(([u,v])=>v-u>.05);};
@@ -254,9 +257,11 @@ export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Gr
      // the main road, across the whole opening of the lane coming out — from the kerb-return tangent to the side road's centre line.
      // The half leading into the side road has no line.
      const j=A.j,B=j.B,hB=B.P.carriageway/2,k=corner(j,sg);
-     if(k){const f0=frameAt(F,A.d),cen=(f0.x-j.at.x)*j.at.tx+(f0.z-j.at.z)*j.at.tz,lo2=Math.min(k.tB,cen),hi2=Math.max(k.tB,cen),y=j.at.y+Y.road+.012,sd=j.side;
-      const q=(dd,l)=>{const f=frameAt(B.F,j.at.d+dd);return [f.x+f.lx*l,y,f.z+f.lz*l];};
-      for(const [r0,r1] of [[.1,.3],[.5,.7]])for(let x=lo2;x<hi2-.05;x+=.9){const v=Math.min(x+.6,hi2);up(W,[q(x,sd*(hB+r0)),q(v,sd*(hB+r0)),q(v,sd*(hB+r1)),q(x,sd*(hB+r1))]);}}
+     if(k){const sn=Math.abs(j.a[0]*j.at.lx+j.a[1]*j.at.lz)||1,cs=j.a[0]*j.at.tx+j.a[1]*j.at.tz,y=j.at.y+Y.road+.012,sd=j.side;
+      // each vertex rides on the higher of the flat mouth and the side road's crowned carriageway (its crown buries a flat line)
+      const q=(dd,l)=>{const f=frameAt(B.F,j.at.d+dd),x=f.x+f.lx*l,z=f.z+f.lz*l,n=nearestOn(F,x,z),g=frameAt(F,n.d),ya=Math.abs(n.lat)<=h?g.y+streetLevel(r,n.d,n.lat)+(g.crossSlope||0)*n.lat+.012:-Infinity;return [x,Math.max(y,ya),z];};
+      for(const [r0,r1] of [[.1,.3],[.5,.7]]){const cen=(hB+(r0+r1)/2)/sn*cs,s1=Math.sign(k.tB-cen)||1,len=Math.abs(k.tB-cen);/* each row ends where the side road's centre line crosses it */
+       for(let t=0;t<len-.05;t+=.9){const x=cen+s1*t,v=cen+s1*Math.min(t+.6,len);/* phased from the centre line, so a dash meets it */up(W,[q(x,sd*(hB+r0)),q(v,sd*(hB+r0)),q(v,sd*(hB+r1)),q(x,sd*(hB+r1))]);}}}
      // RM1115 give-way triangle per approach lane: 3.6 m × 1.2 m, base 2 m before the line, point towards the driver
      const nl=P.lines==='lanes'?lanesOf(P):1;for(let k=0;k<nl;k++){const lat=sg*(m/2+(h-m/2)/nl*(k+.5)),b0=A.d-sg*2,tip=A.d-sg*5.6;
       up(W,[paint(o,W,b0,lat-.6,.011),paint(o,W,b0,lat+.6,.011),paint(o,W,b0-sg*.6,lat+.4,.011),paint(o,W,b0-sg*.6,lat-.4,.011)]);
