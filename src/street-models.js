@@ -103,7 +103,7 @@ export function tripoPlayer(gltf,height=1.75,name='Tripo character',baked=false)
    for(const track of clip.tracks)if(track.name.endsWith('Hips.position'))for(let i=0;i<track.values.length;i+=3){track.values[i]=bone('Hips').position.x;track.values[i+2]=bone('Hips').position.z;}
    actions[name]=mixer.clipAction(clip);
   }
-  for(const name of ['idle','walk','run','sit'])if(!actions[name])throw Error('Tripo animation missing '+name);
+  for(const name of (baked==='locomotion'?['walk','run']:['idle','walk','run','sit']))if(!actions[name])throw Error('Tripo animation missing '+name);
   group.userData.tripoAnimation={mixer,actions,current:null,hip:r.bones.hips};
  }
  return group;
@@ -199,11 +199,13 @@ export function posePedestrian(group,distance,dt=1/60){
   const a=group.userData.action||{},speed=distance/dt/group.scale.y;
   if(!a.air&&!a.ground){
    const name=a.sit!==undefined?'sit':speed>2.2?'run':speed>.08?'walk':'idle',next=baked.actions[name];
-   if(next!==baked.current){baked.current?.fadeOut(.2);next.reset().setEffectiveWeight(1).fadeIn(.2).play();baked.current=next;}
-   next.setEffectiveTimeScale(name==='walk'?Math.max(.2,speed/1.4):name==='run'?Math.max(.2,speed/3.5):1);
-   baked.mixer.update(dt);
-   if(name==='sit'){const h=baked.hip;h.bone.position.y=(a.sit/group.scale.y+.1-rig(group).hipY)/h.scale+h.pos.y;}
-   return;
+   if(next){
+    if(next!==baked.current){baked.current?.fadeOut(.2);next.reset().setEffectiveWeight(1).fadeIn(.2).play();baked.current=next;}
+    next.setEffectiveTimeScale(name==='walk'?Math.max(.2,speed/1.4):name==='run'?Math.max(.2,speed/3.5):1);
+    baked.mixer.update(dt);
+    if(name==='sit'){const h=baked.hip;h.bone.position.y=(a.sit/group.scale.y+.1-rig(group).hipY)/h.scale+h.pos.y;}
+    return;
+   }
   }
   if(baked.current){baked.mixer.stopAllAction();baked.current=null;}
  }

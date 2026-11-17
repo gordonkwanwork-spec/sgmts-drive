@@ -88,7 +88,7 @@ function binSticker(name){const low=name==='bin_sticker_low',c=document.createEl
  else{bubble(W*.42,H*.5,W*.36,H*.4);x.fillStyle='#2b2140';x.font='bold 30px sans-serif';x.fillText('棄置垃圾在廢屑箱頂',W*.1,H*.36);x.fillText('可被罰款',W*.1,H*.56);x.fillStyle='#c21f1f';x.fillText('$3000',W*.36,H*.56);x.fillStyle='#2b2140';x.font='17px sans-serif';x.fillText('Dumping litter on the top of litter container',W*.1,H*.72);x.fillText('is liable to a fine of $3,000',W*.1,H*.82);
   binIcon(W*.82,H*.3,H*.55);x.strokeStyle='#c21f1f';x.lineWidth=7;x.beginPath();x.moveTo(W*.8,H*.12);x.lineTo(W*.95,H*.35);x.moveTo(W*.95,H*.12);x.lineTo(W*.8,H*.35);x.stroke();}
  const map=new T.CanvasTexture(c);map.colorSpace=T.SRGBColorSpace;map.flipY=false;map.wrapS=T.RepeatWrapping;map.repeat.x=-1;map.offset.x=1;
- return new T.MeshStandardMaterial({map,roughness:.55});}
+ return new T.MeshStandardMaterial({map,emissive:0xffffff,emissiveMap:map,emissiveIntensity:.16,roughness:.55});}
 // 視障人士輔助設施 label on the yellow push-button unit (site photos): black type and cane-walker icon on the yellow cover.
 function signalLabel(){const c=document.createElement('canvas');c.width=256;c.height=512;const x=c.getContext('2d');
  x.fillStyle='#d99a08';x.fillRect(0,0,256,512);x.fillStyle='#1d1a12';x.textAlign='center';
@@ -97,11 +97,11 @@ function signalLabel(){const c=document.createElement('canvas');c.width=256;c.he
  x.lineCap='round';x.lineWidth=12;x.beginPath();x.arc(124,372,13,0,Math.PI*2);x.fill();
  x.beginPath();x.moveTo(122,392);x.lineTo(112,448);x.lineTo(92,494);x.moveTo(112,448);x.lineTo(136,494);x.moveTo(118,405);x.lineTo(150,436);x.stroke();
  x.lineWidth=5;x.beginPath();x.moveTo(150,436);x.lineTo(184,496);x.stroke();
- const map=new T.CanvasTexture(c);map.colorSpace=T.SRGBColorSpace;map.flipY=false;return new T.MeshStandardMaterial({map,roughness:.4});}
+ const map=new T.CanvasTexture(c);map.colorSpace=T.SRGBColorSpace;map.flipY=false;return new T.MeshStandardMaterial({map,emissive:0xffffff,emissiveMap:map,emissiveIntensity:.16,roughness:.4});}
 // Signal cabinet artwork (Victoria Road / waterfront photos): PL number plate, and the Transport Department purple
 // road-safety wrap — bus-chasing warning on the doors, "watch out before crossing" on the narrow sides.
 function cabinetArt(name){const plate=name==='cabinet_plate',side=name==='td_wrap_side',c=document.createElement('canvas');c.width=plate?256:side?240:512;c.height=plate?72:1024;const x=c.getContext('2d'),W=c.width,H=c.height;
- const done=()=>{const map=new T.CanvasTexture(c);map.colorSpace=T.SRGBColorSpace;map.flipY=false;map.anisotropy=4;return new T.MeshStandardMaterial({map,roughness:plate?.5:.45});};
+ const done=()=>{const map=new T.CanvasTexture(c);map.colorSpace=T.SRGBColorSpace;map.flipY=false;map.anisotropy=4;return new T.MeshStandardMaterial({map,emissive:0xffffff,emissiveMap:map,emissiveIntensity:.16,roughness:plate?.5:.45});};
  if(plate){x.fillStyle='#ddd9c8';x.fillRect(0,0,W,H);x.fillStyle='#111';x.font='bold 54px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText('PL 8178',W/2,H/2+3);return done();}
  x.fillStyle='#4a2c9e';x.fillRect(0,0,W,H);x.textAlign='center';x.fillStyle='#fff';
  const logo=(cx,cy,s)=>{x.save();x.lineWidth=s*.11;x.strokeStyle='#2fae9c';x.beginPath();x.arc(cx-s*.9,cy,s*.42,Math.PI*.6,Math.PI*1.9);x.stroke();x.fillStyle='#fff';x.fillRect(cx-s*1.05,cy-s*.32,s*.3,s*.08);x.fillRect(cx-s*.94,cy-s*.32,s*.08,s*.6);

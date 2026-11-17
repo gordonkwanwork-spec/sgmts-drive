@@ -94,7 +94,7 @@ export function pavementLight(v,lamps){
   const dx=v.x-l.x,dz=v.z-l.z;if(Math.abs(dx)>55||Math.abs(dz)>55)continue;
   if(l.kind==='mast'){glow=Math.max(glow,1.3*Math.exp(-(dx*dx+dz*dz)/(30*30)));continue;}// 14 m floodlight: wide, bright round pool
   const r=l.axis||sample(l.s),along=dx*r.tx+dz*r.tz,across=dx*r.lx+dz*r.lz;
-  const radius=l.kind==='cycle'?11:Math.max(9,Math.min(18,height*1.5)),width=l.kind==='cycle'?6:Math.max(5,height*.9);
+  const radius=l.kind==='cycle'?12:l.kind==='shelter'?10:Math.max(14,Math.min(22,height*2.1)),width=l.kind==='cycle'?6.5:l.kind==='shelter'?6.5:Math.max(8.5,height*1.25);
   glow=Math.max(glow,Math.exp(-(along*along/(radius*radius)+across*across/(width*width)))*.9);
  }
  return glow;
@@ -219,6 +219,7 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
  const treeKinds=treeTemplates().map(k=>({...k,material:k.leaf&&windMaterial(foliage,windTime),clumps:k.leaf&&windMaterial(new T.MeshStandardMaterial({vertexColors:true,flatShading:true,roughness:.95}),windTime)}));treeKinds.forEach(k=>{if(k.material)k.material.map=paintTexture('leaf-'+k.leaf);});
  const trunk=windMaterial(new T.MeshStandardMaterial({vertexColors:true,roughness:1}),windTime);
  const plazaAssets=createPlazaAssets();
+ const craneBeacon=new T.MeshStandardMaterial({color:0xff3020,emissive:0xff3020,emissiveIntensity:0});
  const windowMats=[];
  function batch(key,geometry,material,pos,scale,rot=new T.Euler(),chunk=0){
   const k=key+'-'+chunk;if(!instances[k])instances[k]={geometry,material,matrices:[],chunk};
@@ -299,6 +300,9 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
     if(zone==='construction'){
      for(let y=0;y<h;y+=3.2){box('construction-slab',mats.concrete,p.x,p.y+y,p.z,w,.3,d,r.heading,ch);for(const x of [-w/2+1,w/2-1])for(const z of [-d/2+1,d/2-1]){const u=new T.Vector3(x,y+1.6,z).applyAxisAngle(new T.Vector3(0,1,0),r.heading).add(p);box('construction-column',mats.concrete,u.x,u.y,u.z,.6,3.2,.6,r.heading,ch);}}
      box('crane-mast',mats.teal,p.x,p.y+(h+10)/2,p.z,.8,h+10,.8,0,ch);box('crane-jib',mats.teal,p.x,p.y+h+9,p.z,w+10,.65,.8,r.heading,ch);box('crane-counterweight',mats.concrete,p.x,p.y+h+8,p.z,2,2,2,0,ch);
+     box('crane-beacon',craneBeacon,p.x,p.y+h+10.2,p.z,.45,.45,.45,0,ch);
+     for(const tip of [-(w+10)/2+.3,(w+10)/2-.3]){const b=new T.Vector3(tip,h+9.5,0).applyAxisAngle(new T.Vector3(0,1,0),r.heading).add(p);box('crane-beacon',craneBeacon,b.x,b.y,b.z,.35,.35,.35,r.heading,ch);}
+     if(h>=3.2)box('construction-work-light',mats.lamp,p.x,p.y+Math.floor((h-.01)/3.2)*3.2-.22,p.z,w*.5,.12,.35,r.heading,ch);
      continue;
     }
     const model=streetKit.getObjectByName('building_'+(zone==='boulevard'?'residential':zone));
@@ -333,7 +337,7 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
  const boardCanvas=document.createElement('canvas');boardCanvas.width=1024;boardCanvas.height=256;const bc=boardCanvas.getContext('2d');bc.fillStyle='#173d35';bc.fillRect(0,0,1024,256);bc.fillStyle='#fff3cd';bc.textAlign='center';bc.font='bold 62px sans-serif';bc.fillText('END OF LINE · 路線終點',512,110);bc.font='36px sans-serif';bc.fillText('Stop here · 請停車',512,185);const board=new T.Mesh(new T.PlaneGeometry(7,1.75),new T.MeshBasicMaterial({map:new T.CanvasTexture(boardCanvas),side:T.DoubleSide}));board.position.set(0,3,0);endGroup.add(board);
  for(const x of [-3.4,3.4]){const post=new T.Mesh(new T.BoxGeometry(.15,3.8,.15),mats.metal);post.position.set(x,1.9,0);endGroup.add(post);}for(let x=-3.5;x<3.5;x+=.7){const bar=new T.Mesh(new T.BoxGeometry(.7,.45,.35),new T.MeshStandardMaterial({color:Math.round((x+3.5)/.7)%2?0xf0c55b:0x283a37}));bar.position.set(x+.35,.8,0);endGroup.add(bar);}
  // Rebuilt corridor junctions and the roads under the viaducts (src/city/crossings.js).
- buildCrossings(scene,{mats,junctionBox});
+ buildCrossings(scene,{mats,junctionBox,batch,lampPositions});
  // Unsignalised station crossings after the site photo (18.01.42 (2)), without the refuge island: no stripes; LOOK RIGHT 望右 /
  // LOOK LEFT 望左 only beside each footpath, read from the kerb it faces; dropped kerb with existing footpath paving and yellow blister tactile.
  for(const crossing of CROSSINGS){const s=crossing.s,r=sample(s),edge=roadSection(s),g=new T.Group();g.name='unsignalised-crossing-'+crossing.station+'-'+Math.round(s);scene.add(g);
@@ -658,7 +662,8 @@ for(const curve of [terminalCurve,depotCurve,depotExitCurve(depotCurve.getPointA
   if(m.userData.cityTerrain){const p=surface.attributes.position,ix=surface.index.array,keep=[];for(let i=0;i<ix.length;i+=3){const x=(p.getX(ix[i])+p.getX(ix[i+1])+p.getX(ix[i+2]))/3,z=(p.getZ(ix[i])+p.getZ(ix[i+1])+p.getZ(ix[i+2]))/3;let lit=false;for(let a=-1;a<=1&&!lit;a++)for(let b=-1;b<=1&&!lit;b++)lit=(lightCells.get((Math.floor(x/50)+a)+','+(Math.floor(z/50)+b))||[]).some(l=>(l.x-x)**2+(l.z-z)**2<45**2);if(lit)keep.push(ix[i],ix[i+1],ix[i+2]);}surface=surface.clone();surface.setIndex(keep);}
   const geo=tessellate.modify(surface),p=geo.attributes.position,colors=[],v=new T.Vector3(),base=m.material.color;
   geo.computeBoundingBox();const bounds=geo.boundingBox.clone().applyMatrix4(m.matrixWorld).expandByScalar(55),lamps=lampPositions.filter(l=>bounds.containsPoint(new T.Vector3(l.x,l.y,l.z))).map(l=>({...l,axis:l.axis||sample(l.s)}));
-  for(let i=0;i<p.count;i++){v.fromBufferAttribute(p,i).applyMatrix4(m.matrixWorld);const glow=pavementLight(v,lamps)*1.05;colors.push(glow*base.r,glow*base.g*.94,glow*base.b*.83);}
+  const boost=m.material===mats.grass?.34:m.material?.map===roadTex?2.35:pavers.includes(m.material?.map)?1.55:1.35;
+  for(let i=0;i<p.count;i++){v.fromBufferAttribute(p,i).applyMatrix4(m.matrixWorld);const glow=pavementLight(v,lamps)*boost;colors.push(glow*base.r,glow*base.g*.94,glow*base.b*.83);}
   geo.setAttribute('color',new T.Float32BufferAttribute(colors,3));
   const material=new T.MeshBasicMaterial({map:m.material.map,vertexColors:true,transparent:true,opacity:.85,blending:T.AdditiveBlending,depthWrite:false,side:m.material.side,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
   const overlay=new T.Mesh(geo,material);overlay.name='Fixed night illumination';overlay.visible=false;m.add(overlay);m.userData.nightOverlay=overlay;
@@ -667,7 +672,7 @@ for(const curve of [terminalCurve,depotCurve,depotExitCurve(depotCurve.getPointA
  scene.traverse(n=>{if(n.isMesh&&!n.isSkinnedMesh){n.updateMatrix();n.matrixAutoUpdate=false;}});
  // Rain: darker, glossier road and paving so sky reflections read as wet surfaces.
  const wetSet=[mats.road,mats.walk,mats.walkGrey,mats.walkBuff].filter(Boolean).map(m=>({m,rough:m.roughness,color:m.color.clone()}));
- return {hills,plazaDecor,groups,plots,fences,trees,lampPositions,plantings,windTime,bins,network:furniture.network,signals:furnished.signals,citySignals,furnitureErrors:furnished.errors,gullies:GULLIES,weirs:WEIRS,weather(rain){for(const {m,rough,color} of wetSet){m.roughness=rain?rough*.38:rough;m.color.copy(color).multiplyScalar(rain?.72:1);}},setNight(on){waterMat.emissiveIntensity=on?1:.4;setKitNight(on);plazaAssets.setNight(on);PLANT_NIGHT.value=on?1:0;nightSurfaces.forEach(m=>m.userData.nightOverlay.visible=on);nightMeshes.forEach(m=>{if(m.userData.nightOnly)m.visible=on;});glass.emissive.set(on?0xffc27a:0);glass.emissiveIntensity=on?.5:0;},nightMaterials:[mats.lamp,...windowMats],markingMaterial:mats.white,materials:mats,update(s,time=0){plazaDecor.root.visible=Math.abs(STOPS[1].s-s)<850;for(const g of plazaDecor.bannerGroups)g.visible=Math.abs(g.userData.s-s)<850;windTime.value=time;for(const mesh of plantMeshes){const d=Math.abs(mesh.userData.s-s);mesh.visible=d<(PHONE?350:550)*sceneryScale;const geometry=d<(PHONE?40:65)*sceneryScale?mesh.userData.full:mesh.userData.low;if(mesh.geometry!==geometry){mesh.geometry=geometry;mesh.boundingSphere=null;}}for(const g of groups)g.visible=Math.abs(g.userData.s-s)<(PHONE?650:850)*sceneryScale;},weather(wet){mats.road.roughness=wet?.32:.91;mats.road.color.set(wet?0x9da8ac:0xffffff);}};
+ return {hills,plazaDecor,groups,plots,fences,trees,lampPositions,plantings,windTime,bins,network:furniture.network,signals:furnished.signals,citySignals,furnitureErrors:furnished.errors,gullies:GULLIES,weirs:WEIRS,weather(rain){for(const {m,rough,color} of wetSet){m.roughness=rain?rough*.38:rough;m.color.copy(color).multiplyScalar(rain?.72:1);}},setNight(on){waterMat.emissiveIntensity=on?1:.4;setKitNight(on);plazaAssets.setNight(on);craneBeacon.emissiveIntensity=on?2.5:0;PLANT_NIGHT.value=on?1:0;nightSurfaces.forEach(m=>m.userData.nightOverlay.visible=on);nightMeshes.forEach(m=>{if(m.userData.nightOnly)m.visible=on;});glass.emissive.set(on?0xffc27a:0);glass.emissiveIntensity=on?.5:0;mats.yellow.emissive.set(on?0xffcf22:0);mats.yellow.emissiveIntensity=on?.26:0;mats.tactile.emissive.set(on?0xd9b12a:0);mats.tactile.emissiveMap=mats.tactile.map;mats.tactile.emissiveIntensity=on?.22:0;for(const m of Object.values(lookTex)){m.emissive.set(on?0xffffff:0);m.emissiveMap=m.map;m.emissiveIntensity=on?.22:0;}},nightMaterials:[mats.lamp,...windowMats],markingMaterial:mats.white,materials:mats,update(s,time=0){plazaDecor.root.visible=Math.abs(STOPS[1].s-s)<850;for(const g of plazaDecor.bannerGroups)g.visible=Math.abs(g.userData.s-s)<850;windTime.value=time;for(const mesh of plantMeshes){const d=Math.abs(mesh.userData.s-s);mesh.visible=d<(PHONE?350:550)*sceneryScale;const geometry=d<(PHONE?40:65)*sceneryScale?mesh.userData.full:mesh.userData.low;if(mesh.geometry!==geometry){mesh.geometry=geometry;mesh.boundingSphere=null;}}for(const g of groups)g.visible=Math.abs(g.userData.s-s)<(PHONE?650:850)*sceneryScale;},weather(wet){mats.road.roughness=wet?.32:.91;mats.road.color.set(wet?0x9da8ac:0xffffff);}};
 }
 
 export function curveRibbon(curve,left,right,y=0,start=0,end=curve.getLength()){const p=[],uv=[],idx=[],n=Math.max(1,Math.ceil((end-start)/.6)),length=curve.getLength();for(let i=0;i<=n;i++){const d=start+(end-start)*i/n,u=d/length,v=curve.getPointAt(u),t=curve.getTangentAt(u);for(const lat of [left,right]){p.push(v.x+t.z*lat,v.y+y,v.z-t.x*lat);uv.push(lat/5,d/5);}if(i<n){const a=i*2;idx.push(a,a+2,a+1,a+1,a+2,a+3);}}const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(p,3));g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();return g;}

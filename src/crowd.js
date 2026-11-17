@@ -36,11 +36,13 @@ export function createCrowd({people,camera,speak}){
     const a=list[c.i],b=list[c.j];
     if(!b){// ped ↔ player
      const s=stateOf(a.group);if(s.cd>0||player.speed<.8||c.depth<.05)continue;
-     s.cd=3;if(player.speed>RUN_SPEED&&!a.fixed){s.stumble=1.1;s.sx=-c.nx;s.sz=-c.nz;speak(a.group,Math.random()<.5?'watch':'whoa');}
+     s.cd=3;const pet=a.group.userData?.pet;
+     if(pet){speak(a.group,pet==='dog'?'woof':pet==='rat'?'squeak':'meow');continue;}
+     if(player.speed>RUN_SPEED&&!a.fixed){s.stumble=1.1;s.sx=-c.nx;s.sz=-c.nz;speak(a.group,Math.random()<.5?'watch':'whoa');}
      else if(Math.random()<.6)speak(a.group,['hey','hey','watch','crowded'][Math.floor(Math.random()*4)]);
      continue;}
     if(c.depth<.12)continue;
-    for(const p of [a,b]){const s=stateOf(p.group);if(s.cd>0||p.fixed)continue;s.cd=4+Math.random()*3;if(Math.random()<.35)speak(p.group,['sorry','hey','crowded'][Math.floor(Math.random()*3)]);break;}
+    for(const p of [a,b]){const s=stateOf(p.group);if(s.cd>0||p.fixed)continue;s.cd=4+Math.random()*3;const pet=p.group.userData?.pet;if(pet){if(Math.random()<.4)speak(p.group,pet==='dog'?'woof':pet==='rat'?'squeak':'meow');}else if(Math.random()<.35)speak(p.group,['sorry','hey','crowded'][Math.floor(Math.random()*3)]);break;}
    }
    const k=Math.min(1,dt*10);
    list.forEach((p,i)=>{const g=p.group,s=stateOf(g);

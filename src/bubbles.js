@@ -8,6 +8,7 @@ export const LINES={
  eaten:['食咗飯未呀？','Eaten yet?'],hot:['好熱呀～','So hot~'],really:['真係咩？','For real?'],wait:['等我一陣','Wait for me'],go:['行啦行啦','Let’s go'],
  rain:['落雨喇！','It’s raining!'],late:['要遲到喇！','I’m going to be late!'],tram:['架車嚟喇！','The tram’s coming!'],honk:['嘟乜嘢嘟！','Stop honking!'],
  night:['夜喇，早啲返屋企','Getting late, let’s head home'],nice:['今日天氣幾好','Lovely day'],
+ woof:['汪汪！','Woof!'],meow:['喵～','Meow~'],squeak:['吱吱！','Squeak!'],
 };
 // Context-aware pick: weather and time shape what people say; a tram at the platform draws a remark.
 export function pickLine({condition='morning',tramNear=false,standing=false},rnd=Math.random){

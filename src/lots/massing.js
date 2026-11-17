@@ -171,7 +171,7 @@ export function lotMaterials(){return MATS||(MATS={
  greenRoof:new T.MeshStandardMaterial({color:0x6f9a4a,roughness:.95}),
  roof:new T.MeshStandardMaterial({color:0xb9bec0,roughness:.9}),
  trunk:new T.MeshStandardMaterial({color:0x5e4632,roughness:.95}),
- crown:new T.MeshStandardMaterial({color:0x4f7f3a,roughness:.9}),
+ crown:new T.MeshStandardMaterial({color:0x4f7f3a,emissive:0x4f7f3a,emissiveIntensity:0,roughness:.9}),
  lawn:new T.MeshStandardMaterial({color:0x7ea650,roughness:1}),
 });}
 

@@ -9,7 +9,25 @@ export const TRIPO_PEOPLE=[
  {file:'p02-older-woman-rigged.glb',name:'Older woman',height:1.58,age:'older'},
  {file:'p03-young-woman-rigged.glb',name:'Young woman',height:1.65},
  {file:'p04-worker-rigged.glb',name:'Construction worker',height:1.78},
+ {file:'p05-young-man-rigged.glb',baked:'locomotion',name:'Young man',height:1.76},
+ {file:'p06-sporty-woman-rigged.glb',baked:'locomotion',name:'Sporty woman',height:1.64},
+ {file:'p07-middle-aged-man-rigged.glb',baked:'locomotion',name:'Middle-aged man',height:1.72},
 ].map(c=>({...c,path:c.path||'pedestrians/'+c.file}));
+
+export const TRIPO_DOGS=[
+ {id:'dog-shiba',kind:'dog',file:'d01-shiba-inu.glb',name:'Shiba Inu',width:.26,height:.48,length:.68},
+ {id:'dog-corgi',kind:'dog',file:'d02-corgi.glb',name:'Welsh Corgi',width:.25,height:.36,length:.64},
+ {id:'dog-retriever',kind:'dog',file:'d03-golden-retriever.glb',name:'Golden Retriever',width:.32,height:.60,length:.88},
+];
+export const TRIPO_CATS=[
+ {id:'cat-ginger',kind:'cat',file:'c01-ginger-tabby.glb',name:'Ginger tabby cat',width:.18,height:.30,length:.48},
+ {id:'cat-tuxedo',kind:'cat',file:'c02-tuxedo-cat.glb',name:'Tuxedo cat',width:.17,height:.29,length:.47},
+ {id:'cat-calico',kind:'cat',file:'c03-calico-cat.glb',name:'Calico cat',width:.17,height:.28,length:.46},
+];
+export const TRIPO_RATS=[
+ {id:'rat-fat',kind:'rat',file:'r01-big-fat-rat.glb',name:'Big fat rat',width:.25,height:.30,length:.45},
+];
+export const TRIPO_PETS=[...TRIPO_DOGS,...TRIPO_CATS,...TRIPO_RATS];
 
 // Dimensions include mirrors. Local -Z is the direction of travel throughout the game.
 export const TRIPO_VEHICLES=[

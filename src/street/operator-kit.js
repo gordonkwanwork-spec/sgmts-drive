@@ -45,7 +45,7 @@ export function kitMaterials(){if(K)return K;
    fp:std(0xffffff,{map:sign('#f2c230','#141414',[['危險 DANGER',38],['高壓電力 HIGH VOLTAGE',24]],384,128),roughness:.5})}};}
 
 // Night: lit interiors glow through the glazing, obscured WC lights and ceiling (called from environment.setNight).
-export function setKitNight(on){if(!K)return;for(const [mat,c,k] of [[K.glass,0xffd9a0,.75],[K.frosted,0xfff4e0,.7],[K.ceiling,0xfff6e8,.6]]){mat.emissive.set(on?c:0);mat.emissiveIntensity=on?k:0;}}
+export function setKitNight(on){if(!K)return;for(const [mat,c,k] of [[K.glass,0xffd9a0,.75],[K.frosted,0xfff4e0,.7],[K.ceiling,0xfff6e8,.6]]){mat.emissive.set(on?c:0);mat.emissiveIntensity=on?k:0;}for(const mat of Object.values(K.signs)){mat.emissive.set(on?0xffffff:0);mat.emissiveMap=mat.map;mat.emissiveIntensity=on?.2:0;}}
 
 // ---------- shared geometry ----------
 const BOX=new T.BoxGeometry(1,1,1),CYL=new T.CylinderGeometry(1,1,1,10);

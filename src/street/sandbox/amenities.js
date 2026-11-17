@@ -13,7 +13,7 @@ function box(p,material,x,y,z,w,h,d,rx=0,ry=0,rz=0){const m=new T.Mesh(geo.box,m
 function cyl(p,material,x,y,z,r,h){const m=new T.Mesh(geo.cyl,material);m.position.set(x,y+h/2,z);m.scale.set(r,h,r);p.add(m);return m;}
 const plates=new Map();
 function plate(key,w,h,draw){if(!plates.has(key)){const c=document.createElement('canvas');c.width=Math.round(256*w/h);c.height=256;draw(c.getContext('2d'),c.width,c.height);
- const tex=new T.CanvasTexture(c);tex.colorSpace=T.SRGBColorSpace;tex.anisotropy=4;plates.set(key,new T.MeshStandardMaterial({map:tex,roughness:.45,side:T.DoubleSide}));}return plates.get(key);}
+ const tex=new T.CanvasTexture(c);tex.colorSpace=T.SRGBColorSpace;tex.anisotropy=4;plates.set(key,new T.MeshStandardMaterial({map:tex,emissive:0xffffff,emissiveMap:tex,emissiveIntensity:.16,roughness:.45,side:T.DoubleSide}));}return plates.get(key);}
 const text=(g,s,x,y,px,color)=>{g.fillStyle=color;g.font=`bold ${px}px "Helvetica Neue",Arial,"PingFang HK",sans-serif`;g.textAlign='center';g.textBaseline='middle';g.fillText(s,x,y);};
 // One geometry per material (an amenity is otherwise dozens of small meshes).
 function parts(group){group.updateMatrixWorld(true);const buckets=new Map();
@@ -58,7 +58,7 @@ export const busStop=travel=>once('bus-stop'+travel,()=>{const g=new T.Group(),c
  return g;});
 // The franchised bus stop marking (RM1047/1048) in the same kerb frame, flat at y = 0: the caller drapes every vertex onto the road
 // surface (the road climbs and crowns under a 13 m box). White broken box 3 m out, open to the kerb; 站 / 巴士 / STOP / BUS along travel.
-export function busStopMarks(travel){const g=new T.Group(),white=mat('#ecebe4',{roughness:.8}),Lm=13,Wm=3,flat=(m,x,z,w,d)=>{const q=new T.Mesh(new T.PlaneGeometry(w,d).rotateX(-Math.PI/2),m);q.position.set(x,0,z);g.add(q);return q;},dash=(x,z,w,d)=>flat(white,x,z,w,d);
+export function busStopMarks(travel){const g=new T.Group(),white=mat('#ecebe4',{roughness:.8,emissive:'#ecebe4',emissiveIntensity:.18}),Lm=13,Wm=3,flat=(m,x,z,w,d)=>{const q=new T.Mesh(new T.PlaneGeometry(w,d).rotateX(-Math.PI/2),m);q.position.set(x,0,z);g.add(q);return q;},dash=(x,z,w,d)=>flat(white,x,z,w,d);
  for(let x=-Lm/2;x<Lm/2-1;x+=2)dash(x+.5,-Wm+.05,1,.1);dash(Lm/2-.5,-Wm+.05,1,.1);for(const e of [-1,1])for(const z0 of [-Wm,-1])dash(e*(Lm/2-.05),z0+.5,.1,1);
  let at=-Lm/2+.7;for(const [label,len,cn] of [['站',2.7,1],['巴士',2.7,1],['STOP',1.6],['BUS',1.6]]){const across=cn?2.2:2;
   const m=plate('rm-'+label,across/len,1,(cx,Wc,Hc)=>{cx.fillStyle='#ecebe4';cx.font=`bold ${Hc*.86}px ${cn?'"PingFang HK","Heiti TC",sans-serif':'"Helvetica Neue",Arial,sans-serif'}`;const w=cx.measureText(label).width||Wc;cx.setTransform(Wc*.86/w,0,0,1,Wc/2,Hc*.52);cx.textAlign='center';cx.textBaseline='middle';cx.fillText(label,0,0);});

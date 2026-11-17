@@ -4,6 +4,10 @@
 
 ▶️ **[Play it now — no download needed](https://gordonkwanwork-spec.github.io/sgmts-drive/)**
 
+Latest release: rebuilt city streets, city driving and walking, and Tripo people/pets with preset locomotion.
+
+▶️ **[Previous online game — saved 18 November 2026](https://gordonkwanwork-spec.github.io/sgmts-drive/versions/2026-11-18-classic/)**
+
 ▶️ **[Play the saved version — 25 September 2026](https://gordonkwanwork-spec.github.io/sgmts-drive/versions/2026-09-25/)** · depot, logistics cluster, new opening screen, lot editor
 
 ▶️ **[Play the saved version — 24 September 2026](https://gordonkwanwork-spec.github.io/sgmts-drive/versions/2026-09-24/)**

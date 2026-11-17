@@ -99,7 +99,7 @@ console.log('Realism checks passed: both traffic directions stop without oversho
 const {CHANNELS,JUNCTIONS,DEPOT,cycleCrossing,crossingGeometry}=await import('./alignment.js');
 const {followingStop}=await import('./operating.js');
 assert.equal(JUNCTIONS.length,3);assert(JUNCTIONS.every(j=>Math.abs(toChainage(j.s)-660)>50));
-assert(CHANNELS[0].s<STOPS[1].s&&CHANNELS[1].s>STOPS[1].s&&CHANNELS[1].s<STOPS[2].s);
+assert.equal(CHANNELS.length,0); // river removed 18 Nov 2026
 assert(JUNCTIONS.find(j=>j.name==='Road D1').s>STOPS[6].s+80);
 assert.equal(DEPOT.opening,30);assert.equal(BRIDGES[1].end,3524.2);
 // L35 was removed in the city rebuild (5 Nov 2026); the cycle track keeps its outboard line along the former L35 strip.

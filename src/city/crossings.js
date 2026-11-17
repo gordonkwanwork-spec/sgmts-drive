@@ -4,7 +4,7 @@
 // signal crossings (300 mm bars, 100 mm stud rows), 4 m warning lane lines within 42 m, double white centre lines, 4 m ahead-only
 // arrows 15 m before the stop line, RM1038 yellow box over the ART lanes. Network roads continue from each arm end (extent).
 import * as T from 'three';
-import {sample,roadSection,projectFrame,footpathHeight,JUNCTIONS,UNDERPASSES,crossingGeometry} from '../alignment.js';
+import {sample,roadSection,project,projectFrame,footpathHeight,JUNCTIONS,UNDERPASSES,crossingGeometry} from '../alignment.js';
 import {sweptKerbs} from '../street/kerbs.js';
 import {signalCrossingMarkings} from '../street/sandbox/street-rules.js';
 import {signPost} from './signs.js';
@@ -29,7 +29,8 @@ function sink(){const bufs=new Map();
    g.setAttribute('uv',new T.Float32BufferAttribute(Array.from({length:pos.length/3*2},(_,i)=>pos[(i>>1)*3+(i&1?2:0)]/5),2));g.setIndex(idx);g.computeVertexNormals();
    const m=new T.Mesh(g,mat);m.name=name;m.receiveShadow=true;return m;});}};}
 
-export function buildCrossings(scene,{mats,junctionBox}){
+const poleGeo=new T.BoxGeometry(1,1,1),ONE=new T.Vector3(1,1,1);
+export function buildCrossings(scene,{mats,junctionBox,batch,lampPositions}){
  const lamps=[],records=[];
  for(const j of [...JUNCTIONS,...UNDERPASSES]){
   const g=crossingGeometry(j),{C,u,n}=g,h=j.halfWidth,fw=j.footway,m=j.median/2,ext=j.extent,out=sink(),group=new T.Group();
@@ -37,9 +38,9 @@ export function buildCrossings(scene,{mats,junctionBox}){
   const A=(d,e)=>({x:C.x+u.x*d+n.x*e,z:C.z+u.z*d+n.z*e}),Y=p=>crossingY(j,p.x,p.z),v=(p,dy)=>[p.x,Y(p)+dy,p.z];
   // Filled polygon (points in order) at height dy above the datum.
   const fill=(mat,pts,dy)=>{const tris=T.ShapeUtils.triangulateShape(pts.map(p=>new T.Vector2(p.x,p.z)),[]);for(const [a,b,c] of tris)out.tri(mat,v(pts[a],dy),v(pts[b],dy),v(pts[c],dy));};
-  // Quad strip over road-local d (along u) × e (across), height dy(d,e), with extra d stations for dropped kerbs.
-  const band=(mat,d0,d1,e0,e1,dy,breaks=[])=>{if(d1<d0)[d0,d1]=[d1,d0];if(d1-d0<.02)return;const ds=[...new Set([d0,...Array.from({length:Math.ceil(d1-d0)},(_,i)=>d0+i),...breaks.filter(q=>q>d0&&q<d1),d1])].sort((a,b)=>a-b);
-   for(let i=1;i<ds.length;i++){const [a,b]=[ds[i-1],ds[i]],p=[[a,e0],[a,e1],[b,e1],[b,e0]].map(([d,e])=>v(A(d,e),typeof dy==='function'?dy(d,e):dy));out.tri(mat,p[0],p[1],p[2]);out.tri(mat,p[0],p[2],p[3]);}};
+  // Quad strip over road-local d (along u) × e (across), height dy(d,e), with extra d stations for dropped kerbs and smooth vertex lighting across wide carriageways.
+  const band=(mat,d0,d1,e0,e1,dy,breaks=[])=>{if(d1<d0)[d0,d1]=[d1,d0];if(e1<e0)[e0,e1]=[e1,e0];if(d1-d0<.02||e1-e0<.02)return;const ds=[...new Set([d0,...Array.from({length:Math.ceil(d1-d0)},(_,i)=>d0+i),...breaks.filter(q=>q>d0&&q<d1),d1])].sort((a,b)=>a-b),es=Array.from({length:Math.max(1,Math.ceil((e1-e0)/3.5))+1},(_,i)=>e0+(e1-e0)*i/Math.max(1,Math.ceil((e1-e0)/3.5)));
+   for(let i=1;i<ds.length;i++)for(let k=1;k<es.length;k++){const [a,b]=[ds[i-1],ds[i]],[c,d]=[es[k-1],es[k]],p=[[a,c],[a,d],[b,d],[b,c]].map(([x,y])=>v(A(x,y),typeof dy==='function'?dy(x,y):dy));out.tri(mat,p[0],p[1],p[2]);out.tri(mat,p[0],p[2],p[3]);}};
   const rect=(mat,d,e,len,wid,dy=ROAD+PAINT)=>fill(mat,[A(d-len/2,e-wid/2),A(d+len/2,e-wid/2),A(d+len/2,e+wid/2),A(d-len/2,e+wid/2)],dy);
   // Corridor-frame rectangle: s span × lateral span (markings on the ART lanes and corridor footways).
   const at=(s,lat)=>{const r=sample(s);return {x:r.x+r.lx*lat,z:r.z+r.lz*lat};};
@@ -63,9 +64,10 @@ export function buildCrossings(scene,{mats,junctionBox}){
   if(!j.underpass){
    const right=s=>roadSection(s).right,cs=g.corners;
    for(const σ of [-1,1]){const c1=cs[σ][-1],c2=cs[σ][1],arc=(k,from,to,r=k.R,N=16)=>Array.from({length:N+1},(_,i)=>{const a=from+(to-from)*i/N;return {x:k.O.x+r*Math.cos(a),z:k.O.z+r*Math.sin(a)};});
-    // Arm carriageway: kerb return, straight arm, other kerb return, then back along the (curving) corridor kerb.
-    const kerbLine=[];for(let q=c2.s-1;q>c1.s+.5;q-=1)kerbLine.push(at(q,σ*right(q)));
-    fill(mats.road,[...arc(c1,c1.a1,c1.a2),A(σ*ext,-h),A(σ*ext,h),...arc(c2,c2.a2,c2.a1),...kerbLine],ROAD);
+    // Arm carriageway: throat from the curving corridor kerb to reachMax, then subdivided arm strip out to ext for smooth surface lighting.
+    const kerbLine=[],reachMax=Math.max(Math.abs(c1.d),Math.abs(c2.d));for(let q=c2.s-1;q>c1.s+.5;q-=1)kerbLine.push(at(q,σ*right(q)));
+    fill(mats.road,[...arc(c1,c1.a1,c1.a2),...(Math.abs(c1.d)<reachMax-.05?[A(σ*reachMax,-h)]:[]),...(Math.abs(c2.d)<reachMax-.05?[A(σ*reachMax,h)]:[]),...arc(c2,c2.a2,c2.a1),...kerbLine],ROAD);
+    band(mats.road,σ*reachMax,σ*ext,-h,h,ROAD);
     const dc=g.crossD[σ],reach=k=>Math.abs(k.d);
     for(const τ of [-1,1]){const k=cs[σ][τ];
      // Corner footway ring and its K1 kerb return (normal towards the footway = towards the circle centre).
@@ -103,6 +105,20 @@ export function buildCrossings(scene,{mats,junctionBox}){
    band(mats.road,-ext,ext,-h,h,ROAD);median(-ext,ext,undefined,true);
    for(const τ of [-1,1]){band(mats.walk,-ext,ext,τ*h+τ*.12,τ*(h+fw),RAISED);armKerb(τ,-ext,ext);}
    for(const σ of [-1,1])laneLines(σ,0,σ*ext,false);
+  }
+  // Close the 31-36 m dark gap between corridor-side connecting lamps and city road lamps on wide outer arms.
+  if(j.halfWidth>5&&j.c!==3400){
+   const dArm=ext-5;
+   for(const σ of [-1,1])for(const τ of [-1,1]){
+    const d=σ*dArm,pPole=A(d,τ*(h+.55)),pHead=A(d,τ*(h-.85)),y0=Y(pPole)+RAISED,ch=Math.floor(project(pPole.x,pPole.z)/240),yaw=Math.atan2(n.x*τ,n.z*τ),rot=new T.Euler(0,yaw,0);
+    if(batch){
+     batch('furn-conn-pole',poleGeo,mats.galvanised,new T.Vector3(pPole.x,y0+5,pPole.z),new T.Vector3(.15,10,.15),rot,ch);
+     const pArm=A(d,τ*(h-.15));batch('furn-conn-arm',poleGeo,mats.galvanised,new T.Vector3(pArm.x,y0+9.88,pArm.z),new T.Vector3(.09,.09,1.6),rot,ch);
+     batch('furn-conn-lamp',poleGeo,mats.lamp,new T.Vector3(pHead.x,y0+9.95,pHead.z),new T.Vector3(1,.13,.55),rot,ch);
+    }
+    const lamp={s:project(pHead.x,pHead.z),x:pHead.x,y:y0+9.85,z:pHead.z,kind:'lamp_connecting',road:(j.underpass?'U':'J')+j.c,height:10,axis:{tx:u.x*σ,tz:u.z*σ,lx:-n.x*τ,lz:-n.z*τ}};
+    lamps.push(lamp);if(lampPositions)lampPositions.push(lamp);
+   }
   }
   for(const mm of out.meshes(group.name))group.add(mm);
  }

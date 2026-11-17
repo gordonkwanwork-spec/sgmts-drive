@@ -40,7 +40,8 @@ export function cityDetails(networkGroup,{batch,kitParts,fences,lampPositions,ma
   const ok=t=>t>30&&t<e.length-30&&!(e.crossings||[]).some(c=>Math.abs(c-t)<30)&&(()=>{const a=e.point(t-SHELTER_HALF),b=e.point(t+SHELTER_HALF);return a.nx*b.nx+a.nz*b.nz>Math.cos(3*Math.PI/180);})();
   const t=Array.from({length:Math.floor(e.length/30)},(_,k)=>27+30*k).filter(ok).sort((a,b)=>Math.abs(a-e.length/2)-Math.abs(b-e.length/2))[0];if(t==null)continue;
   const p=e.point(t);if(stops.some(s=>Math.hypot(s.x-p.x,s.z-p.z)<350))continue;stops.push(p);
-  e.items.push({t,r:SHELTER_HALF+.5,kind:'shelter'});place('city-bus-stop',busStop(-1),new T.Vector3(p.x,p.y,p.z),kerbYaw(p));drape(busStopMarks(-1),new T.Vector3(p.x,p.y,p.z),kerbYaw(p));shelters++;}
+  e.items.push({t,r:SHELTER_HALF+.5,kind:'shelter'});place('city-bus-stop',busStop(-1),new T.Vector3(p.x,p.y,p.z),kerbYaw(p));drape(busStopMarks(-1),new T.Vector3(p.x,p.y,p.z),kerbYaw(p));
+  lampPositions.push({s:project(p.x,p.z),x:p.x+p.nx*1.0,y:p.y+2.42,z:p.z+p.nz*1.0,kind:'shelter',height:2.42,axis:{tx:-p.nz,tz:p.nx,lx:p.nx,lz:p.nz}});shelters++;}
  for(const [material,list] of draped){const m=new T.Mesh(mergeGeometries(list),material);m.name='city-bus-stop-marking';m.receiveShadow=true;networkGroup.add(m);}// traffic in the kerb lane runs along local −X
 
  // Stitch straight edges and swept returns before laying out bays, so rounded
@@ -73,7 +74,8 @@ export function cityDetails(networkGroup,{batch,kitParts,fences,lampPositions,ma
    put('city-light-column',new T.CylinderGeometry(.07,.09,1,8),mats.galvanised,P.clone().add(new T.Vector3(0,height/2,0)),new T.Vector3(1,height,1));
    put('city-light-arm',new T.BoxGeometry(.07,.07,1.4),mats.galvanised,P.clone().add(new T.Vector3(-p.nx*.7,height-.15,-p.nz*.7)),ONE);
    const head=P.clone().add(new T.Vector3(-p.nx*1.4,height-.2,-p.nz*1.4));
-   put('city-light-head',new T.BoxGeometry(.38,.1,.8),mats.lamp,head,ONE);lampPositions.push({s:project(P.x,P.z),x:head.x,y:head.y,z:head.z,kind:'city',height});edge.lamps.push(t);lamps++;
+   put('city-light-head',new T.BoxGeometry(.38,.1,.8),mats.lamp,head,ONE);
+   lampPositions.push({s:project(P.x,P.z),x:P.x-p.nx*2.5,y:head.y,z:P.z-p.nz*2.5,kind:'city',height,axis:{tx:-p.nz,tz:p.nx,lx:p.nx,lz:p.nz}});edge.lamps.push(t);lamps++;
   }
   for(let t=8;t<length-5;t+=25){if((edge.crossings||[]).some(c=>Math.abs(c-t)<4))continue;const p=edge.point(t),P=new T.Vector3(p.x,p.base+.005,p.z);
    kit('gully_grating',P,Math.atan2(p.nz,-p.nx),ONE,chunk(P.x,P.z));gullies++;}
@@ -98,7 +100,7 @@ export function cityDetails(networkGroup,{batch,kitParts,fences,lampPositions,ma
   const up=[-Math.sin(c.yaw),-Math.cos(c.yaw)],out=[Math.sin(c.ped.yaw),Math.cos(c.ped.yaw)],P=new T.Vector3(c.x+up[0]*2.5+out[0]*.6,c.y,c.z+up[1]*2.5+out[1]*.6);
   kit('cabinet_controller',P,c.ped.yaw+Math.PI,null,chunk(P.x,P.z));cabinets++;}
  // Median planters (network.js): a clipped hedge of low shrubs filling the bed, as lumpy overlapping clumps 0.5–0.8 m high.
- const clump=new T.IcosahedronGeometry(1,1),hedge=[0x4f7a3a,0x5d8a42,0x46703a].map(c=>new T.MeshStandardMaterial({color:c,roughness:.9,flatShading:true}));
+ const clump=new T.IcosahedronGeometry(1,1),hedge=[0x4f7a3a,0x5d8a42,0x46703a].map(c=>new T.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:.14,roughness:.9,flatShading:true}));
  for(const pl of networkGroup.userData.planters||[])for(let d=pl.from+.5;d<pl.to-.4;d+=.9){const f=frameAt(pl.F,d),u=hash(pl.road+d.toFixed(1)),h=.5+.3*u,P=new T.Vector3(f.x,f.y+pl.y(d)+h*.35,f.z);
   batch('city-hedge-'+(Math.floor(u*3)),clump,hedge[Math.floor(u*3)],P,new T.Vector3(pl.width*.5,h*.65,.75),new T.Euler(0,Math.atan2(f.tx,f.tz)+(u-.5)*.3,0),chunk(P.x,P.z));shrubs++;}
  // TS102 Give Way (sandbox road-signs.js): inverted triangle 600 mm high, red border, 讓 / GIVE WAY, lower edge 2.3 m, on its own post.
@@ -108,7 +110,7 @@ export function cityDetails(networkGroup,{batch,kitParts,fences,lampPositions,ma
  const path=k=>{const cx=128,cy=74,p=[[0,0],[256,0],[128,222]];x.beginPath();p.forEach(([a,b],i)=>x[i?'lineTo':'moveTo'](cx+(a-cx)*k,cy+(b-cy)*k));x.closePath();};
  path(1);x.fillStyle='#c8102e';x.fill();path(.7);x.fillStyle='#fff';x.fill();x.fillStyle='#151515';x.textAlign='center';x.textBaseline='middle';
  x.font='bold 46px "PingFang HK","Microsoft JhengHei",sans-serif';x.fillText('讓',128,52);x.font='bold 20px Arial,Helvetica,sans-serif';x.fillText('GIVE WAY',128,90);
- const map=new T.CanvasTexture(c);map.colorSpace=T.SRGBColorSpace;const signMat=new T.MeshStandardMaterial({map,roughness:.45}),backMat=new T.MeshStandardMaterial({color:0x9aa09c,roughness:.55,metalness:.2});
+ const map=new T.CanvasTexture(c);map.colorSpace=T.SRGBColorSpace;const signMat=new T.MeshStandardMaterial({map,emissive:0xffffff,emissiveMap:map,emissiveIntensity:.18,roughness:.45}),backMat=new T.MeshStandardMaterial({color:0x9aa09c,roughness:.55,metalness:.2});
  let signs=0;for(const s of controls.filter(c=>c.kind==='giveway')){const P=new T.Vector3(s.x,s.y,s.z),ch=chunk(s.x,s.z),rot=new T.Euler(0,s.yaw,0),fwd=new T.Vector3(-Math.sin(s.yaw),0,-Math.cos(s.yaw));
   batch('city-sign-post',postGeo,mats.galvanised,P.clone().add(new T.Vector3(0,1.45,0)),new T.Vector3(1,2.9,1),rot,ch);
   batch('city-sign-giveway',face,signMat,P.clone().add(new T.Vector3(0,2.3+H/2,0)).addScaledVector(fwd,.05),ONE,rot,ch);

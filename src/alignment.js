@@ -131,7 +131,7 @@ export const CYCLE_WIDTH=4;
 function baseCycleOffset(s){let offset=roadSection(s).right+3.75+CYCLE_WIDTH/2;for(const st of STOPS){const d=Math.abs(s-st.s)-st.footprintLength/2-st.stagger/2,u=clamp(1-Math.max(0,d)/45,0,1),w=u*u*(3-2*u),flare=st.id==='A1'?Math.max(0,st.s-s-25)*.42:0;offset=Math.max(offset,offset+(7.05+st.width+flare+CYCLE_WIDTH/2-offset)*w);}const u=clamp(Math.min((s-OUTBOARD.start+45)/45,(OUTBOARD.end+50-s)/50),0,1),blend=u*u*(3-2*u);const normal=offset+(Math.max(offset,outboardKerb(s)+3.75+CYCLE_WIDTH/2)-offset)*blend;const d=Math.abs(toChainage(s)-3395),u3=clamp((200-d)/100,0,1);return -Math.max(normal+.6,normal+(52-normal)*u3*u3*(3-2*u3));}
 
 // Volume 1 GA-1103/1105/1110/1113/1115. Unsigned chainages remain scaled game placements.
-export const CHANNELS=[{name:'A2 approach culvert',c:660,width:18,extent:160},{name:'Tin Sam Channel',c:1195,width:24,extent:190}].map(c=>({...c,s:fromChainage(c.c)}));
+export const CHANNELS=[/* Tin Sam Channel removed 18 Nov 2026: {name:'Tin Sam Channel',c:1195,width:24,extent:190} */].map(c=>({...c,s:fromChainage(c.c)}));
 // Corridor crossings where the OZP S/HSK/2A road reserves meet the corridor (city rebuild, 5 Nov 2026). halfWidth = kerb to
 // centreline; lanes per direction (3.65 m) either side of a central median; skew (degrees) turns the road axis u from the
 // corridor lateral: u = cos·l + sin·t. R = kerb-return radius. Network roads continue from each arm end (extent along u).
