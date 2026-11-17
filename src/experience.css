@@ -725,3 +725,14 @@ body[data-ui-theme] #drive-options#drive-options .theme-toggle{border-radius:2px
 .gfx-metrics{display:grid;grid-template-columns:1fr 1fr;gap:0 10px;padding-left:2px}
 .gfx-metrics input:disabled+*,.gfx-metrics label:has(input:disabled){opacity:.45}
 #perf-stats{position:fixed;left:50%;transform:translateX(-50%);top:8px;z-index:30;pointer-events:none;white-space:pre;font:12px/1.4 ui-monospace,Menlo,monospace;background:#000b;color:#d6f5e8;padding:6px 10px;border-radius:8px}
+/* Drive around town (src/town-hud.js): the sandbox-style top bar and round city radar replace the corridor minimap and next-stop panel. */
+#town-bar,#town-radar{display:none}
+body[data-town=on] #town-bar{display:flex;position:fixed;top:12px;left:50%;transform:translateX(-50%);gap:8px;z-index:16;pointer-events:auto}
+#town-bar button{font:600 13px/1 system-ui,-apple-system,sans-serif;padding:9px 13px;border-radius:9px;border:1px solid #ffffff44;background:#152024d9;color:#e7f0eb;cursor:pointer;box-shadow:0 2px 8px #0006}
+#town-bar button.active{background:#9ae5c8;color:#152b27;border-color:#9ae5c8}
+body[data-town=on] #town-radar{display:block;position:fixed;left:18px;bottom:18px;width:190px;height:190px;border-radius:50%;overflow:hidden;border:3px solid #0d1214;box-shadow:0 0 0 2px #ffffff55,0 6px 18px #0008;z-index:15;pointer-events:none;background:#1f2b24}
+#town-radar canvas{width:100%;height:100%}
+#town-radar b{position:absolute;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;background:#0d1214;color:#fff;font:bold 12px/20px Arial,sans-serif;text-align:center}
+#town-radar i{position:absolute;left:50%;top:50%;width:0;height:0;margin:-9px 0 0 -7px;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:16px solid #ffd54a;filter:drop-shadow(0 0 2px #000)}
+body[data-town=on] #map-button,body[data-town=on] #next-panel,body[data-town=on] #route-choices,body[data-town=on] #mobile-buttons,body[data-town=on] #ff-button,body[data-town=on] #cluster{display:none!important}
+@media(max-width:650px){body[data-town=on] #town-radar{width:130px;height:130px;left:10px;bottom:10px}}

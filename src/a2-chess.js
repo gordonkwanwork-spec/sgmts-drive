@@ -16,13 +16,13 @@ export function chessSet(url=import.meta.env.BASE_URL+'assets/a2-chess.ply'){
  const proxy=new T.MeshBasicMaterial({colorWrite:false,depthWrite:false});
  const parts=[['Chess table',hull.table],...hull.chairs.map((pts,i)=>['Chess chair '+(i+1),pts])].map(([name,pts])=>{const m=new T.Mesh(new ConvexGeometry(pts.map(p=>new T.Vector3(...p))),proxy);m.name=name;m.castShadow=true;root.add(m);return m;});
  // Backing slab in the capture's mean floor colour: wherever the splat floor is thin, it shows instead of the plaza paving.
- const slab=new T.Mesh(new T.PlaneGeometry(hull.size-.06,hull.size-.06).rotateX(-Math.PI/2),new T.MeshStandardMaterial({color:new T.Color(hull.floor),roughness:.9}));slab.name='Chess square backing';slab.position.y=.004;slab.receiveShadow=true;root.add(slab);
+ const slab=new T.Mesh(new T.PlaneGeometry(hull.size-.06,hull.size-.06).rotateX(-Math.PI/2),new T.MeshStandardMaterial({color:new T.Color(hull.floor),roughness:.9}));slab.name='Chess square backing';slab.position.y=.003;// below every floor splat (the splat sits 3 cm up), so it only fills gaps and never covers the captureslab.receiveShadow=true;root.add(slab);
  let splat=null,sun=null,ambient=null;const here=new T.Vector3();
  // Relight and distance-cull once per frame from the always-drawn table proxy.
  parts[0].onBeforeRender=(renderer,scene,camera)=>{if(!splat)return;
   if(!sun)scene.traverse(o=>{if(o.isDirectionalLight&&!sun)sun=o;if(o.isHemisphereLight&&!ambient)ambient=o;});
   if(sun&&ambient)splat.userData.dim=T.MathUtils.clamp((sun.intensity*.5+ambient.intensity)/DAY_LIGHT,.06,1.15);
   splat.visible=camera.position.distanceTo(root.getWorldPosition(here))<VIEW;};
- (data??=loadSplatPLY(url)).then(d=>{splat=createSplatMesh(d,{radius:1.6,center:new T.Vector3(0,.4,0)});splat.name='A2 chess splat';splat.position.y=.012;root.add(splat);},e=>console.warn('A2 chess splat failed to load',e));
+ (data??=loadSplatPLY(url)).then(d=>{splat=createSplatMesh(d,{radius:1.6,center:new T.Vector3(0,.4,0)});splat.name='A2 chess splat';splat.position.y=.03;root.add(splat);},e=>console.warn('A2 chess splat failed to load',e));
  return root;
 }
