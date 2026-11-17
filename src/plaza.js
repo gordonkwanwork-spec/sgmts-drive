@@ -5,6 +5,7 @@ import {FontLoader} from 'three/addons/loaders/FontLoader.js';
 import {TextGeometry} from 'three/addons/geometries/TextGeometry.js';
 import fontData from 'three/examples/fonts/helvetiker_bold.typeface.json' with {type:'json'};
 import {STOPS,sample,project,JUNCTIONS,CROSSINGS} from './alignment.js';
+import {chessSet} from './a2-chess.js';
 
 // Pixel bounds of the selected GPT artwork; sample inside the photographed frames.
 export const ART_RECTS=[[32,58,469,242],[530,57,480,244],[1046,44,474,257],[111,363,293,426],[629,364,275,424],[1137,365,285,421],[24,847,467,153],[532,846,475,155],[1040,846,480,153]];
@@ -59,9 +60,13 @@ export function createPlazaAssets(){
  const play=local('Circular seating garden',-24,-52);box(play,'Red activity paving',red,0,0,0,23,.04,14);
  for(const [x,y] of [[-6,1.8],[-2,1.8],[2,1.8],[6,1.8],[-4,5.2],[0,5.2],[4,5.2]]){const ring=part(play,'White seating ring',new T.TorusGeometry(1.65,.22,8,32),white,x,y,0);ring.scale.z=2;box(play,'Ring seat',yellow,x,y-1.2,0,2.1,.18,1);}
  for(const x of [-8,0,8]){const seat=part(play,'Curved yellow lounger',new T.TorusGeometry(1.2,.28,8,24,Math.PI*1.25),yellow,x,.65,4.8);seat.rotation.x=Math.PI/2;}
- for(const ds of [-100,-60,-10,20,65,100])for(const lat of [-36,-76]){const g=local('Plaza planted seating',ds,lat);box(g,'Raised planter',white,0,.35,0,5,.7,3);box(g,'Planter soil',green,0,.72,0,4.6,.08,2.6);box(g,'Timber bench',wood,0,.5,2.1,4,.18,.8);for(const x of [-1.6,1.6])box(g,'Bench leg',metal,x,.22,2.1,.13,.45,.65);
- const p=at(ds,lat,.95),ch=Math.floor((a2.s+ds)/240);kit('vegetation_shrub',p,0,new T.Vector3(2,1.5,2),ch);box(g,'Tree trunk',wood,0,2.4,0,.3,3.4,.3);for(const [x,y,z,r] of [[0,4.8,0,2],[-1.1,4.3,0,1.5],[1.2,4.5,.4,1.5]])part(g,'Plaza tree crown',new T.IcosahedronGeometry(r,1),green,x,y,z);
- if(ds===-60||ds===65){for(const x of [-3,3])for(const z of [-1.8,3])box(g,'Pergola post',metal,x,1.75,z,.14,3.5,.14);for(let x=-3.4;x<=3.4;x+=.45)box(g,'Pergola slat',wood,x,3.55,.6,.22,.16,5.5);}
+ for(const ds of [-100,-60,-10,20,65,100])for(const lat of [-36,-76]){const shelter=ds===-60||ds===65,g=local(shelter?'Plaza chess pergola':'Plaza planted seating',ds,lat),ch=Math.floor((a2.s+ds)/240);
+ // Under the pergolas (Gordon, 17 Nov): a chess table and two chairs on their own paved square (3DGS capture, src/a2-chess.js)
+ // in place of the planter, tree and bench; chairs along the pergola's long side, centred between its posts.
+ if(shelter){const set=chessSet();set.position.set(0,0,.6);set.rotation.y=Math.PI/2;g.add(set);
+  for(const x of [-3,3])for(const z of [-1.8,3])box(g,'Pergola post',metal,x,1.75,z,.14,3.5,.14);for(let x=-3.4;x<=3.4;x+=.45)box(g,'Pergola slat',wood,x,3.55,.6,.22,.16,5.5);}
+ else{box(g,'Raised planter',white,0,.35,0,5,.7,3);box(g,'Planter soil',green,0,.72,0,4.6,.08,2.6);box(g,'Timber bench',wood,0,.5,2.1,4,.18,.8);for(const x of [-1.6,1.6])box(g,'Bench leg',metal,x,.22,2.1,.13,.45,.65);
+  kit('vegetation_shrub',at(ds,lat,.95),0,new T.Vector3(2,1.5,2),ch);box(g,'Tree trunk',wood,0,2.4,0,.3,3.4,.3);for(const [x,y,z,r] of [[0,4.8,0,2],[-1.1,4.3,0,1.5],[1.2,4.5,.4,1.5]])part(g,'Plaza tree crown',new T.IcosahedronGeometry(r,1),green,x,y,z);}
  kit('litter_bin',at(ds+4,lat),orient,null,ch);lamp(ds+5,lat);}
  for(const [ds,lat] of [[-85,-58],[-75,-46],[-28,-59],[-20,-45],[40,-61],[40,-35]])lamp(ds,lat);
  const cycle=local('Plaza cycle parking',-104,-60);for(let x=-5;x<=5;x+=2){const hoop=part(cycle,'Cycle parking hoop',new T.TorusGeometry(.5,.045,6,16,Math.PI),metal,x,.65,0);for(const side of [-1,1])box(cycle,'Cycle stand leg',metal,x+side*.5,.325,0,.09,.65,.09);}
