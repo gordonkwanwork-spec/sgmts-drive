@@ -25,9 +25,12 @@ export function collectSolids(scene,skip){
   const s=m.userData.sphere=worldSphere(m).clone();
   for(let i=Math.floor((s.center.x-s.radius)/CELL);i<=Math.floor((s.center.x+s.radius)/CELL);i++)for(let j=Math.floor((s.center.z-s.radius)/CELL);j<=Math.floor((s.center.z+s.radius)/CELL);j++){const k=key(i,j);if(!grid.has(k))grid.set(k,[]);grid.get(k).push(m);}});
  // Build acceleration trees in idle time; a query builds any tree it still needs.
+ // Touch devices keep acceleration trees for queried streets only. Without an idle
+ // scheduler, nearby() also builds them when a real walking or camera query needs one.
+ if(globalThis.matchMedia?.('(pointer:coarse)').matches||!window.requestIdleCallback)return geometries.size;
  const queue=[...geometries];
- const work=deadline=>{while(queue.length&&(deadline?.timeRemaining?.()??1)>2){const g=queue.pop();if(!g.boundsTree)g.computeBoundsTree();}if(queue.length)idle(work);};
- const idle=f=>(window.requestIdleCallback||(cb=>setTimeout(cb,16)))(f);idle(work);
+ const work=deadline=>{while(queue.length&&deadline.timeRemaining()>2){const g=queue.pop();if(!g.boundsTree)g.computeBoundsTree();}if(queue.length)window.requestIdleCallback(work);};
+ window.requestIdleCallback(work);
  return geometries.size;
 }
 

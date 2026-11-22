@@ -12,6 +12,10 @@ for(const entry of COLLEAGUES){
  const b=readFileSync(new URL('../../public/assets/characters/tripo/colleagues/'+entry.file,import.meta.url));
  const gltf=await loader.parseAsync(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),'');
  const g=tripoPlayer(gltf,1.75,entry.name,entry.baked),other=tripoPlayer(gltf),r=rig(g);
+ const peer=tripoPlayer(gltf,1.75,entry.name,entry.baked).userData.tripoAnimation;
+ assert.equal(peer.clips,g.userData.tripoAnimation.clips,'actors share keyframe data');
+ assert.notEqual(peer.mixer,g.userData.tripoAnimation.mixer,'playback time is independent');
+ assert.deepEqual(Object.keys(peer.actions),[],'unused poses do not allocate bindings');
  assert.equal(g.userData.tripoAnimation.actions.turn,undefined,'turn clip removed from playback');
  assert.notEqual(r.bones.hips.bone,rig(other).bones.hips.bone,'cloned skeletons independent');
  const step=(speed,action={})=>{g.userData.action=action;for(let i=0;i<120;i++){posePedestrian(g,speed/60,1/60);g.updateMatrixWorld(true);}};

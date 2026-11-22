@@ -129,6 +129,26 @@ export function importedPedestrian(gltf){
  group.name='Imported NPC · Quaternius Casual Character';group.add(model);contactShadow(group,.7);
  group.userData.importedNPC={mixer,actions,current:actions.Idle_Neutral};return group;
 }
+// Keyframes are immutable and can be shared by every actor using this model.
+const clipCache=new WeakMap();
+function locomotionClips(gltf,hip){
+ if(clipCache.has(gltf))return clipCache.get(gltf);
+ const clips={};
+ for(const source of gltf.animations){
+  const name=source.name.split('.')[0];
+  if(name==='turn')continue;
+  const tracks=source.tracks.map(track=>{
+   if(!track.name.endsWith('Hips.position'))return track;
+   // The simulation owns horizontal motion. Preserve the authored vertical motion.
+   const local=track.clone();
+   for(let i=0;i<local.values.length;i+=3){local.values[i]=hip.x;local.values[i+2]=hip.z;}
+   return local;
+  });
+  clips[name]=new T.AnimationClip(source.name,source.duration,tracks,source.blendMode);
+ }
+ clipCache.set(gltf,clips);
+ return clips;
+}
 // Tripo Mixamo rigs use the shared distance-locked poses by default. Complete authored motion sets can opt into baked playback.
 // The model is normalised to 1.75 m and the group is scaled to `height`, so stride length follows body size.
 export function tripoPlayer(gltf,height=1.75,name='Tripo character',baked=false){
@@ -143,13 +163,9 @@ export function tripoPlayer(gltf,height=1.75,name='Tripo character',baked=false)
  group.add(model);group.name=name;group.scale.setScalar(height/1.75);group.userData.height=height;contactShadow(group,.7);
  if(baked){
   const r=rig(group),mixer=new T.AnimationMixer(model),actions={};
-  for(const source of gltf.animations){const clip=source.clone(),name=clip.name.split('.')[0];if(name==='turn')continue;
-   // The game owns position/heading. Tripo's run has a half-metre root offset even in its in-place export.
-   for(const track of clip.tracks)if(track.name.endsWith('Hips.position'))for(let i=0;i<track.values.length;i+=3){track.values[i]=bone('Hips').position.x;track.values[i+2]=bone('Hips').position.z;}
-   actions[name]=mixer.clipAction(clip);
-  }
-  for(const name of (baked==='locomotion'?['walk','run']:['idle','walk','run','sit']))if(!actions[name])throw Error('Tripo animation missing '+name);
-  group.userData.tripoAnimation={mixer,actions,current:null,hip:r.bones.hips};
+  const clips=locomotionClips(gltf,bone('Hips').position);
+  for(const name of (baked==='locomotion'?['walk','run']:['idle','walk','run','sit']))if(!clips[name])throw Error('Tripo animation missing '+name);
+  group.userData.tripoAnimation={mixer,actions,clips,current:null,hip:r.bones.hips};
  }
  return group;
 }
@@ -263,7 +279,8 @@ export function posePedestrian(group,distance,dt=1/60){
  if(baked){
   const a=group.userData.action||{},speed=distance/dt/group.scale.y;
   if(!a.air&&!a.ground){
-   const name=a.sit!==undefined?'sit':speed>2.2?'run':speed>.08?'walk':'idle',next=baked.actions[name];
+   const name=a.sit!==undefined?'sit':speed>2.2?'run':speed>.08?'walk':'idle';
+   const next=baked.clips[name]&&(baked.actions[name]??=baked.mixer.clipAction(baked.clips[name]));
    if(next){
     if(next!==baked.current){baked.current?.fadeOut(.2);next.reset().setEffectiveWeight(1).fadeIn(.2).play();baked.current=next;}
     next.setEffectiveTimeScale(name==='walk'?Math.max(.2,speed/1.4):name==='run'?Math.max(.2,speed/3.5):1);
