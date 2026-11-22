@@ -83,7 +83,8 @@ export const BRANDS=[
  {en:'MERIDIAN',zh:'子午線貨運',mark:'wave',ink:'#ffffff',accent:'#ffd6f0',bg:'#5b3f8c'},
 ];
 const OPERATORS=6,TENANTS=[6,7,8];
-function canvasTex(w,h,draw,night,repeat=true){const c=document.createElement('canvas');c.width=w;c.height=h;draw(c.getContext('2d'),night);const t=new T.CanvasTexture(c);if(repeat)t.wrapS=t.wrapT=T.RepeatWrapping;t.colorSpace=T.SRGBColorSpace;t.anisotropy=8;return t;}
+function canvasTex(w,h,draw,night,repeat=true){const c=document.createElement('canvas');const scale=w>=2048&&globalThis.matchMedia?.('(pointer:coarse)').matches?0.5:1;
+ c.width=w*scale;c.height=h*scale;const ctx=c.getContext('2d');if(scale!==1)ctx.scale(scale,scale);draw(ctx,night);const t=new T.CanvasTexture(c);if(repeat)t.wrapS=t.wrapT=T.RepeatWrapping;t.colorSpace=T.SRGBColorSpace;t.anisotropy=8;return t;}
 // Day map + night emissive map from one draw(g,night); night pattern is seeded so it matches day bays.
 function litMat(w,h,draw,tile,opts={}){panes=[];const map=canvasTex(w,h,draw,false),glass=panes;panes=null;
  const m=new T.MeshStandardMaterial({map,emissiveMap:canvasTex(w,h,draw,true),roughness:.85,metalness:0,...opts});reflective(m,w,h,glass);m.emissive.set(0);m.userData.tile=tile;return m;}

@@ -4,7 +4,8 @@ import * as T from 'three';
 
 const BLUE='#1f4e9c',RED='#d22630';
 const cache=new Map();
-function plate(key,draw,w=256,h=256){if(cache.has(key))return cache.get(key);const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');draw(x,w,h);
+function plate(key,draw,w=256,h=256){if(cache.has(key))return cache.get(key);const c=document.createElement('canvas');const compact=globalThis.matchMedia?.('(pointer:coarse)').matches&&w>512;
+ const scale=compact?0.5:1;c.width=w*scale;c.height=h*scale;const x=c.getContext('2d');if(compact)x.scale(scale,scale);draw(x,w,h);
  const t=new T.CanvasTexture(c);t.colorSpace=T.SRGBColorSpace;t.anisotropy=4;
  // Retroreflective sheeting: a faint self-light so plates read under headlights and street lamps at night.
  const mat=new T.MeshStandardMaterial({map:t,emissive:0xffffff,emissiveMap:t,emissiveIntensity:.18,roughness:.55,transparent:true,alphaTest:.5});cache.set(key,mat);return mat;}

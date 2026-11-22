@@ -9,7 +9,7 @@ async function loadWithRetry(file,load){
 }
 
 // Keep large GLBs from competing for bandwidth on a cold Pages visit.
-export async function loadStartupModels(files,load,onProgress){
+export async function loadStartupModels(files,load,onProgress,concurrency=6){
  const models=new Map(),queue=[...new Set(files)],total=queue.length;
  let next=0,failed=false;
  async function worker(){
@@ -25,7 +25,7 @@ export async function loadStartupModels(files,load,onProgress){
    }
   }
  }
- await Promise.all(Array.from({length:Math.min(6,total)},worker));
+ await Promise.all(Array.from({length:Math.min(concurrency,total)},worker));
  return models;
 }
 

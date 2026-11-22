@@ -1,15 +1,12 @@
 import {createHash} from 'node:crypto';
 import {mkdir,readdir,readFile,stat,writeFile} from 'node:fs/promises';
-import {execFile} from 'node:child_process';
-import {tmpdir} from 'node:os';
+import sharp from 'sharp';
 import path from 'node:path';
-import {promisify} from 'node:util';
 import {NodeIO,VertexLayout} from '@gltf-transform/core';
 import {ALL_EXTENSIONS,EXTMeshoptCompression,EXTTextureWebP} from '@gltf-transform/extensions';
 import {MeshoptEncoder} from 'meshoptimizer';
 
-const execFileAsync=promisify(execFile);
-const BUILD_VERSION='v2';
+const BUILD_VERSION='v4';
 const DEAD_KIT_NODES=/^(pedestrian_\d+|car|taxi|van|truck|bus|seated_rider)$/;
 
 function disposeSubtree(node,disposed){
@@ -47,34 +44,25 @@ function stripTurnClips(doc){
  pruneUnreferenced(doc);
 }
 
-async function compressTexturesToWebp(doc,rel){
+async function compressTexturesToWebp(doc,rel,phone){
  if(!/^(vehicles|characters)\/tripo\//.test(rel))return;
  const textures=doc.getRoot().listTextures();
- let converted=0;
- const workDir=path.join(tmpdir(),`sgmts-webp-${process.pid}-${Math.random().toString(36).slice(2,8)}`);
- let dirMade=false;
- try{
-  for(let i=0;i<textures.length;i++){
-   const tex=textures[i],img=tex.getImage();
-   if(!img||img.byteLength<100*1024||tex.getMimeType()==='image/webp')continue;
-   if(!dirMade){await mkdir(workDir,{recursive:true});dirMade=true;}
-   const ext=tex.getMimeType()==='image/png'?'.png':'.jpg';
-   const inFile=path.join(workDir,`tex-${i}${ext}`),outFile=path.join(workDir,`tex-${i}.webp`);
-   await writeFile(inFile,img);
-   const size=tex.getSize();
-   const args=['-q','82'];
-   if(rel.startsWith('vehicles/tripo/')&&size&&Math.max(size[0],size[1])>512)args.push('-resize','512','512');
-   args.push(inFile,'-o',outFile);
-   await execFileAsync('cwebp',args);
-   const webp=await readFile(outFile);
-   if(webp.byteLength<img.byteLength*.85){tex.setImage(new Uint8Array(webp)).setMimeType('image/webp');converted++;}
+ let converted=false;
+ for(const tex of textures){
+  const img=tex.getImage();
+  if(!img)continue;
+  const size=tex.getSize(),limit=phone?384:rel.startsWith('vehicles/tripo/')?512:Infinity;
+  const resize=size&&Math.max(...size)>limit;
+  if(!resize&&(img.byteLength<100*1024||tex.getMimeType()==='image/webp'))continue;
+  let pipeline=sharp(img);
+  if(resize)pipeline=pipeline.resize({width:limit,height:limit,fit:'inside',withoutEnlargement:true});
+  const webp=await pipeline.webp({quality:82}).toBuffer();
+  if(resize||webp.byteLength<img.byteLength*.85){
+   tex.setImage(webp).setMimeType('image/webp');
+   converted=true;
   }
-  if(converted)doc.createExtension(EXTTextureWebP).setRequired(false);
- }catch{
-  // cwebp optional: keep original textures if unavailable or unsupported
- }finally{
-  if(dirMade)await import('node:fs/promises').then(fs=>fs.rm(workDir,{recursive:true,force:true})).catch(()=>{});
  }
+ if(converted)doc.createExtension(EXTTextureWebP).setRequired(false);
 }
 
 // Ship smaller, Meshopt-compressed, content-hashed copies for the game. Editors and tests keep reading public/.
@@ -91,7 +79,7 @@ export function startupModelBuild(){
   resolveId(source){if(source===id)return '\0'+id;},
   async load(source){
    if(source!=='\0'+id)return;
-   if(!building)return 'export default {}';
+   if(!building)return 'export const mobileModels={};export default {}';
    const assetDir=path.join(publicDir,'assets');
    const files=[];
    for(const f of await readdir(assetDir))if(/^(street-kit|art|tuen-ma-train|green-bin|station-A[1-7])\.glb$/.test(f))files.push(f);
@@ -108,31 +96,34 @@ export function startupModelBuild(){
     .registerDependencies({'meshopt.encoder':MeshoptEncoder});
    await MeshoptEncoder.ready;
 
-   const entries=[];
+   const entries=[],mobileEntries=[];
    for(const file of [...new Set(files)].sort()){
     const filename=file==='hk-modern/kit.glb'?path.join(publicDir,file):path.join(assetDir,file);
     this.addWatchFile(filename);
     const st=await stat(filename);
-    const cacheKey=createHash('sha1').update(`${BUILD_VERSION}:${file}:${st.size}:${st.mtimeMs}`).digest('hex');
-    const cacheFile=path.join(cacheDir,cacheKey+'.glb');
-    let outBytes;
-    try{
-     outBytes=await readFile(cacheFile);
-    }catch{
-     const doc=await io.read(filename);
-     if(file==='street-kit.glb')pruneStreetKit(doc);
-     else if(file.startsWith('characters/tripo/colleagues/'))stripTurnClips(doc);
-     await compressTexturesToWebp(doc,file);
-     const methods=EXTMeshoptCompression.EncoderMethod;
-     const method=doc.getRoot().listAnimations().length?methods.FILTER:methods.QUANTIZE;
-     doc.createExtension(EXTMeshoptCompression).setRequired(true).setEncoderOptions({method});
-     outBytes=await io.writeBinary(doc);
-     await writeFile(cacheFile,outBytes);
+    const variants=/^(vehicles|characters)\/tripo\//.test(file)?[false,true]:[false];
+    for(const phone of variants){
+     const cacheKey=createHash('sha1').update(`${BUILD_VERSION}:${phone}:${file}:${st.size}:${st.mtimeMs}`).digest('hex');
+     const cacheFile=path.join(cacheDir,cacheKey+'.glb');
+     let outBytes;
+     try{
+      outBytes=await readFile(cacheFile);
+     }catch{
+      const doc=await io.read(filename);
+      if(file==='street-kit.glb')pruneStreetKit(doc);
+      else if(file.startsWith('characters/tripo/colleagues/'))stripTurnClips(doc);
+      await compressTexturesToWebp(doc,file,phone);
+      const methods=EXTMeshoptCompression.EncoderMethod;
+      const method=doc.getRoot().listAnimations().length?methods.FILTER:methods.QUANTIZE;
+      doc.createExtension(EXTMeshoptCompression).setRequired(true).setEncoderOptions({method});
+      outBytes=await io.writeBinary(doc);
+      await writeFile(cacheFile,outBytes);
+     }
+     const ref=this.emitFile({type:'asset',name:(phone?'mobile-':'')+path.basename(file),source:outBytes});
+     (phone?mobileEntries:entries).push(JSON.stringify(file)+':import.meta.ROLLUP_FILE_URL_'+ref);
     }
-    const ref=this.emitFile({type:'asset',name:path.basename(file),source:outBytes});
-    entries.push(JSON.stringify(file)+':import.meta.ROLLUP_FILE_URL_'+ref);
    }
-   return 'export default {'+entries.join(',')+'}';
+   return 'export const mobileModels={'+mobileEntries.join(',')+'};export default {'+entries.join(',')+'}';
   }
  };
 }

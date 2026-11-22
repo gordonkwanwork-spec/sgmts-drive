@@ -38,6 +38,19 @@ for(let i=0;i<plots.length;i++)for(let k=i+1;k<plots.length;k++)if(Math.hypot(pl
 // every built zone group appears, and housing, offices and industry are all present
 const groups=new Set(plots.map(p=>p.group));for(const g of ['residential','commercial','mixed','enterprise','industry','civic','village'])assert.ok(groups.has(g),`no ${g} plots`);
 
+// A long non-indexed triangle crosses many cells. A small indexed deck above it wins
+// only inside its own footprint, even when the first query was far from the deck.
+{
+ const ground=new T.BufferGeometry(),deck=new T.BufferGeometry();
+ ground.setAttribute('position',new T.Float32BufferAttribute([-4096,0,-4096,4096,8,-4096,-4096,0,4096],3));
+ deck.setAttribute('position',new T.Float32BufferAttribute([-12,12,-12,0,12,-12,-12,12,0],3));
+ deck.setIndex([0,1,2]);
+ const lookup=surfaceSampler([new T.Mesh(ground),new T.Mesh(deck)]);
+ assert.equal(lookup(-2048,-2048),2);
+ assert.equal(lookup(-10,-10),12);
+ assert.ok(Math.abs(lookup(-1,-1)-(4095/1024))<1e-8);
+ assert.equal(lookup(1000,1000),null);
+}
 // Paving: each plot's whole footprint is paved at plinth level (a building never touches grass), and the forecourt reaches the footway.
 const {pos,idx}=plotPaving(plots,roads),geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(pos,3));geo.setIndex(idx);
 assert.ok(pos.every(Number.isFinite),'paving geometry is finite');

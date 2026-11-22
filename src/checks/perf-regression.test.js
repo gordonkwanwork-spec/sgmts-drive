@@ -18,8 +18,14 @@ import {LENGTH,sample} from '../alignment.js';
   {id:'s2',poly:poly(100,500),yaw:0,modern:'private-cross',seed:3},
   {id:'s3',poly:poly(500,500),yaw:0,modern:'private-cross',seed:4},
  ];
+ for(const [i,site] of sites.entries())site.y=3+i;
  const root=renderModernBuildings(sites,{near:120});
  await root.userData.ready;
+ const live=renderModernBuildings(sites,{near:120,staticCity:true});
+ await live.userData.ready;
+ assert.deepEqual(live.userData.sink.shells,root.userData.sink.shells);
+ assert.deepEqual(live.userData.mallBridges,root.userData.mallBridges);
+ assert.deepEqual(live.userData.stats(),root.userData.stats());
  root.updateMatrixWorld(true);
  const shells=root.children.filter(c=>c.name==='Modern shells');
  assert.equal(shells.length,4,'expected 4 spatial 320 m shell chunks');

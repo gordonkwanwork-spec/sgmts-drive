@@ -240,7 +240,7 @@ function sink(flat=()=>false){const bufs=new Map();
  const buf=(mat,pos)=>{let cells=bufs.get(mat);if(!cells)bufs.set(mat,cells=new Map());const cell=Math.floor(pos[0]/240)+','+Math.floor(pos[2]/240);let b=cells.get(cell);if(!b)cells.set(cell,b={pos:[],idx:[]});return b;};
  return {tri(mat,pts){if(!pts.length)return;const b=buf(mat,pts[0]),n=b.pos.length/3,k0=b.idx.length;for(const p of pts)b.pos.push(...p);for(let i=1;i+1<pts.length;i++)b.idx.push(n,n+i+1,n+i);if(flat(mat))upright(b,k0);},
  raw(mat,pos,idx){if(!pos.length)return;const b=buf(mat,pos),n=b.pos.length/3,k0=b.idx.length;for(const v of pos)b.pos.push(v);for(const i of idx)b.idx.push(i+n);if(flat(mat))upright(b,k0);},
- meshes(name){return [...bufs].flatMap(([mat,cells])=>[...cells].map(([cell,{pos,idx}])=>{const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setAttribute('uv',new T.Float32BufferAttribute(Array.from({length:pos.length/3*2},(_,i)=>pos[(i>>1)*3+(i&1?2:0)]/5),2));g.setIndex(idx);g.computeVertexNormals();const m=new T.Mesh(g,mat);m.name=name;m.userData.cell=cell;m.receiveShadow=true;return m;}));}};
+ meshes(name){const result=[...bufs].flatMap(([mat,cells])=>[...cells].map(([cell,{pos,idx}])=>{const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setAttribute('uv',new T.Float32BufferAttribute(Array.from({length:pos.length/3*2},(_,i)=>pos[(i>>1)*3+(i&1?2:0)]/5),2));g.setIndex(idx);g.computeVertexNormals();const m=new T.Mesh(g,mat);m.name=name;m.userData.cell=cell;m.receiveShadow=true;return m;}));bufs.clear();return result;}};
 }
 // Strip between laterals la..lb along F from d0 to d1, at height y(f)+dy; up=true faces up.
 function strip(out,mat,F,d0,d1,la,lb,dy,shift=null){if(d1-d0<.05)return;if(d1-d0>120.001){for(let a=d0;a<d1;a+=120)strip(out,mat,F,a,Math.min(a+120,d1),la,lb,dy,shift);return;}const ds=[d0,...F.map(f=>f.d).filter(d=>d>d0&&d<d1),...(dy?.breaks||[]).filter(d=>d>d0&&d<d1),d1].sort((a,b)=>a-b),pos=[],idx=[];
@@ -257,25 +257,73 @@ const dashes=(a,b,on=3,off=6)=>{const out=[];for(let d=Math.ceil(a/(on+off))*(on
 // A small spatial index avoids raycasting the whole city and preserves the rendered terrain interpolation.
 let activeSurface=()=>null;
 export const streetHeight=(x,z)=>activeSurface(x,z);
-export function surfaceSampler(meshes){const B=16,bins=new Map();
- for(const mesh of meshes){const geo=mesh.geometry,p=geo.attributes.position,index=geo.index?.array||Array.from({length:p.count},(_,i)=>i);
-  for(let k=0;k<index.length;k+=3){const a=index[k],b=index[k+1],c=index[k+2],t=[p.getX(a),p.getY(a),p.getZ(a),p.getX(b),p.getY(b),p.getZ(b),p.getX(c),p.getY(c),p.getZ(c)],det=(t[5]-t[8])*(t[0]-t[6])+(t[6]-t[3])*(t[2]-t[8]);
-   if(Math.abs(det)<1e-8)continue;t.push(det);
-   for(let i=Math.floor(Math.min(t[0],t[3],t[6])/B);i<=Math.floor(Math.max(t[0],t[3],t[6])/B);i++)for(let j=Math.floor(Math.min(t[2],t[5],t[8])/B);j<=Math.floor(Math.max(t[2],t[5],t[8])/B);j++){const key=i+','+j;if(!bins.has(key))bins.set(key,[]);bins.get(key).push(t);}
+// Index mesh bounds first. Only neighbourhoods that receive a height query need triangle
+// indices, and the vertex coordinates stay in the same buffers used for rendering.
+export function surfaceSampler(meshes){
+ const coarseSize=128,cellSize=16,coarse=new Map(),wideMeshes=[];
+ const key=(x,z)=>x+','+z;
+ function indexBounds(map,wide,item,size,minX,minZ,maxX,maxZ){
+  const x0=Math.floor(minX/size),z0=Math.floor(minZ/size);
+  const x1=Math.floor(maxX/size),z1=Math.floor(maxZ/size);
+  // A long triangle can span thousands of empty cells. Test it once per query.
+  if((x1-x0+1)*(z1-z0+1)>64){wide.push(item);return;}
+  for(let i=x0;i<=x1;i++)for(let j=z0;j<=z1;j++){
+   const k=key(i,j);
+   if(!map.has(k))map.set(k,[]);
+   map.get(k).push(item);
   }
  }
- return (x,z)=>{let height=null;for(const t of bins.get(Math.floor(x/B)+','+Math.floor(z/B))||[]){const u=((t[5]-t[8])*(x-t[6])+(t[6]-t[3])*(z-t[8]))/t[9],v=((t[8]-t[2])*(x-t[6])+(t[0]-t[6])*(z-t[8]))/t[9],w=1-u-v;
-  if(u>=-1e-4&&v>=-1e-4&&w>=-1e-4){const y=u*t[1]+v*t[4]+w*t[7];height=height===null?y:Math.max(height,y);}}
-  return height;};
+ for(const mesh of meshes){
+  const geo=mesh.geometry;
+  if(!geo.attributes.position.count)continue;
+  if(!geo.boundingBox)geo.computeBoundingBox();
+  const {min,max}=geo.boundingBox;
+  indexBounds(coarse,wideMeshes,{geo,bins:null,wide:[]},coarseSize,min.x,min.z,max.x,max.z);
+ }
+ function sampleMesh(entry,x,z,height){
+  const {geo,wide}=entry,{min,max}=geo.boundingBox,p=geo.attributes.position,ix=geo.index;
+  if(x<min.x||x>max.x||z<min.z||z>max.z)return height;
+  if(!entry.bins){
+   entry.bins=new Map();
+   for(let k=0;k<(ix?.count??p.count);k+=3){
+    const a=ix?ix.getX(k):k,b=ix?ix.getX(k+1):k+1,c=ix?ix.getX(k+2):k+2;
+    const ax=p.getX(a),bx=p.getX(b),cx=p.getX(c),az=p.getZ(a),bz=p.getZ(b),cz=p.getZ(c);
+    if(Math.abs((bz-cz)*(ax-cx)+(cx-bx)*(az-cz))<1e-8)continue;
+    indexBounds(entry.bins,wide,k,cellSize,Math.min(ax,bx,cx),Math.min(az,bz,cz),Math.max(ax,bx,cx),Math.max(az,bz,cz));
+   }
+  }
+  function test(offsets){
+   if(!offsets)return;
+   for(const k of offsets){
+    const a=ix?ix.getX(k):k,b=ix?ix.getX(k+1):k+1,c=ix?ix.getX(k+2):k+2;
+    const ax=p.getX(a),bx=p.getX(b),cx=p.getX(c),az=p.getZ(a),bz=p.getZ(b),cz=p.getZ(c);
+    const det=(bz-cz)*(ax-cx)+(cx-bx)*(az-cz);
+    const u=((bz-cz)*(x-cx)+(cx-bx)*(z-cz))/det,v=((cz-az)*(x-cx)+(ax-cx)*(z-cz))/det,w=1-u-v;
+    if(u>=-1e-4&&v>=-1e-4&&w>=-1e-4){
+     const y=u*p.getY(a)+v*p.getY(b)+w*p.getY(c);
+     height=height===null?y:Math.max(height,y);
+    }
+   }
+  }
+  test(entry.bins.get(key(Math.floor(x/cellSize),Math.floor(z/cellSize))));
+  test(wide);
+  return height;
+ }
+ return (x,z)=>{
+  let height=null;
+  for(const entry of coarse.get(key(Math.floor(x/coarseSize),Math.floor(z/coarseSize)))||[])height=sampleMesh(entry,x,z,height);
+  for(const entry of wideMeshes)height=sampleMesh(entry,x,z,height);
+  return height;
+ };
 }
 
 // mats: {road, walk, walkGrey, walkBuff, grass, white, kerb} (environment.js materials; plain fallbacks otherwise).
-export function buildNetwork(network,{mats={},ground=()=>0}={}){const g=new T.Group();g.name='Drawn street network';if(!network){activeSurface=()=>null;return g;}
+export function buildNetwork(network,{mats={},ground=()=>0,continuousKerbs=false}={}){const g=new T.Group();g.name='Drawn street network';if(!network){activeSurface=()=>null;return g;}
  const fallback=(c,r=.95)=>new T.MeshStandardMaterial({color:c,roughness:r});
  const M={yellow:mats.yellow||fallback(0xf2c230,.7),road:mats.road||fallback(0x4b4f4d,.9),red:mats.walk||fallback(0x97604f),grey:mats.walkGrey||fallback(0x8d918c),buff:mats.walkBuff||fallback(0xb5a98c),grass:mats.grass||fallback(0x55663c,1),white:mats.white||fallback(0xece8d3,.8),kerb:mats.concrete||Object.assign(fallback(0xc6c2ac,.9),{side:T.DoubleSide})};// kerb faces are seen from either side
  const jointMat=mats.kerbJoint||fallback(0x656960,1);
  const flatMats=new Set([M.road,M.red,M.grey,M.buff,M.grass,M.white,M.yellow,mats.busBay,mats.tactile,mats.channel].filter(Boolean)),out=sink(m=>flatMats.has(m)),edges=[],islandKerbs=[],{roads,joins}=junctions(network,ground),cuts=new Map(),starts=new Map();// cuts: road → side → [[d0,d1]] footpath gaps; starts: road → end → {carriageway, footpath by corner}
- function addKerb(length,point){if(length>120){for(let a=0;a<length;a+=120)addKerb(Math.min(120,length-a),t=>point(a+t));return;}for(const [i,g] of sweptKerbs(length,point).entries()){out.raw(i?jointMat:M.kerb,[...g.attributes.position.array],[...g.index.array]);g.dispose();}}
+ function addKerb(length,point){if(length>120){for(let a=0;a<length;a+=120)addKerb(Math.min(120,length-a),t=>point(a+t));return;}for(const [i,g] of sweptKerbs(length,point,{continuous:continuousKerbs}).entries()){out.raw(i?jointMat:M.kerb,g.attributes.position.array,g.index.array);g.dispose();}}
  for(const j of joins){const cs=[1,-1].map(c=>({c,k:corner(j,c)})).filter(x=>x.k);
   const along=cs.map(x=>j.at.d+x.k.tB);
   if(along.length===2){

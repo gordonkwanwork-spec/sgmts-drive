@@ -652,7 +652,7 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
   terminalDirection={terminal:true,x:t.x-t.tx*47+t.lx*18.2,y:t.y+.3,z:t.z-t.tz*47+t.lz*18.2,yaw:Math.atan2(-t.tx,-t.tz),
    rows:[{destination:{en:STOPS[1].name,zh:STOPS[1].zh,local:false},turn:'ahead'}]};
  }
- if(drawFurniture&&furniture.network){const streets=buildNetwork(furniture.network,{mats,ground:renderedGround});scene.add(streets); streets.userData.terminalDirection=terminalDirection;// Street trees in the city's tree pits: the corridor's evergreen species, 6–9 m, swaying with the wind like the rest.
+ if(drawFurniture&&furniture.network){const streets=buildNetwork(furniture.network,{mats,ground:renderedGround,continuousKerbs:PHONE});scene.add(streets); streets.userData.terminalDirection=terminalDirection;// Street trees in the city's tree pits: the corridor's evergreen species, 6–9 m, swaying with the wind like the rest.
   for(const island of streets.userData.roundabouts)dressRoundabout(island,{batch,gardenTree,chunkAt});
   for(const island of streets.userData.turningIslands)dressTurningIsland(island,{batch,chunkAt});
   refugeRails.push(...streets.userData.refugeRails);

@@ -17,6 +17,12 @@ assert.equal(peak,6);
 assert.equal(result.size,files.length);
 assert.deepEqual(progress,files.map((_,i)=>[i+1,files.length]));
 
+active=0;peak=0;
+await loadStartupModels(files,async file=>{
+ active++;peak=Math.max(peak,active);await setImmediate();active--;return file;
+},()=>{},2);
+assert.equal(peak,2,'phone startup bounds concurrent model decodes');
+
 let missing=0;
 await assert.rejects(loadStartupModels(['missing.glb'],async()=>{
  missing++;throw Object.assign(new Error('Not found'),{response:{status:404}});

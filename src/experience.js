@@ -4,7 +4,7 @@ import {worldCoordinates,pavingY,rail as a2Rail,benches as a2Benches} from './a2
 import {animateRoadWheels} from './vehicle-motion.js';
 import {stationBenchSeats,nearestStation,uniqueStationPeople} from './station-people.js';
 import {COLLEAGUES,cyclistFile} from './colleagues.js';
-import packedModels from 'virtual:startup-model-urls';
+import packedModels,{mobileModels} from 'virtual:startup-model-urls';
 import {MeshoptDecoder} from 'meshoptimizer/meshopt_decoder.module.js';
 import {loadStartupModels,streamSceneDetails} from './startup-models.js';
 import {TRIPO_PEOPLE,TRIPO_VEHICLES,TRIPO_DOGS,TRIPO_CATS,TRIPO_RATS,TRIPO_PETS,TRIPO_VEHICLE_FILES,loadTripoVehicles} from './tripo-assets.js';
@@ -155,7 +155,7 @@ function contextualPrompt(text,persistent=false,key=text,action=null){currentPro
 if(mobile)for(const option of [...$('#mode').options])if(['access','priority'].includes(option.value))option.remove();
 // Sharpness comes from pixel ratio, not MSAA: phones render up to 1.75× (tablets 1.5×, desktops 2×) and the governor trades it against frame time (src/adaptive-resolution.js).
 const tablet=/iPad|Tablet/i.test(navigator.userAgent)||navigator.maxTouchPoints>1&&/Macintosh/.test(navigator.userAgent),maxRatio=Math.max(.85,Math.min(devicePixelRatio||1,mobile?(tablet?1.5:1.75):2)),
- governor=createGovernor({min:Math.min(maxRatio,mobile?.9:.85),max:maxRatio,start:Math.min(maxRatio,1.5)});
+ governor=createGovernor({min:Math.min(maxRatio,mobile?.9:.85),max:maxRatio,start:Math.min(maxRatio,mobile?1:1.5)});
 const renderer=(()=>{try{return new T.WebGLRenderer({antialias:!mobile,powerPreference:'high-performance'});}catch(error){loadingScreen.fail('3D graphics could not start. Enable WebGL or try another browser.');throw error;}})();renderer.setPixelRatio(governor.ratio);renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=T.SRGBColorSpace;renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;$('#viewport').appendChild(renderer.domElement);
 const cinematicGraphics=readSetting('sgmts-graphics')==='cinematic';
 const scene=new T.Scene(),camera=new T.PerspectiveCamera(48,innerWidth/innerHeight,.15,1600);scene.fog=new T.FogExp2(0xb8cdd6,.0012);
@@ -1461,9 +1461,9 @@ async function boot(){try{let loaded=0;
  const petFile=f=>'characters/tripo/pets/'+f,vehicleFile=f=>'vehicles/tripo/'+f;
  const world=['street-kit.glb','tuen-ma-train.glb','art.glb',...STOPS.map(st=>`station-${st.id}.glb`)];
  const files=[...world,...people.filter((_,i)=>starterCast(i)),...TRIPO_VEHICLE_FILES.map(vehicleFile)];
- const modelUrl=file=>(MeshoptDecoder.supported&&packedModels[file])||(file.startsWith('hk-modern/')?import.meta.env.BASE_URL+file:asset(file));
+ const modelUrl=file=>(MeshoptDecoder.supported&&((mobile&&mobileModels[file])||packedModels[file]))||(file.startsWith('hk-modern/')?import.meta.env.BASE_URL+file:asset(file));
  const [models,lots,furniture,assetManifest]=await Promise.all([
-  loadStartupModels(files,file=>loader.loadAsync(modelUrl(file)),loadingScreen.download),
+  loadStartupModels(files,file=>loader.loadAsync(modelUrl(file)),loadingScreen.download,mobile?2:6),
   fetch(import.meta.env.BASE_URL+'lots/lots.json').then(r=>r.ok?r.json():{lots:[]}).then(d=>d.lots,()=>[]),
   fetch(import.meta.env.BASE_URL+'street/furniture.json').then(r=>r.ok?r.json():Promise.reject(r.status)).catch(e=>{console.warn('No street furniture data',e);return NO_FURNITURE;}),
   fetch(asset('asset-manifest.json')).then(r=>{if(!r.ok)throw Error('Asset manifest unavailable');return r.json();}),
@@ -1487,7 +1487,7 @@ async function boot(){try{let loaded=0;
  const lotGroup=await buildLots(lots.filter(l=>!kitLot(l)),{kit:streetKit,ground:renderedGround,allowed:(x,z,r)=>sceneryClear(x,z,r)&&!drawn.buildingBlocked(x,z,r),allowedKept:(x,z,r)=>sceneryClear(x,z,r),allowedLow:(x,z,r)=>sceneryClear(x,z,r,true)&&!drawn.blocked(x,z,r),modelUrl:src=>import.meta.env.BASE_URL+'lots/models/'+src});scene.add(lotGroup);
  // City rebuild: residential, commercial, mixed-use, industrial, enterprise-park and village lots from the sandbox modern kit.
  const kitSites=cityBlocks.map(p=>({id:p.id,poly:p.poly.map(([x,z])=>({x,z})),edges:p.roles.map(role=>({role})),yaw:p.yaw,y:p.y-.15,modern:p.type,seed:p.seed}));// kit ground floor (y 0.15) on the plinth
- const kitCity=renderModernBuildings(kitSites,{near:220});scene.add(kitCity);await kitCity.userData.ready;
+ const kitCity=renderModernBuildings(kitSites,{near:220,staticCity:true});scene.add(kitCity);await kitCity.userData.ready;
  // Every plot stands on a paved plinth flush with its street's footway, with a forecourt out to the footway (blocks.js
  // plotPaving): hardscape runs unbroken from the kerb to the building, and no building stands in grass.
  let plotPavingMesh=null;{const {pos,idx}=plotPaving(cityBlocks,cityBlocks.roads),geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(pos,3));geo.setIndex(idx);geo.computeVertexNormals();

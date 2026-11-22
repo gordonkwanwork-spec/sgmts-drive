@@ -102,6 +102,20 @@ function concat(sinks){const out=new Sink();let n=0;for(const s of sinks)n+=s.n;
   const o=out.n;out.m.set(s.m.subarray(0,s.n*12),o*12);out.lit.set(s.lit.subarray(0,s.n),o);for(let i=0;i<s.n;i++){out.mod[o+i]=map[s.mod[i]];out.sty[o+i]=s.sty[i]+so;out.rec[o+i]=s.rec[i]+ro;}out.n+=s.n;}
  return out;}
 
+// The live city is built once. Append each site directly and offset only the new records.
+function planCity(kit,plots){
+ const sink=new Sink();
+ for(const plot of plots){
+  const first=sink.n,firstShell=sink.shells.length,firstRecord=sink.records.length;
+  planSite(kit,plot,plot.modern??plot.type,plot.seed??0,sink);
+  if(!plot.y)continue;
+  for(let i=first;i<sink.n;i++)sink.m[i*12+10]+=plot.y;
+  for(let i=firstShell;i<sink.shells.length;i++){sink.shells[i].y0+=plot.y;sink.shells[i].y1+=plot.y;}
+  for(let i=firstRecord;i<sink.records.length;i++){sink.records[i].y+=plot.y;sink.records[i].top+=plot.y;}
+ }
+ return sink;
+}
+
 // ---------------------------------------------------------------- shells
 function shellGeometry(shells){let nv=0;const tris=[];for(const s of shells){nv+=s.P.length*4;const tri=T.ShapeUtils.triangulateShape(s.P.map(p=>new T.Vector2(p.x,p.z)),[]);tris.push(tri);nv+=s.P.length;}
  const pos=new Float32Array(nv*3),nor=new Float32Array(nv*3),col=new Float32Array(nv*3),uv=new Float32Array(nv*2),grid=new Float32Array(nv*4),gl=new Float32Array(nv*4),meta=new Float32Array(nv*2),idx=[];let v=0;
@@ -116,12 +130,12 @@ function shellGeometry(shells){let nv=0;const tris=[];for(const s of shells){nv+
 
 // ---------------------------------------------------------------- render
 // plots: [{id, poly:[{x,z}], edges?, yaw?, modern|type, seed?}] (planner lots, or any outline).
-export function renderModernBuildings(plots,{near=320}={}){const root=new T.Group();root.name='Modern Hong Kong buildings';
+export function renderModernBuildings(plots,{near=320,staticCity=false}={}){const root=new T.Group();root.name='Modern Hong Kong buildings';
  root.userData.lod={near,hysteresis:40};root.userData.count=plots.length;
  const make=kit=>{if(root.userData.disposed)return;
-  const sink=concat(plots.map(p=>lift(sitePlan(kit.json,{id:p.id,poly:p.poly,edges:p.edges,yaw:p.yaw},p.modern??p.type,p.seed),p.y??0)));
+  const sink=staticCity?planCity(kit.json,plots):concat(plots.map(p=>lift(sitePlan(kit.json,{id:p.id,poly:p.poly,edges:p.edges,yaw:p.yaw},p.modern??p.type,p.seed),p.y??0)));
   if(sink.missing.size)console.warn('hk-modern: kit lacks',[...sink.missing].join(' '));
-  build(root,kit,sink);root.userData.sink=sink;};
+  build(root,kit,sink);root.userData.sink=staticCity?{shells:sink.shells}:sink;};
  if(kitReady){make(kitReady);root.userData.ready=Promise.resolve();}else root.userData.ready=loadModernKit().then(make);
  root.addEventListener('removed',()=>{root.userData.disposed=true;root.traverse(o=>{if(o.isMesh)o.geometry.dispose();});});
  return root;}
@@ -195,8 +209,9 @@ function build(root,kit,sink){const buckets=new Map(),bridges=connectMallBridges
  const onBeforeRender=(renderer,scene,camera)=>{const env=scene.environmentIntensity??1;NIGHT.value=scene.userData.nightLights??1-Math.min(1,Math.max(0,(env-.12)/.38));if(!camera.isPerspectiveCamera||camera.userData?.isFeed||camera.parent?.isCubeCamera||camera.parent?.type==='CubeCamera')return;const f=renderer?.info?.render?.frame;if(f!=null){if(lastRenderFrame===f)return;lastRenderFrame=f;}update(camera);};   // ignore shadow, feed and reflection cameras: their passes flipped the LOD every frame (re-upload + blinking)
  for(const shell of shellMeshes)shell.onBeforeRender=onBeforeRender;
  root.userData.update=update;root.userData.recs=recs;   // recs: LOD state per podium / tower (inspection)
+ const missing=[...sink.missing];
  root.userData.stats=()=>({sites:root.userData.count,records:recs.length,near:recs.filter(r=>r.near).length,buckets:meshes.length,instances,visible:meshes.reduce((s,m)=>s+(m.visible?m.count:0),0),
-  triangles:Math.round(tris),visibleTriangles:Math.round(meshes.reduce((s,m)=>s+(m.visible?m.count*m.geometry.index.count/3:0),0)),shellTriangles:shellMeshes.reduce((s,m)=>s+m.geometry.index.count/3,0),standIn:kit.standIn,missing:[...sink.missing]});}
+  triangles:Math.round(tris),visibleTriangles:Math.round(meshes.reduce((s,m)=>s+(m.visible?m.count*m.geometry.index.count/3:0),0)),shellTriangles:shellMeshes.reduce((s,m)=>s+m.geometry.index.count/3,0),standIn:kit.standIn,missing});}
 
 // One type on its own (thumbnails, the planner's lot ghosts): a square site sized for the type unless an outline is given.
 export function modernModel(type,{poly,seed=0,id='preview:'+type}={}){const t=TYPES[type],[w,d]=t?.span??[30,30];
