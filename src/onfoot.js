@@ -1,5 +1,8 @@
+import {footbridgeFloor} from './pedestrian-footbridges.js';
+import {bridgeWalkY,liftApronY} from './a2-footbridge.js';
+import {siteCoordinates,squareFloor,galleryY} from './a2-site.js';
 import * as T from 'three';
-import {crossingY} from './city/crossings.js';
+import {crossingY,cycleAprons} from './city/crossings.js';
 import {sample,roadSection,projectFrame,STOPS,LENGTH,footpathHeight,cycleSample,cycleBridgeHeight,cycleCrossing,JUNCTIONS,UNDERPASSES,junctionPavement,crossingGeometry,PLATFORM_RISE} from './alignment.js';
 import {streetHeight,surfaceSampler} from './street/network.js';
 import {lotHeight} from './city/blocks.js';
@@ -15,15 +18,23 @@ const RAMPS=STOPS.flatMap(st=>st.platforms.flatMap(p=>[-1,1].filter(dir=>st.id!=
 const accessMeshes=STOPS.flatMap(st=>st.platforms.flatMap(p=>[-1,1].filter(dir=>st.id!=='A1'||dir===1).map(dir=>{
  const {a,b}=stationAccess(st,p,dir),geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute([...a,b[1],b[0]].flatMap(v=>[v.x,v.y,v.z]),3));geo.setIndex([0,1,2,0,2,3]);return {geometry:geo};
 })));
+const apronHeight=surfaceSampler(cycleAprons.map(geometry=>({geometry})));
 const accessHeight=surfaceSampler(accessMeshes);
 // Walkable surface from the route cross-section: carriageway/deck, platform tops, footpath, then terrain.
 // ponytail: analytic cross-section, no mesh raycast; station stairs/canopy columns are not modelled.
-export function groundAt(x,z,sGuess){
+export function groundAt(x,z,sGuess,fromY){
  const s=clamp(projectFrame(x,z,sGuess),0,LENGTH),r=sample(s),lat=(x-r.x)*r.lx+(z-r.z)*r.lz,e=roadSection(s);
- // Project onto the separate cycle alignment, including its straight bridge decks.
+ // An upper-level walker crosses the roadway and cycle track on a separate deck.
+ if(Math.abs(s-STOPS[1].s)<155){
+  const local=siteCoordinates(x,z),y=bridgeWalkY(local.x,local.z,fromY);if(y!==null)return {s,lat,y};
+  const apron=liftApronY(local.x,local.z)??galleryY(local.x,local.z);if(apron!==null)return {s,lat,y:apron};
+ }
+ const bridge=footbridgeFloor(x,z,fromY);if(bridge!==null)return {s,lat,y:bridge};
+ // Project onto the ground-level cycle alignment.
  let cs=s;for(let i=0;i<4;i++){const c=cycleSample(cs);cs=clamp(cs+(x-c.x)*c.tx+(z-c.z)*c.tz,0,LENGTH);}
  const c=cycleSample(cs),clat=(x-c.x)*c.lx+(z-c.z)*c.lz;
  if(Math.abs(clat)<=2&&!cycleCrossing(cs))return {s,lat,y:c.groundY+cycleBridgeHeight(cs)};
+ const apron=apronHeight(x,z);if(apron!==null)return {s,lat,y:apron};
  // Rebuilt junctions and under-viaduct roads (src/city/crossings.js): kerb-return rings, arm footways and medians are raised;
  // the side carriageway and the fill between kerb returns sit at road level; land inside a kerb-return circle falls through to terrain.
  for(const j of [...JUNCTIONS,...UNDERPASSES]){const g=crossingGeometry(j),dx=x-g.C.x,dz=z-g.C.z,d=dx*g.u.x+dz*g.u.z,ee=dx*g.n.x+dz*g.n.z,h=j.halfWidth;
@@ -41,8 +52,7 @@ export function groundAt(x,z,sGuess){
  // Access ramps fall from the raised platform to the footpath between the platform end and the ramp foot.
  for(const q of RAMPS)if((s-q.start)*(s-q.end)<=0&&lat*q.side>=e.right-.3&&lat*q.side<q.outer){const u=(s-q.start)/(q.end-q.start);return {s,lat,y:(sample(q.start).y+.32+PLATFORM_RISE)*(1-u)+(r.groundY+footpathHeight(s))*u};}
  if(Math.abs(lat)<Math.max(Math.abs(e.left),e.right)+3.75)return {s,lat,y:r.groundY+depotKerbHeight(s,Math.sign(lat))};
- // The interchange plaza is a raised paved surface, including its thin activity pads.
- if(s>STOPS[1].s-115&&s<STOPS[1].s+125&&lat>=-84&&lat<=-17)return {s,lat,y:r.groundY+.34};
+ if(Math.abs(s-STOPS[1].s)<160){const local=siteCoordinates(x,z),y=squareFloor(local.x,local.z,fromY);if(y!==null)return {s,lat,y};}
  const street=streetHeight(x,z);if(street!==null)return {s,lat,y:street};
  const plot=lotHeight(x,z);if(plot!==null)return {s,lat,y:plot};// paved plot plinths and forecourts (src/city/blocks.js)
  return {s,lat,y:Math.hypot(x-r.x,z-r.z)>100?renderedGround(x,z):terrainLevel(x,z,s)-.24-channelDepth(x,z)};
@@ -66,7 +76,14 @@ export function pushOutFences(x,z,radius,fences,feetAbove=0){
 
 // One walking step: move, resolve colliders, and refuse a rise taller than a kerb (viaduct sides, walls).
 export function walkStep(p,dx,dz,circles,fences=[]){
- const pushed=pushOut(p.x+dx,p.z+dz,.35,circles),moved=pushOutFences(pushed.x,pushed.z,.35,fences,p.jumpY||0),g=groundAt(moved.x,moved.z,p.s);
+ if(Math.abs(p.s-STOPS[1].s)<155 && p.y>sample(p.s).groundY+2){
+  const local=siteCoordinates(p.x,p.z);
+  // Kerbside rails and tree-trunk circles belong to the street below; the
+  // bridge rails and planters are already solid meshes in the walking BVH.
+  if(bridgeWalkY(local.x,local.z,p.y)!==null){circles=[];fences=[];}
+ }
+ if(footbridgeFloor(p.x,p.z,p.y)!==null&&p.y>sample(p.s).groundY+2){circles=[];fences=[];}
+ const pushed=pushOut(p.x+dx,p.z+dz,.35,circles),moved=pushOutFences(pushed.x,pushed.z,.35,fences,p.jumpY||0),g=groundAt(moved.x,moved.z,p.s,p.y);
  if(!Number.isFinite(g.y)||g.y-p.y>STEP_UP+(p.jumpY||0))return {...p,blocked:true};
  return {x:moved.x,z:moved.z,y:g.y,s:g.s,blocked:false};
 }

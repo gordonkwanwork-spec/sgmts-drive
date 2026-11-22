@@ -7,7 +7,7 @@ const ctx2d=new Proxy({},{get:(_,k)=>k==='measureText'?()=>({width:0}):k==='crea
 globalThis.document??={createElement:()=>({getContext:()=>ctx2d,width:0,height:0})};
 const {cityPlots}=await import('../city/plots-headless.js');
 const {plotPaving,zoneRule}=await import('../city/blocks.js');
-const {networkMask,nearestOn,surfaceSampler}=await import('../street/network.js');
+const {networkMask,nearestOn,surfaceSampler,buildNetwork}=await import('../street/network.js');
 const {renderedGround,sceneryClear}=await import('../environment.js');
 const {pointInPolygon}=await import('../lots/wand.js');
 const {TYPES}=await import('../city/kit/hk-modern-plan.js');
@@ -45,6 +45,38 @@ const height=surfaceSampler([new T.Mesh(geo)]);
 for(const p of plots){for(const [x,z] of [...p.poly.map(([x,z])=>[x+(p.c[0]-x)*.03,z+(p.c[1]-z)*.03]),p.c]){const y=height(x,z);/* just inside the corners: party-wall neighbours touch */assert.ok(y!==null&&Math.abs(y-p.y)<.05,`${p.id} is not on its plinth at ${x.toFixed(0)},${z.toFixed(0)}`);}
  if(p.row===1){const o=byRoad.get(p.road),h=o.P.carriageway/2+o.P.footpath,mid=[p.c[0]-p.v[0]*(p.d/2+.25),p.c[1]-p.v[1]*(p.d/2+.25)],n=nearestOn(o.F,...mid),edge=[n.f.x+Math.sign(n.lat)*n.f.lx*(h-.1),n.f.z+Math.sign(n.lat)*n.f.lz*(h-.1)];
   assert.ok(height(...mid)!==null&&height(...edge)!==null,`${p.id} forecourt does not reach the footway of ${p.road}`);}}
+// Compare the rendered paving triangles with actual asphalt, including kerb returns and turning heads.
+// A 70 m factory at D1 once passed the plot probes with Industry Access running between them.
+const asphalt=new T.MeshBasicMaterial(),streetMesh=buildNetwork(network,{ground:renderedGround,mats:{road:asphalt}});
+function triangles(mesh,visit){
+ const p=mesh.geometry.attributes.position,ix=mesh.geometry.index.array;
+ for(let k=0;k<ix.length;k+=3){
+  const tri=[ix[k],ix[k+1],ix[k+2]].map(i=>[p.getX(i),p.getZ(i)]);
+  const [a,b,c]=tri;
+  if(Math.abs((b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]))>1e-7)visit(tri);
+ }
+}
+function cellsOf(tri,visit){
+ const xs=tri.map(p=>p[0]),zs=tri.map(p=>p[1]);
+ for(let x=Math.floor(Math.min(...xs)/16);x<=Math.floor(Math.max(...xs)/16);x++)
+  for(let z=Math.floor(Math.min(...zs)/16);z<=Math.floor(Math.max(...zs)/16);z++)visit(x+','+z);
+}
+function intersects(a,b){
+ for(const t of [a,b])for(let i=0;i<3;i++){
+  const p=t[i],q=t[(i+1)%3],nx=q[1]-p[1],nz=p[0]-q[0];
+  const project=v=>nx*(v[0]-p[0])+nz*(v[1]-p[1]),A=a.map(project),B=b.map(project);
+  if(Math.min(...A)>=Math.max(...B)-1e-7||Math.min(...B)>=Math.max(...A)-1e-7)return false;
+ }
+ return true;
+}
+const pavingCells=new Map();
+triangles({geometry:geo},t=>cellsOf(t,key=>{
+ if(!pavingCells.has(key))pavingCells.set(key,[]);
+ pavingCells.get(key).push(t);
+}));
+for(const m of streetMesh.children)if(m.material===asphalt)triangles(m,road=>cellsOf(road,key=>{
+ for(const paving of pavingCells.get(key)||[])assert.ok(!intersects(road,paving),`Plot paving covers asphalt near ${road[0]}`);
+}));
 // the street wall: most urban frontage plots share a party wall with a neighbour; every plot has a front edge for the kit
 const urban=plots.filter(p=>p.row===1&&['residential','commercial','mixed','enterprise','industry'].includes(p.group));
 assert.ok(urban.filter(p=>p.roles.includes('party')).length>urban.length*.4,`only ${urban.filter(p=>p.roles.includes('party')).length} of ${urban.length} urban plots share a party wall`);

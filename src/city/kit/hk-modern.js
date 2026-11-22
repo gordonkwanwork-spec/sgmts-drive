@@ -19,8 +19,8 @@ const NIGHT={value:0};
 const FADE={value:new T.Vector2(1e9,1e9+1)};
 function patch(m,key,{vertex='',fragment=[]}){m.customProgramCacheKey=()=>'hkm-'+key;
  m.onBeforeCompile=s=>{s.uniforms.uNight=NIGHT;s.uniforms.uFade=FADE;
-  s.vertexShader=s.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\n#ifdef USE_INSTANCING\nvHkD=distance((modelMatrix*instanceMatrix*vec4(transformed,1.)).xyz,cameraPosition);\n#else\nvHkD=distance((modelMatrix*vec4(transformed,1.)).xyz,cameraPosition);\n#endif').replace('#include <common>','#include <common>\nvarying float vHkD;');
-  s.fragmentShader=s.fragmentShader.replace('#include <clipping_planes_fragment>','#include <clipping_planes_fragment>\nfloat hkF=1.-smoothstep(uFade.x,uFade.y,vHkD);if(hkF<1.&&fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(.06711056,.00583715))))>hkF)discard;').replace('#include <common>','#include <common>\nuniform vec2 uFade;varying float vHkD;');
+  s.vertexShader=s.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\n#ifdef USE_INSTANCING\nvec4 hkWPos=modelMatrix*instanceMatrix*vec4(transformed,1.);\n#else\nvec4 hkWPos=modelMatrix*vec4(transformed,1.);\n#endif\nvHkD=distance(hkWPos.xyz,cameraPosition);vHkY=hkWPos.y;').replace('#include <common>','#include <common>\nvarying float vHkD;varying float vHkY;');
+  s.fragmentShader=s.fragmentShader.replace('#include <clipping_planes_fragment>','#include <clipping_planes_fragment>\nfloat hkF=1.-smoothstep(uFade.x,uFade.y,vHkD);if(hkF<1.&&fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(.06711056,.00583715))))>hkF)discard;').replace('#include <common>','#include <common>\nuniform vec2 uFade;varying float vHkD;varying float vHkY;');
   s.vertexShader=s.vertexShader.replace('#include <common>','#include <common>\nattribute vec4 iTint;\nvarying float vAux;\nvarying vec2 vMUv;\n')
    .replace('#include <color_vertex>','#include <color_vertex>\nvColor.rgb*=iTint.rgb;vAux=iTint.a;vMUv=uv;\n'+vertex);
   s.fragmentShader=s.fragmentShader.replace('#include <common>','#include <common>\nuniform float uNight;\nvarying float vAux;\nvarying vec2 vMUv;\n'+FRAG_LIB);
@@ -42,8 +42,8 @@ vec3 hkFinish(vec3 c,vec2 uv,float id){
  return c;}
 `;
 const MATS={
- paint:patch(new T.MeshStandardMaterial({vertexColors:true,roughness:.88,metalness:0}),'paint',{fragment:[['#include <color_fragment>','diffuseColor.rgb=hkFinish(diffuseColor.rgb,vMUv,vAux);']]}),
- detail:patch(new T.MeshStandardMaterial({vertexColors:true,roughness:.55,metalness:.25}),'detail',{}),
+ paint:patch(new T.MeshStandardMaterial({vertexColors:true,roughness:.88,metalness:0}),'paint',{fragment:[['#include <color_fragment>','diffuseColor.rgb=hkFinish(diffuseColor.rgb,vMUv,vAux);'],['#include <emissivemap_fragment>','totalEmissiveRadiance+=diffuseColor.rgb*mix(vec3(.96,.88,.76),vec3(.65,.76,.94),smoothstep(4.,26.,vHkY))*uNight*.16;']]}),
+ detail:patch(new T.MeshStandardMaterial({vertexColors:true,roughness:.55,metalness:.25}),'detail',{fragment:[['#include <emissivemap_fragment>','totalEmissiveRadiance+=diffuseColor.rgb*mix(vec3(.96,.88,.76),vec3(.65,.76,.94),smoothstep(4.,26.,vHkY))*uNight*.18;']]}),
  glass:patch(new T.MeshStandardMaterial({vertexColors:true,roughness:.1,metalness:.6}),'glass',{fragment:[['#include <emissivemap_fragment>',
   'float hkL=vAux>1.?vAux-1.:vAux;vec3 hkC=vAux>1.?vec3(.82,.92,1.):vec3(1.,.78,.47);float hkP=hkHash(floor(vMUv*vec2(.62,.31))+vAux*7.);totalEmissiveRadiance+=hkC*hkL*uNight*.85*step(.28,hkP)*(.45+.7*hkP);diffuseColor.rgb*=1.-.6*uNight*step(.01,hkL);']]}),
  glow:patch(new T.MeshStandardMaterial({vertexColors:true,roughness:.45,metalness:0}),'glow',{fragment:[['#include <emissivemap_fragment>','totalEmissiveRadiance+=diffuseColor.rgb*vAux*(.35+2.2*uNight);']]}),
@@ -65,11 +65,11 @@ float hkWin=0.,hkLit=0.,hkTone=.5;`)
   diffuseColor.rgb=mix(hkFinish(diffuseColor.rgb,vSUv,0.),vGl.rgb,hkWin);}`)
   .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor,.15,hkWin);')
   .replace('#include <metalnessmap_fragment>','#include <metalnessmap_fragment>\nmetalnessFactor=mix(metalnessFactor,.5,hkWin);')
-  .replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\nfloat hkB=fract(vMeta.y*13.);vec3 hkC=hkTone<.25+.5*hkB?mix(vec3(1.,.66,.34),vec3(1.,.84,.6),hkTone*2.):hkTone<.9?vec3(.8,.9,1.):vec3(.62,.78,1.);   /* per-window warm tungsten / neutral / cool LED, mix set per building */\ntotalEmissiveRadiance+=hkC*(.45+.75*fract(hkTone*7.31))*hkLit*hkWin*uNight*.8;');};
+  .replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\nfloat hkB=fract(vMeta.y*13.);vec3 hkC=hkTone<.25+.5*hkB?mix(vec3(1.,.66,.34),vec3(1.,.84,.6),hkTone*2.):hkTone<.9?vec3(.8,.9,1.):vec3(.62,.78,1.);   /* per-window warm tungsten / neutral / cool LED, mix set per building */\ntotalEmissiveRadiance+=hkC*(.45+.75*fract(hkTone*7.31))*hkLit*hkWin*uNight*.8+diffuseColor.rgb*mix(vec3(.95,.84,.7),vec3(.62,.74,.92),smoothstep(4.,22.,vSUv.y))*uNight*.15*(1.-hkWin*.5);');};
 
 // ---------------------------------------------------------------- kit
 let kitPromise=null,kitReady=null;   // kitReady: the loaded kit, so later renders build synchronously (planner thumbnails)
-export function loadModernKit(){return kitPromise??=Promise.all([fetch(BASE+'kit.json').then(r=>r.ok?r.json():null).catch(()=>null),new GLTFLoader().loadAsync(BASE+'kit.glb').catch(()=>null)]).then(([json,gltf])=>{
+export function loadModernKit({url=BASE+'kit.glb',loader=new GLTFLoader()}={}){return kitPromise??=Promise.all([fetch(BASE+'kit.json').then(r=>r.ok?r.json():null).catch(()=>null),loader.loadAsync(url).catch(()=>null)]).then(([json,gltf])=>{
  const parts=new Map();
  if(json&&gltf){gltf.scene.updateMatrixWorld(true);gltf.scene.traverse(o=>{if(!o.isMesh||!o.name.startsWith('M__'))return;const [mod,matName]=o.name.slice(3).split('_');const mat=(o.material?.name??matName).split('.')[0];
   if(!PART_BATCH[mat])return;if(!parts.has(mod))parts.set(mod,[]);parts.get(mod).push({geometry:canonical(o.geometry,o.matrixWorld),mat});});
@@ -126,9 +126,46 @@ export function renderModernBuildings(plots,{near=320}={}){const root=new T.Grou
  root.addEventListener('removed',()=>{root.userData.disposed=true;root.traverse(o=>{if(o.isMesh)o.geometry.dispose();});});
  return root;}
 
-function build(root,kit,sink){const buckets=new Map();
- for(let i=0;i<sink.n;i++){const name=sink.mods[sink.mod[i]],parts=kit.parts.get(name);if(!parts)continue;
+// The kit bridge runs 14 m along local +Z. Intersect both sides of its deck with
+// the same occupied façade at deck height, so a skew landing has no exposed corner.
+function connectMallBridges(sink){
+ const lengths=new Map(),m=sink.m;
+ for(let i=0;i<sink.n;i++)if(sink.mods[sink.mod[i]]==='FB'){
+  const o=i*12,x=m[o+9],z=m[o+11],y=m[o+10],dx=m[o+6],dz=m[o+8];
+  let length=Infinity;
+  for(const shift of [0,-3,3,-6,6]){
+   // A narrow gap between opposing lots can bisect a landing. Slide the
+   // connection along the originating façade until its full width is supported.
+   for(const sh of sink.shells){
+   if(sh.rec===sink.rec[i]||sh.y0>y+.8||sh.y1<y+3.4)continue;
+   const hits=[-2.35,2.35].map(offset=>{
+    const ox=x+(shift+offset)*m[o],oz=z+(shift+offset)*m[o+2];let best=Infinity;
+    for(let j=0;j<sh.P.length;j++){
+     const a=sh.P[j],b=sh.P[(j+1)%sh.P.length],ex=b.x-a.x,ez=b.z-a.z,det=dx*ez-dz*ex;
+     if(Math.abs(det)<1e-7)continue;
+     const t=((a.x-ox)*ez-(a.z-oz)*ex)/det,u=((a.x-ox)*dz-(a.z-oz)*dx)/det;
+     if(u>=0&&u<=1&&t>1&&t<75)best=Math.min(best,t);
+    }
+    return best;
+   });
+   length=Math.min(length,Math.max(...hits));
+   }
+   if(Number.isFinite(length)){
+    m[o+9]+=shift*m[o]-.3*dx;m[o+11]+=shift*m[o+2]-.3*dz;length+=.3;
+    break;
+   }
+  }
+  if(Number.isFinite(length)){
+   lengths.set(i,length);m[o+6]*=(length+.3)/14;m[o+8]*=(length+.3)/14;
+  }
+ }
+ return lengths;
+}
+
+function build(root,kit,sink){const buckets=new Map(),bridges=connectMallBridges(sink);
+ for(let i=0;i<sink.n;i++){const name=sink.mods[sink.mod[i]],parts=kit.parts.get(name);if(!parts||name==='FB'&&sink.records.length>1&&!bridges.has(i))continue;
   for(let k=0;k<parts.length;k++){const key=sink.mod[i]*16+k;let b=buckets.get(key);if(!b)buckets.set(key,b={part:parts[k],list:[]});b.list.push(i);}}
+ root.userData.mallBridges=[...bridges].map(([i,length])=>({x:sink.m[i*12+9],z:sink.m[i*12+11],y:sink.m[i*12+10],length}));
  const recs=sink.records.map(r=>({...r,near:true,buckets:new Set()})),meshes=[],M=new T.Matrix4(),E=M.elements;let instances=0,tris=0;
  for(const b of buckets.values()){const n=b.list.length,batch=PART_BATCH[b.part.mat],src=b.part.geometry,g=new T.BufferGeometry();
   for(const [k,a] of Object.entries(src.attributes))g.setAttribute(k,new T.BufferAttribute(a.array,a.itemSize));g.setIndex(new T.BufferAttribute(src.index.array,1));g.boundingSphere=src.boundingSphere;
@@ -139,10 +176,13 @@ function build(root,kit,sink){const buckets=new Map();
   const mesh=new T.InstancedMesh(g,MATS[batch],n);mesh.instanceMatrix.array.set(mat);g.setAttribute('iTint',new T.InstancedBufferAttribute(tint.slice(),4));
   mesh.frustumCulled=false;mesh.castShadow=false;mesh.receiveShadow=true;mesh.userData={shared:true,master:{mat,tint},ranges,full:true};mesh.name='hk-modern-detail '+sink.mods[sink.mod[b.list[0]]]+'·'+b.part.mat;// collision.js skips instanced detail: the merged shells are the solid walls
   root.add(mesh);meshes.push(mesh);instances+=n;tris+=n*src.index.count/3;}
- const shell=new T.Mesh(shellGeometry(sink.shells),SHELL);shell.castShadow=shell.receiveShadow=true;shell.userData.shared=true;shell.name='Modern shells';root.add(shell);
+ const shellBuckets=new Map();
+ for(const sh of sink.shells){const p0=sh.P[0],k=(Math.floor((p0?.x||0)/320))+','+(Math.floor((p0?.z||0)/320));let list=shellBuckets.get(k);if(!list)shellBuckets.set(k,list=[]);list.push(sh);}
+ const shellMeshes=[];
+ for(const list of shellBuckets.values()){const shell=new T.Mesh(shellGeometry(list),SHELL);shell.castShadow=shell.receiveShadow=true;shell.userData.shared=true;shell.name='Modern shells';root.add(shell);shellMeshes.push(shell);}
  // level of detail: recompute when the camera has moved or turned enough
- const last={p:new T.Vector3(1e9,0,0),q:new T.Quaternion(),fov:0},F=new T.Frustum(),PM=new T.Matrix4(),S=new T.Sphere(),dirty=new Set();
- const update=(camera,force=false)=>{const p=camera.getWorldPosition(new T.Vector3()),q=camera.getWorldQuaternion(new T.Quaternion());
+ const last={p:new T.Vector3(1e9,0,0),q:new T.Quaternion(),fov:0},_camP=new T.Vector3(),_camQ=new T.Quaternion(),F=new T.Frustum(),PM=new T.Matrix4(),S=new T.Sphere(),dirty=new Set();
+ const update=(camera,force=false)=>{const p=camera.getWorldPosition(_camP),q=camera.getWorldQuaternion(_camQ);
   if(!force&&p.distanceTo(last.p)<6&&Math.abs(q.dot(last.q))>.9995&&camera.fov===last.fov)return;last.p.copy(p);last.q.copy(q);last.fov=camera.fov;
   camera.updateMatrixWorld();PM.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);F.setFromProjectionMatrix(PM);
   const {near:N,hysteresis:H}=root.userData.lod,rw=root.matrixWorld;if(N<1e4)FADE.value.set(N-70,N);
@@ -151,10 +191,12 @@ function build(root,kit,sink){const buckets=new Map();
    for(const [r,start,count] of ranges){if(!recs[r]?.near)continue;A.array.set(master.mat.subarray(start*16,(start+count)*16),c*16);Ti.array.set(master.tint.subarray(start*4,(start+count)*4),c*4);c+=count;}
    mesh.count=c;mesh.visible=c>0;A.clearUpdateRanges();A.addUpdateRange(0,c*16);A.needsUpdate=true;Ti.clearUpdateRanges();Ti.addUpdateRange(0,c*4);Ti.needsUpdate=true;}
   dirty.clear();};
- shell.onBeforeRender=(renderer,scene,camera)=>{const env=scene.environmentIntensity??1;NIGHT.value=scene.userData.nightLights??1-Math.min(1,Math.max(0,(env-.12)/.38));if((camera.isPerspectiveCamera||camera.isOrthographicCamera)&&!camera.parent?.isCubeCamera)update(camera);};   // not reflection probes: their passes flipped the LOD every frame (re-upload + blinking)
+ let lastRenderFrame=-1;
+ const onBeforeRender=(renderer,scene,camera)=>{const env=scene.environmentIntensity??1;NIGHT.value=scene.userData.nightLights??1-Math.min(1,Math.max(0,(env-.12)/.38));if(!camera.isPerspectiveCamera||camera.userData?.isFeed||camera.parent?.isCubeCamera||camera.parent?.type==='CubeCamera')return;const f=renderer?.info?.render?.frame;if(f!=null){if(lastRenderFrame===f)return;lastRenderFrame=f;}update(camera);};   // ignore shadow, feed and reflection cameras: their passes flipped the LOD every frame (re-upload + blinking)
+ for(const shell of shellMeshes)shell.onBeforeRender=onBeforeRender;
  root.userData.update=update;root.userData.recs=recs;   // recs: LOD state per podium / tower (inspection)
  root.userData.stats=()=>({sites:root.userData.count,records:recs.length,near:recs.filter(r=>r.near).length,buckets:meshes.length,instances,visible:meshes.reduce((s,m)=>s+(m.visible?m.count:0),0),
-  triangles:Math.round(tris),visibleTriangles:Math.round(meshes.reduce((s,m)=>s+(m.visible?m.count*m.geometry.index.count/3:0),0)),shellTriangles:shell.geometry.index.count/3,standIn:kit.standIn,missing:[...sink.missing]});}
+  triangles:Math.round(tris),visibleTriangles:Math.round(meshes.reduce((s,m)=>s+(m.visible?m.count*m.geometry.index.count/3:0),0)),shellTriangles:shellMeshes.reduce((s,m)=>s+m.geometry.index.count/3,0),standIn:kit.standIn,missing:[...sink.missing]});}
 
 // One type on its own (thumbnails, the planner's lot ghosts): a square site sized for the type unless an outline is given.
 export function modernModel(type,{poly,seed=0,id='preview:'+type}={}){const t=TYPES[type],[w,d]=t?.span??[30,30];

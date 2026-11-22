@@ -1,9 +1,11 @@
 import * as T from 'three';
+import {PLATFORM_RISE} from './alignment.js';
 
 // Ceiling-hung next-vehicle displays, three per canopy, readable from both ends of the platform.
 // One canvas per platform feeds its three screens (both faces); redrawn only when its text changes.
-// Bottom edge 2.74 m (platform deck 0.32 m): ≥0.5 m above a 1.9 m person. Roof underside is 3.48 m; the station-name sign line hangs at 7.05+1.43 m, so screens sit 0.35 m behind the platform centre.
-const W=640,H=360,SCREEN=[1.07,.6],CENTRE_Y=3.04,ROOF_Y=3.46,COUNT=3,INSET=.35;
+// The case clears the walking surface by 2.10 m. Its inner edge also clears the central canopy LED.
+const W=640,H=360,SCREEN=[.96,.54],FRAME=.03,COUNT=3,INSET=.72;
+const caseHeight=SCREEN[1]+2*FRAME,caseBottom=.32+PLATFORM_RISE+2.10;
 const housing=new T.MeshStandardMaterial({color:0x1b1f22,roughness:.55,metalness:.4}),rod=new T.MeshStandardMaterial({color:0x8d969b,roughness:.4,metalness:.8});
 const WEATHER={morning:{icon:'sun',temp:31},rain:{icon:'rain',temp:26},night:{icon:'moon',temp:28}};
 
@@ -16,10 +18,16 @@ export function addArrivalScreens(root,st,heightAt){
   // Canopy LED strip length, screens at its quarter points.
   const x=-platform.side*(7.05+st.width*.5+INSET);
   for(let k=1;k<=COUNT;k++){const z=-platform.centerOffset-36+72*k/(COUNT+1),g=new T.Group();g.name='Arrival screen';
-   g.position.set(x,CENTRE_Y+heightAt(st.s-z)-heightAt(st.s),z);
-   g.add(new T.Mesh(new T.BoxGeometry(SCREEN[0]+.08,SCREEN[1]+.08,.07),housing));
+   g.position.set(x,caseBottom+caseHeight/2+heightAt(st.s-z)-heightAt(st.s),z);
+   g.add(new T.Mesh(new T.BoxGeometry(SCREEN[0]+2*FRAME,caseHeight,.07),housing));
    for(const side of [1,-1]){const s=new T.Mesh(new T.PlaneGeometry(...SCREEN),face);s.position.z=side*.036;if(side<0)s.rotation.y=Math.PI;s.name='Arrival screen display';g.add(s);
-    const hanger=new T.Mesh(new T.CylinderGeometry(.015,.015,ROOF_Y-CENTRE_Y-SCREEN[1]/2),rod);hanger.position.set(side*SCREEN[0]*.35,(ROOF_Y-CENTRE_Y+SCREEN[1]/2)/2,0);g.add(hanger);}
+    // Match the pitched underside from build_assets.py at each fixing, from the front lip to the rear haunch.
+    const hangerX=side*SCREEN[0]*.35;
+    const fromCurb=Math.abs(x+hangerX)-st.platformEdge;
+    const soffit=PLATFORM_RISE+3.27-.22*(fromCurb-.5)/(st.width-.75-.5);
+    const length=soffit-(caseBottom+caseHeight)+.005;
+    const hanger=new T.Mesh(new T.CylinderGeometry(.015,.015,length),rod);
+    hanger.position.set(hangerX,(caseHeight+length)/2,0);g.add(hanger);}
    root.add(g);}
   boards.push({st,dir:platform.side,canvas,map,text:''});}
  return boards;}

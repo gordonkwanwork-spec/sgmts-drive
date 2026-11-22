@@ -30,26 +30,6 @@ export const COLLEAGUES = [
     "baked": true
   },
   {
-    "file": "07-chan-oi-ming.glb",
-    "name": "CHAN Oi-ming",
-    "baked": true
-  },
-  {
-    "file": "08-sally-chan.glb",
-    "name": "Sally CHAN",
-    "baked": true
-  },
-  {
-    "file": "09-chong-sing-pui.glb",
-    "name": "CHONG Sing-pui",
-    "baked": true
-  },
-  {
-    "file": "10-joseph-fan.glb",
-    "name": "Joseph FAN",
-    "baked": true
-  },
-  {
     "file": "11-gordon-kwan.glb",
     "name": "Gordon KWAN",
     "baked": true
@@ -60,3 +40,5 @@ export const COLLEAGUES = [
     "baked": true
   }
 ];
+
+export const cyclistFile='12-lee-hok-cheong.glb';

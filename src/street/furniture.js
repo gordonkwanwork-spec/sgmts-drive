@@ -1,6 +1,7 @@
 import {panelParts,type2PostParts} from './sandbox/railing-details.js';
-import {cycleCanopyAt} from '../alignment.js';
+import {cycleCrossing} from '../alignment.js';
 import {parkLamp} from './park-lamp.js';
+import {isGreenBin} from '../green-bin.js';
 // Street furniture placed from public/street/furniture.json (edited in street.html). The game (environment.js) and the
 // editor share this builder. Every item's front is its local −Z (the arrow in the editor): lamp arms, sign faces,
 // signal lenses and pillar-box slots point that way. GLB models from public/street/models follow the same rule.
@@ -154,7 +155,7 @@ export function runPoints(run){const road=ROAD[run.road],a=road.toParam(Math.min
 
 // Builds every catalogue item into `batch` (instanced) and returns what the rest of the game needs: lamp heads for the
 // baked night light, railing fences for collision, bins, and traffic-signal groups (animated by experience.js).
-export function placeFurniture(data,{batch,kitParts,railAllowed=()=>true}){const m=furnitureMaterials(),lampPositions=[],fences=[],bins=[],signals=[],errors=[],clearings=[];
+export function placeFurniture(data,{batch,kitParts,railAllowed=()=>true}){const m=furnitureMaterials(),lampPositions=[],fences=[],bins=[],drivePosts=[],signals=[],errors=[],clearings=[];
  const {kit,railRun}=railingBuilder({batch,kitParts,fences});
  const at=(P,x,y,z)=>new T.Vector3(x,y,z).applyAxisAngle(UP,P.yaw).add(new T.Vector3(P.x,P.y,P.z));
  const box=(key,mat,P,x,y,z,w,h,d)=>batch(key,geo.box,mat,at(P,x,y,z),new T.Vector3(w,h,d),new T.Euler(0,P.yaw,0),chunkOf(P));
@@ -184,7 +185,7 @@ export function placeFurniture(data,{batch,kitParts,railAllowed=()=>true}){const
   lamp_connecting(P,it){const h=it.params?.height??10;box('furn-conn-pole',m.galvanised,P,0,h/2,0,.15,h,.15);box('furn-conn-arm',m.galvanised,P,0,h-.12,-.7,.09,.09,1.6);box('furn-conn-lamp',m.lamp,P,0,h,-1.4,1,.13,.55);light(P,0,h,-1.4,it,h);},
   // Leaf-arm smart pole (site photos): white column, green cap, bulge ring, CCTV collar, weather sensor and two leaf
   // arms with lanterns — the larger over the track (−Z), the smaller behind.
-  lamp_cycle(P,it){if(it.road==='cycleway'&&cycleCanopyAt(P.s))return;const h=it.params?.height??5,cap=h-.95,dome=h-1.75,sensor=dome-.75;
+  lamp_cycle(P,it){const h=it.params?.height??5,cap=h-.95,dome=h-1.75,sensor=dome-.75;
    piece('furn-cycle-column',geo.pole,m.poleWhite,P,0,cap/2,0,.1,cap,.1);piece('furn-cycle-cap',geo.pole,m.leafGreen,P,0,cap+.75,0,.105,1.5,.105);
    piece('furn-cycle-bulge',geo.lantern,m.poleWhite,P,0,1.7,0,.3,.2,.3);
    piece('furn-cycle-dome-hood',geo.pole,m.poleWhite,P,0,dome+.03,0,.3,.08,.3);piece('furn-cycle-dome',geo.lantern,m.smoked,P,0,dome-.04,0,.29,.15,.29);piece('furn-cycle-dome-lip',geo.pole,m.poleWhite,P,0,dome-.17,0,.2,.06,.2);
@@ -197,7 +198,8 @@ export function placeFurniture(data,{batch,kitParts,railAllowed=()=>true}){const
   operator_cabin(P,it){operatorCabin(ctx(P,it),P,it);},
   cabinet_controller(P){kit('cabinet_controller',new T.Vector3(P.x,P.y,P.z),P.yaw,null,chunkOf(P));},
   cabinet_td(P){kit('cabinet_td',new T.Vector3(P.x,P.y,P.z),P.yaw,null,chunkOf(P));},
-  litter_bin(P){kit('litter_bin',new T.Vector3(P.x,P.y,P.z),P.yaw,null,chunkOf(P));bins.push({x:P.x,y:P.y,z:P.z,s:P.s,side:P.lat>=0?1:-1});},
+  litter_bin(P,it){if(isGreenBin(it))return; // green 3DGS bin at A1/A2 crossings (green-bin.js), collider from its own mesh
+   kit('litter_bin',new T.Vector3(P.x,P.y,P.z),P.yaw,null,chunkOf(P));bins.push({x:P.x,y:P.y,z:P.z,s:P.s,side:P.lat>=0?1:-1});},
   pillar_box(P){piece('furn-pillar-box',geo.cyl,m.postGreen,P,0,.58,0,.25,1.16,.25);piece('furn-pillar-cap',geo.cyl,m.postGreen,P,0,1.17,0,.29,.12,.29);piece('furn-post-label',geo.plane,m.postLabel,P,0,.68,-.256,.28,.32,1,Math.PI);box('furn-letter-slot',m.iron,P,0,.95,-.255,.23,.045,.025);},
   manhole(P){box('furn-paving-repair',m.patch,P,0,.006,0,1.10,.016,1.35);box('furn-manhole-rim',m.galvanised,P,0,.018,0,.76,.022,1.03);box('furn-manhole-cover',m.iron,P,0,.032,0,.69,.018,.96);for(let i=-3;i<=3;i++)box('furn-manhole-tread',m.galvanised,P,i*.085,.044,0,.018,.008,.82);},
   wayfinding_sign(P){box('furn-wayfinding-post',m.galvanised,P,0,1.25,0,.06,2.5,.06);piece('furn-wayfinding-sign',geo.plane,m.signLabel,P,0,2.15,0,.8,.65,1,Math.PI);},
@@ -220,12 +222,15 @@ export function placeFurniture(data,{batch,kitParts,railAllowed=()=>true}){const
     signals.push({group:head,bulbs:[lenses.signal_ped_stop,{material:new T.MeshBasicMaterial()},lenses.signal_ped_go],axis:'pedestrian',crossing,junction:it.params.junction,id:it.id+'-pedestrian',sharedPole:true});
    }},
  };
- for(const it of data.items||[]){try{const P=it.at||pose(it);/* it.at: a world pose {x,y,z,yaw} (city junction signals) */if(isModel(it.type)){if(it.params?.light)light(P,0,it.params.light,0,it,it.params.light);continue;}const build=BUILD[it.type];if(!build)throw Error('unknown type '+it.type);build(P,it);}catch(e){errors.push(`${it.id}: ${e.message}`);}}
+ for(const it of data.items||[]){try{const P=it.at||pose(it);if(it.road==='cycleway'&&cycleCrossing(P.s))continue;/* it.at: a world pose {x,y,z,yaw} (city junction signals) */if(isModel(it.type)){if(it.params?.light)light(P,0,it.params.light,0,it,it.params.light);continue;}const build=BUILD[it.type];if(!build)throw Error('unknown type '+it.type);build(P,it);
+  if(it.type.startsWith('lamp_')||['wayfinding_sign','cycle_sign','pillar_box','cabinet_controller','cabinet_td'].includes(it.type))
+   drivePosts.push({x:P.x,y:P.y,z:P.z,radius:it.type.startsWith('cabinet_')?.45:.16});
+ }catch(e){errors.push(`${it.id}: ${e.message}`);}}
  for(const run of data.runs||[]){if(run.type!=='railing')continue;try{const P=runPoints(run);let segment=[];
   const flush=()=>{if(segment.length>1){const points=segment;railRun(points.map(p=>new T.Vector3(p.x,p.y,p.z)),i=>chunkOf(points[i]),run.ends||[true,true]);}segment=[];};
   for(let i=1;i<P.length;i++){if(railAllowed(run,P[i-1],P[i])){if(!segment.length)segment.push(P[i-1]);segment.push(P[i]);}else flush();}flush();}catch(e){errors.push(`${run.id}: ${e.message}`);}}
  if(errors.length)console.warn('Street furniture skipped:',errors);
- return {lampPositions,fences,bins,signals,errors,clearings};}
+ return {lampPositions,fences,bins,drivePosts,signals,errors,clearings};}
 
 // Paving pattern of the corridor footpath on one side at corridor distance s (null: the default chunk colours).
 // Later runs sit on top of earlier ones, so a new run over the seeded 240 m bands wins.
@@ -234,7 +239,7 @@ export function pavingBreaks(data){return (data.runs||[]).filter(r=>r.type==='pa
 
 // GLB street models (public/street/models): loaded once each, cloned per item. ponytail: plain clones; instance them if counts reach the hundreds.
 export async function loadFurnitureModels(data,{loader,url}){const group=new T.Group(),cache={};group.name='street-furniture-models';
- for(const it of data.items||[]){if(!isModel(it.type))continue;const src=it.type.slice(4);
+ for(const it of data.items||[]){if(!isModel(it.type)||it.road==='cycleway'&&cycleCrossing(pose(it).s))continue;const src=it.type.slice(4);
   try{cache[src]??=loader.loadAsync(url(src));const model=(await cache[src]).scene.clone(true),P=pose(it);model.position.set(P.x,P.y,P.z);model.rotation.y=P.yaw;model.scale.setScalar(it.params?.scale||1);model.userData.furnitureId=it.id;model.traverse(n=>{if(n.isMesh){n.castShadow=n.receiveShadow=true;}});group.add(model);}
   catch(e){console.warn('Street model failed to load:',src,e);}}
  return group;}

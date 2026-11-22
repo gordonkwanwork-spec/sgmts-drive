@@ -58,24 +58,42 @@ function advertSlots(name){const [z0,z1]=SALOON[name],cuts=[z0,DOOR_Z[0]-.62,DOO
 // Live displays: one canvas per vehicle for the ceiling next-stop signs, one for the door-header route maps.
 function display(w,h){const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const map=new T.CanvasTexture(canvas);map.colorSpace=T.SRGBColorSpace;map.anisotropy=4;return {canvas,map,material:new T.MeshBasicMaterial({map,toneMapped:false}),key:''};}
 
+// Static fit-out geometries built once per section type and shared across all 23 vehicles.
+const fitOutCache=new Map();
+const AD_GEO=new T.PlaneGeometry(...AD),ROUTE_GEO=new T.PlaneGeometry(.9,.112),FRAME_GEO=new T.BoxGeometry(.94,.15,.02),SIGN_BOX_GEO=new T.BoxGeometry(.78,.28,.12),SIGN_FACE_GEO=new T.PlaneGeometry(.68,.2);
+function sharedFitOutGeos(sectionName){
+ let cached=fitOutCache.get(sectionName);
+ if(!cached){
+  const parts=Object.fromEntries(Object.keys(mat).map(k=>[k,[]]));
+  fitOut(sectionName,parts);
+  cached=[];
+  for(const [k,list] of Object.entries(parts))if(list.length){
+   const merged=mergeGeometries(list.map(x=>x.index?x.toNonIndexed():x));
+   for(const g of list)g.dispose();
+   cached.push([k,merged]);
+  }
+  fitOutCache.set(sectionName,cached);
+ }
+ return cached;
+}
+
 export function furnishTram(tram,adverts,index=0){
  const screens={next:display(512,150),route:display(1024,128)};tram.screens=screens;
  tram.sections.forEach(section=>{
   const host=tram.interiors.find(it=>it.section===section&&/^passenger_interior_\d$/.test(it.node.name))?.node;if(!host)return;
   // The model's static screens and LED text are replaced by the live ceiling sign below.
   host.traverse(n=>{if(n.isMesh&&/_(led_orange|pids_screen)$/.test(n.name))n.visible=false;});
-  const parts=Object.fromEntries(Object.keys(mat).map(k=>[k,[]]));fitOut(section.name,parts);
   const g=new T.Group();g.name='Saloon fit-out';
-  for(const [k,list] of Object.entries(parts))if(list.length){const m=new T.Mesh(mergeGeometries(list.map(x=>x.index?x.toNonIndexed():x)),mat[k]);m.name='Fit-out '+k;g.add(m);}
+  for(const [k,geometry] of sharedFitOutGeos(section.name)){const m=new T.Mesh(geometry,mat[k]);m.name='Fit-out '+k;g.add(m);}
   // Cove adverts reuse the street/station artwork; neighbouring cards and sections differ.
-  advertSlots(section.name).forEach((z,i)=>{for(const side of [-1,1]){const ad=adverts[(index*5+i*2+(side>0?1:0)+section.name.length)%adverts.length],m=new T.Mesh(new T.PlaneGeometry(...AD),ad);
+  advertSlots(section.name).forEach((z,i)=>{for(const side of [-1,1]){const ad=adverts[(index*5+i*2+(side>0?1:0)+section.name.length)%adverts.length],m=new T.Mesh(AD_GEO,ad);
    m.position.set(side*1.06,2.755,z);m.rotation.set(0,-side*Math.PI/2,0);m.rotateX(COVE_TILT);m.name='Saloon advert';g.add(m);}});
   // Door headers: route map, angled with the cove.
-  for(const dz of DOOR_Z)for(const side of [-1,1]){const m=new T.Mesh(new T.PlaneGeometry(.9,.112),screens.route.material);m.position.set(side*1.045,2.82,dz);m.rotation.set(0,-side*Math.PI/2,0);m.rotateX(COVE_TILT);m.name='Door route display';g.add(m);
-   const frame=new T.Mesh(new T.BoxGeometry(.94,.15,.02),mat.dark);frame.position.copy(m.position);frame.quaternion.copy(m.quaternion);frame.translateZ(-.012);g.add(frame);}
+  for(const dz of DOOR_Z)for(const side of [-1,1]){const m=new T.Mesh(ROUTE_GEO,screens.route.material);m.position.set(side*1.045,2.82,dz);m.rotation.set(0,-side*Math.PI/2,0);m.rotateX(COVE_TILT);m.name='Door route display';g.add(m);
+   const frame=new T.Mesh(FRAME_GEO,mat.dark);frame.position.copy(m.position);frame.quaternion.copy(m.quaternion);frame.translateZ(-.012);g.add(frame);}
   // Ceiling next-stop sign at the model's LED sign position, readable from both ends of the saloon.
   const sign=new T.Group();sign.position.set(0,2.9,.2);sign.name='Next stop display';
-  sign.add(new T.Mesh(new T.BoxGeometry(.78,.28,.12),mat.dark));for(const s of [1,-1]){const f=new T.Mesh(new T.PlaneGeometry(.68,.2),screens.next.material);f.position.z=s*.062;if(s<0)f.rotation.y=Math.PI;sign.add(f);}
+  sign.add(new T.Mesh(SIGN_BOX_GEO,mat.dark));for(const s of [1,-1]){const f=new T.Mesh(SIGN_FACE_GEO,screens.next.material);f.position.z=s*.062;if(s<0)f.rotation.y=Math.PI;sign.add(f);}
   g.add(sign);host.add(g);});
 }
 

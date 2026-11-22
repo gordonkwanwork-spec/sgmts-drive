@@ -32,11 +32,28 @@ function overlap(a,b,pad){const d=[b.c[0]-a.c[0],b.c[1]-a.c[1]],va=[-a.u[1],a.u[
  for(const ax of [a.u,va,b.u,vb]){const ra=(a.hw+pad)*Math.abs(ax[0]*a.u[0]+ax[1]*a.u[1])+(a.hd+pad)*Math.abs(ax[0]*va[0]+ax[1]*va[1]),rb=b.hw*Math.abs(ax[0]*b.u[0]+ax[1]*b.u[1])+b.hd*Math.abs(ax[0]*vb[0]+ax[1]*vb[1]);
   if(Math.abs(d[0]*ax[0]+d[1]*ax[1])>ra+rb)return false;}return true;}
 
+// Bounds of a paving strip in plot coordinates. The strip runs from b0 to b1 away from the street.
+function pavingRect(c,u,v,hw,b0,b1){
+ const mid=(b0+b1)/2;
+ return {c:[c[0]+v[0]*mid,c[1]+v[1]*mid],u,hw,hd:(b1-b0)/2};
+}
+
+// Share the street-side edge between the placement check and the rendered forecourt.
+function forecourtEdge(o,side,c,u,v,w,d,g,along){
+ const [a0,a1]=along,n=Math.max(2,Math.ceil((a1-a0)/4)),h=o.P.carriageway/2+o.P.footpath,edge=[];
+ for(let i=0;i<=n;i++){
+  const a=Math.max(0,Math.min(o.F.at(-1).d,a0+(a1-a0)*i/n)),fr=frameAt(o.F,a);
+  const dx=fr.x+fr.lx*side*(h-.3)-c[0],dz=fr.z+fr.lz*side*(h-.3)-c[1];
+  edge.push({t:Math.max(-w/2-g,Math.min(w/2+g,dx*u[0]+dz*u[1])),b:Math.min(-d/2-.05,dx*v[0]+dz*v[1]),y:fr.y+streetLevel(o.r,a,side*h)-.02});
+ }
+ return edge;
+}
+
 // roads: junctions(network,ground).roads — {r,P,F}. lots: OZP lots [{id,zone,poly}]. clear(x,z,r): scenery clearance (corridor,
 // depot, railway, junction boxes). onStreet(x,z,r): any street surface within r. kept: polygons no plot may touch.
 // Returns plots [{id,type,group,zone,lot,row,road,side,c:[x,z],u:[x,z] (along the street),v:[x,z] (away from it),w,d,y (plinth
 // level),yaw,poly,pave:{…}}], local streets first so buildings face the quieter street where two compete.
-export function frontagePlots(roads,lots,{clear=()=>true,onStreet=()=>false,kept=[],reach=()=>true}={}){
+export function frontagePlots(roads,lots,{clear=()=>true,onStreet=()=>false,overlapsStreet=()=>false,kept=[],reach=()=>true}={}){
  const boxes=lots.map(l=>({l,x0:Math.min(...l.poly.map(p=>p[0])),x1:Math.max(...l.poly.map(p=>p[0])),z0:Math.min(...l.poly.map(p=>p[1])),z1:Math.max(...l.poly.map(p=>p[1]))}));
  const lotAt=(x,z)=>boxes.find(b=>x>=b.x0&&x<=b.x1&&z>=b.z0&&z<=b.z1&&pointInPolygon([x,z],b.l.poly))?.l??null;
  const keptBoxes=kept.map(poly=>({poly,x0:Math.min(...poly.map(p=>p[0])),x1:Math.max(...poly.map(p=>p[0])),z0:Math.min(...poly.map(p=>p[1])),z1:Math.max(...poly.map(p=>p[1]))}));
@@ -67,14 +84,19 @@ export function frontagePlots(roads,lots,{clear=()=>true,onStreet=()=>false,kept
      let near=Infinity;for(const a of [-.5,-.25,0,.25,.5]){const x=c[0]+u[0]*a*w-v[0]*dp/2,z=c[1]+u[1]*a*w-v[1]*dp/2;near=Math.min(near,nearestOn(F,x,z).dist);}
      const push=Math.max(0,h+setback-near);c[0]+=v[0]*push;c[1]+=v[1]*push;
      // same zone group across the whole plot (a plot never spills into a park, a kept lot or another use; unzoned road reserve is fine)
-     if(fits({c,u,hw:w/2,hd:dp/2},gap,l=>!l||zoneRule(l.zone)?.[1]===group))placed=place(o,side,1,type,rule,c,u,v,f.y+streetLevel(r,d+w/2,side*h),null);}
+     const plinth=pavingRect(c,u,v,(w+gap)/2,-dp/2,dp/2+(gap?SIDE:0));
+     if(overlapsStreet(plinth)||!fits({c,u,hw:w/2,hd:dp/2},gap,l=>!l||zoneRule(l.zone)?.[1]===group))continue;
+     const edge=forecourtEdge(o,side,c,u,v,w,dp,gap/2,[d-gap/2,d+w+gap/2]);
+     if(overlapsStreet(pavingRect(c,u,v,(w+gap)/2,Math.min(...edge.map(q=>q.b)),-dp/2),r.id))continue;
+     placed=place(o,side,1,type,rule,c,u,v,f.y+streetLevel(r,d+w/2,side*h),null);}
     if(placed){placed.along=[d-gap/2,d+placed.w+gap/2];d+=placed.w+gap;}else d+=.5;}}}// close up: a street wall, not gaps
  // Second row: behind a frontage plot, inside the same OZP lot, across a paved court.
  for(const p of [...plots]){const rule=zoneRule(p.zone);if(!rule?.[5]||!p.lot)continue;const types=rule[2],k0=hash(p.id+':2');
   for(let t=0;t<types.length;t++){const type=types[(k0+t)%types.length],[w,dp]=TYPES[type].span,off=p.d/2+COURT+dp/2,c=[p.c[0]+p.v[0]*off,p.c[1]+p.v[1]*off];
    // its court (paved, as wide as the frontage plot) must not touch any other plot either
    const court={c:[p.c[0]+p.v[0]*(p.d/2+COURT/2),p.c[1]+p.v[1]*(p.d/2+COURT/2)],u:p.u,hw:Math.min(w,p.w)/2,hd:COURT/2};
-   if(lotAt(...c)?.id!==p.lot||!fits({c,u:p.u,hw:w/2,hd:dp/2},rule[3],l=>!l||l.id===p.lot)||plots.some(q=>q!==p&&overlap(court,q.rect,-.05)))continue;const o=roads.find(o=>o.r.id===p.road);place(o,p.side,2,type,rule,c,p.u,p.v,p.y,p.id);break;}}
+   const plinth=pavingRect(c,p.u,p.v,(w+rule[3])/2,-dp/2,dp/2+(rule[3]?SIDE:0));
+   if(lotAt(...c)?.id!==p.lot||overlapsStreet(plinth)||overlapsStreet(court)||!fits({c,u:p.u,hw:w/2,hd:dp/2},rule[3],l=>!l||l.id===p.lot)||plots.some(q=>q!==p&&overlap(court,q.rect,-.05)))continue;const o=roads.find(o=>o.r.id===p.road);place(o,p.side,2,type,rule,c,p.u,p.v,p.y,p.id);break;}}
  // Edge roles for the building kit (as the sandbox's lots): the street side is the front; a side touching a neighbour is a
  // party wall (blank, no inset); a side facing another street (corner plot) is a second front; anything else is rear.
  const inRect=(q,x,z)=>{const dx=x-q.c[0],dz=z-q.c[1];return Math.abs(dx*q.u[0]+dz*q.u[1])<q.w/2&&Math.abs(dx*q.v[0]+dz*q.v[1])<q.d/2;};
@@ -96,9 +118,9 @@ export function plotPaving(plots,roads){const pos=[],idx=[],byRoad=new Map(roads
   if(f){const fr=plots.find(q=>q.id===p.front),hw=Math.min(w,fr?.w??w)/2,back=fr?Math.max(0,(p.c[0]-fr.c[0])*v[0]+(p.c[1]-fr.c[1])*v[1]-d/2-fr.d/2-(fr.gap?SIDE:0)):f;
    if(back>.05)quad(P(-hw,z0-back),P(-hw,z0),P(hw,z0),P(hw,z0-back));}
   quad(P(x0,z1),P(x0,z1,-2),P(x1,z1,-2),P(x1,z1));quad(P(x0,z0),P(x0,z0,-2),P(x0,z1,-2),P(x0,z1));quad(P(x1,z1),P(x1,z1,-2),P(x1,z0,-2),P(x1,z0));
-  if(p.row!==1)continue;const o=byRoad.get(p.road),h=o.P.carriageway/2+o.P.footpath,[a0,a1]=p.along,n=Math.max(2,Math.ceil((a1-a0)/4));let prev=null;
-  for(let i=0;i<=n;i++){const a=Math.max(0,Math.min(o.F.at(-1).d,a0+(a1-a0)*i/n)),fr=frameAt(o.F,a),bx=fr.x+fr.lx*p.side*(h-.3),bz=fr.z+fr.lz*p.side*(h-.3),by=fr.y+streetLevel(o.r,a,p.side*h)-.02;
-   const t=Math.max(x0,Math.min(x1,(bx-c[0])*u[0]+(bz-c[1])*u[1])),vb=Math.min(z0-.05,(bx-c[0])*v[0]+(bz-c[1])*v[1]),f0=P(t,vb),q=P(t,z0),cur=[[f0[0],by,f0[2]],q];// never folds back over the plinth on a tight bend
+  if(p.row!==1)continue;let prev=null;
+  for(const e of forecourtEdge(byRoad.get(p.road),p.side,c,u,v,w,d,g,p.along)){
+   const f0=P(e.t,e.b),cur=[[f0[0],e.y,f0[2]],P(e.t,z0)];
    if(prev)p.side*(u[0]*v[1]-u[1]*v[0])>0?quad(prev[0],prev[1],cur[1],cur[0]):quad(prev[0],cur[0],cur[1],prev[1]);prev=cur;}}
  // every top face must face up whatever the handedness of (u, v): flip triangles whose normal points down
  for(let i=0;i<idx.length;i+=3){const [a,b,c]=[idx[i],idx[i+1],idx[i+2]].map(k=>[pos[k*3],pos[k*3+1],pos[k*3+2]]),ny=(b[2]-a[2])*(c[0]-a[0])-(b[0]-a[0])*(c[2]-a[2]);

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Crop the lion statue + plinth out of the KIRI 3DGS capture and bake it into game space.
-Usage: build-a1-lion.py <capture.ply> <out.ply> <out-hull.json>
+Usage: build-a1-lion.py <capture.ply> <out.gsplat> <out-hull.json>
 Output: Y-up, +Z = lion front, plinth base centre at the origin, metres (LION_HEIGHT tall), SH0 colour only.
 Capture frame is COLMAP-like (y down, lion faces +z), so baking is a 180 deg turn about Z: (x,y,z)->(-x,-y,z)."""
 import sys,json,numpy as np
-MAX_SPLATS=100000  # file size / sort cost cap (full crop is ~183k)
+sys.path.insert(0,__import__('os').path.dirname(__file__));from gsplat_pack import pack
 LION_HEIGHT=1.8   # assumption: capture is unitless; plinth+lion stand 1.8 m tall (plinth ~0.9 x 1.0 m)
 CROP=dict(x=(-6.95,-1.95),z=(-8.3,-2.2),y=(-3.5,8.72))  # capture units: plinth footprint, plinth base up to lion top; excludes the red column at z~-12
 src,out,hull=sys.argv[1:4]
@@ -19,8 +19,7 @@ for ax,(lo,hi) in zip('xyz',(CROP['x'],CROP['y'],CROP['z'])):k&=(P[:,'xyz'.index
 a=a[k];P=a[:,:3]
 v=np.floor(P/.3).astype(int);_,inv,cnt=np.unique(v,axis=0,return_inverse=True,return_counts=True)
 a=a[cnt[inv.ravel()]>=6]   # drop floaters: need >=6 splats in the 0.3-unit cell
-imp=(1/(1+np.exp(-a[:,ix['opacity']])))*np.exp(a[:,[ix['scale_0'],ix['scale_1'],ix['scale_2']]]).mean(1)
-a=a[np.sort(np.argsort(-imp)[:MAX_SPLATS])];P=a[:,:3]   # keep the most visible MAX_SPLATS (opacity x size)
+# no splat cap: the small splats carry the detail; the packed file is most-important-first and the renderer draws a leading fraction at distance
 body=P[P[:,1]<8.0];cx,cz=(body[:,0].min()+body[:,0].max())/2,(body[:,2].min()+body[:,2].max())/2;y0=CROP['y'][1]
 top=P[:,1].min();s=LION_HEIGHT/(y0-top)
 X=np.stack([-(P[:,0]-cx)*s,-(P[:,1]-y0)*s,(P[:,2]-cz)*s],1)
@@ -31,10 +30,8 @@ cols=['x','y','z','f_dc_0','f_dc_1','f_dc_2','opacity','scale_0','scale_1','scal
 # grade: the capture's shaded front reads blue-purple in game light - pull saturation to 70 %, lift 15 %, warm slightly
 C0=0.28209479;rgb=np.clip(.5+C0*a[:,[ix['f_dc_0'],ix['f_dc_1'],ix['f_dc_2']]],0,1);lum=rgb@[.2126,.7152,.0722]
 rgb=np.clip((lum[:,None]+.7*(rgb-lum[:,None]))*np.array([1.19,1.15,1.07]),0,1);dc=(rgb-.5)/C0
-D=np.concatenate([X,dc,a[:,[ix['opacity']]],sc,q2],1).astype('<f4')
-hd='ply\nformat binary_little_endian 1.0\nelement vertex %d\n'%len(D)+''.join('property float %s\n'%c for c in cols)+'end_header\n'
-open(out,'wb').write(hd.encode()+D.tobytes())
-print('splats',len(D),'scale',round(float(s),4),'bounds',X.min(0).round(2),X.max(0).round(2),'MB',round(len(D)*56/1e6,1))
+nbytes=pack(out,X,dc,a[:,ix['opacity']],sc,q2)
+print('splats',len(X),'scale',round(float(s),4),'bounds',X.min(0).round(2),X.max(0).round(2),'MB',round(nbytes/1e6,1))
 # shadow/collision proxy: extreme points in 96 directions for the plinth and for the lion (three builds ConvexGeometry from them)
 PLINTH_TOP=0.66
 d=np.array([[np.cos(2.39996*k)*np.sqrt(1-z*z),z,np.sin(2.39996*k)*np.sqrt(1-z*z)] for k,z in enumerate(np.linspace(-1,1,96))])

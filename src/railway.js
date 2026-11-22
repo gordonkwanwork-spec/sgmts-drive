@@ -52,7 +52,7 @@ export function createRailway(scene,model){
   for(const cell of cells.values()){const m=new T.Mesh(mergeGeometries(cell),mats[kind]);m.name='Railway '+kind;m.castShadow=kind!=='led'&&kind!=='wire';m.receiveShadow=true;root.add(m);for(const g of cell)g.dispose();}}
  // Fixed low-cost illumination makes the parapet visible along the entire line.
  const strips=[];for(let u=1;u<RAILWAY.length;u+=2)for(const side of [-1,1]){const r=RAILWAY.at(u),p=railPosition(u,side*5.358);p.y=r.y+.50;strips.push(new T.PlaneGeometry(2.02,.67).applyMatrix4(new T.Matrix4().makeRotationY(r.heading+side*Math.PI/2).setPosition(p)));}
- const glow=new T.Mesh(mergeGeometries(strips),new T.MeshBasicMaterial({color:0xb9a070,transparent:true,opacity:.24,depthWrite:false,blending:T.AdditiveBlending,side:T.DoubleSide}));glow.name='Viaduct parapet illumination';glow.visible=false;root.add(glow);strips.forEach(g=>g.dispose());
+ const glow=new T.Mesh(mergeGeometries(strips),new T.MeshBasicMaterial({color:0xb9a070,transparent:true,opacity:.42,depthWrite:false,blending:T.AdditiveBlending,side:T.DoubleSide}));glow.name='Viaduct parapet illumination';glow.visible=false;root.add(glow);strips.forEach(g=>g.dispose());
  // ponytail: four nearby real light sources; fixed emissive fixtures cover the distant viaduct.
  const viaductLights=Array.from({length:4},()=>{const l=new T.SpotLight(0xffdfad,0,36,Math.PI*.42,.8,1.4);l.name='Viaduct downlight';root.add(l,l.target);return l;});
  const trainMaterials=new Map(),trains=[];
@@ -75,8 +75,8 @@ export function createRailway(scene,model){
   const beams=[-1,1].map(side=>{const light=new T.SpotLight(0xd8e9ff,0,95,.24,.55,1.4);light.name='Tuen Ma headlight beam';cars[0].root.add(light,light.target);light.position.set(side*.9,1.8,-12.2);light.target.position.set(side*1.3,-.1,-85);return light;});
   trains.push({group,cars,direction,beams,head:0,emitters:[]});
  }
- let night=false;
- function setNight(on){night=on;glow.visible=on;mats.led.emissiveIntensity=on?3:0;for(const [name,m] of trainMaterials){const cabin=['tm_cabin_light','tm_map'].includes(name),light=['tm_headlight','tm_taillight','tm_amber'].includes(name);if(cabin||light)m.emissiveIntensity=on?(light?4:2.4):.4;else if(name==='tm_glass'){m.emissive.set(0xbad2c2);m.emissiveIntensity=on?.45:0;m.opacity=on?.42:.30;}else if(['tm_ivory','tm_seat','tm_yellow','tm_floor'].includes(name)){m.emissive.copy(m.color);m.emissiveIntensity=on?.65:0;}}for(const t of trains)for(const l of t.beams)l.intensity=on?140:0;for(const l of viaductLights)l.intensity=on?150:0;}
+ let night=false,lampTick=0;
+ function setNight(on){night=on;lampTick=0;glow.visible=on;mats.led.emissiveIntensity=on?3:0;mats.concrete.emissive.setHex(on?0xa8bed8:0);mats.concrete.emissiveIntensity=on?.16:0;mats.steel.emissive.setHex(on?0x94aac4:0);mats.steel.emissiveIntensity=on?.18:0;for(const [name,m] of trainMaterials){const cabin=['tm_cabin_light','tm_map'].includes(name),light=['tm_headlight','tm_taillight','tm_amber'].includes(name);if(cabin||light)m.emissiveIntensity=on?(light?4:2.4):.4;else if(name==='tm_glass'){m.emissive.set(0xbad2c2);m.emissiveIntensity=on?.45:0;m.opacity=on?.42:.30;}else if(['tm_ivory','tm_seat','tm_yellow','tm_floor'].includes(name)){m.emissive.copy(m.color);m.emissiveIntensity=on?.65:0;}}for(const t of trains)for(const l of t.beams)l.intensity=on?140:0;for(const l of viaductLights)l.intensity=on?150:0;}
  function update(time,camera){
   for(const t of trains){t.head=trainHead(time,t.direction);t.emitters.length=0;
    for(const c of t.cars){const p=carPose(t.head,c.index,t.direction),flip=c.index===7?-1:1,orientation=t.direction*flip;c.root.position.copy(p.position);c.root.rotation.y=p.heading+(flip===-1?Math.PI:0);c.root.visible=p.u>-220&&p.u<RAILWAY.length+220;
@@ -85,7 +85,7 @@ export function createRailway(scene,model){
     if(p.u>=0&&p.u<=RAILWAY.length)t.emitters.push(p.position);
    }
   }
-  if(camera){const sorted=lamps.map(l=>({...l,d:l.position.distanceToSquared(camera.position)})).sort((a,b)=>a.d-b.d),nearest=[...sorted.filter(l=>l.deck).slice(0,2),...sorted.filter(l=>!l.deck).slice(0,2)];viaductLights.forEach((l,i)=>{l.position.copy(nearest[i].position);l.target.position.copy(nearest[i].target);l.intensity=night&&nearest[i].d<250**2?(nearest[i].deck?220:150):0;});}
+  if(camera&&night&&(lampTick++%6===0)){const sorted=lamps.map(l=>({...l,d:l.position.distanceToSquared(camera.position)})).sort((a,b)=>a.d-b.d),nearest=[...sorted.filter(l=>l.deck).slice(0,2),...sorted.filter(l=>!l.deck).slice(0,2)];viaductLights.forEach((l,i)=>{l.position.copy(nearest[i].position);l.target.position.copy(nearest[i].target);l.intensity=night&&nearest[i].d<250**2?(nearest[i].deck?220:150):0;});}
  }
  update(0);return {root,trains,setNight,update,lamps,viaductLights,trainMaterials,alignment:RAILWAY};
 }

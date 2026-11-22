@@ -38,13 +38,13 @@ export function createLoadingScreen(host,stations,logoBase){
   }
  }
  function tick(now){const dt=last===null?0:Math.min((now-last)/1000,.1);last=now;
-  if(!document.hidden){time+=dt;position=reduced.matches?target:position+(target-position)*Math.min(1,dt*6);draw();}
+  if(!document.hidden&&!host.classList.contains('hidden')){time+=dt;position=reduced.matches?target:position+(target-position)*Math.min(1,dt*6);draw();}
   if(!stopped)frame=requestAnimationFrame(tick);
  }
  function update(completed,detail,stationCount=0){
   if(stopped)return;
   const previousCount=count;count=Math.max(count,Math.min(stations.length,stationCount));target=Math.max(0,(count-1)/(stations.length-1));
-  const percent=Math.min(99,Math.round(completed/total*100)),station=stations[Math.min(count,stations.length-1)];
+  const percent=Math.min(99,completed===0?0:Math.round(50+completed/total*50)),station=stations[Math.min(count,stations.length-1)];
   $('.pct').textContent=percent;$('.percent').setAttribute('aria-valuenow',percent);
   const status=$('.bottom .eyebrow,.ticket-status');status.textContent=detail;status.setAttribute('role','status');
   $$('.station-name').forEach(el=>el.textContent=station.name);$$('.station-zh').forEach(el=>el.textContent=station.zh);
@@ -56,9 +56,23 @@ export function createLoadingScreen(host,stations,logoBase){
   if(reduced.matches){position=target;draw();}
  }
  function stop(){stopped=true;cancelAnimationFrame(frame);}
- function setTheme(theme){host.dataset.theme=theme;$('.brand-logo').src=logoBase+theme+'.png';}
+ function setTheme(theme){host.dataset.theme=theme;$('.brand-logo').src=logoBase+theme+'.webp';}
  update(0,'Loading the corridor');setTheme(document.body.dataset.uiTheme||'light');draw();frame=requestAnimationFrame(tick);
  return {setTheme,update,
+  download(finished,total){
+   if(stopped)return;
+   const bar=$('.percent'),pct=Math.max(Number(bar.getAttribute('aria-valuenow')),Math.round(50*finished/total));
+   bar.setAttribute('aria-valuenow',pct);$('.pct').textContent=pct;
+   $('.bottom .eyebrow,.ticket-status').textContent=`Loading route assets · ${finished}/${total}`;
+  },
+  depart(){
+   host.setAttribute('aria-busy','true');
+   $('h1').textContent='Preparing your journey.';
+   $('.bottom .eyebrow,.ticket-status').textContent='Starting journey';
+   $('.bottom .station-name').textContent='Preparing the first view';
+   $('.bottom .station-zh').textContent='正在準備行程';
+   $('.percent').style.display='none';
+  },
   finish(){stop();$('.pct').textContent='100';$('.percent').setAttribute('aria-valuenow','100');host.setAttribute('aria-busy','false');},
   fail(message){stop();host.setAttribute('aria-busy','false');screen.classList.add('failed');$('h1').textContent='Unable to load the route.';const status=$('.bottom .eyebrow,.ticket-status');status.textContent='Loading stopped';status.setAttribute('role','alert');$('.bottom .station-name').textContent=message||'Please try again.';$('.bottom .station-zh').textContent='';const retry=document.createElement('button');retry.className='retry';retry.textContent='Try again';retry.onclick=()=>location.reload();$('.bottom').append(retry);}
  };

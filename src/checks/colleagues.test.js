@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {Box3,Vector3,Group,Object3D} from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import {COLLEAGUES} from '../colleagues.js';
+import {COLLEAGUES,cyclistFile} from '../colleagues.js';
 import {tripoPlayer,posePedestrian,poseCyclist,rig} from '../street-models.js';
 const loader=new GLTFLoader().register(()=>({name:'no-textures',loadTexture:()=>Promise.resolve(null)}));
-assert.equal(COLLEAGUES.length,12);
+assert.equal(COLLEAGUES.length,8);
+assert(!COLLEAGUES.some(c=>/^(07|08|09|10)-/.test(c.file)));
 for(const entry of COLLEAGUES){
  assert.equal(entry.baked,true,entry.name+' must use Tripo clips');
  const b=readFileSync(new URL('../../public/assets/characters/tripo/colleagues/'+entry.file,import.meta.url));
@@ -21,7 +22,7 @@ for(const entry of COLLEAGUES){
   if(entry.baked&&name)assert.equal(g.userData.tripoAnimation.current,g.userData.tripoAnimation.actions[name]);
   if(name==='sit')assert(Math.abs(r.bones.hips.bone.getWorldPosition(new Vector3()).y-.55)<.08,entry.name+' sits on bench');
  }
- if(entry.name==='Joseph FAN'){
+ if(entry.file===cyclistFile){
   const bike=new Group();other.name='seated_rider';bike.add(other);
   for(const side of [-1,1])for(const part of ['crank','pedal']){const o=new Object3D();o.name=part+'_'+side;bike.add(o);}
   const riderRig=rig(other),c={group:bike,wheels:[],v:3};

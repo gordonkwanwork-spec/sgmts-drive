@@ -1,14 +1,20 @@
+import {pedestrianLiftAt} from './pedestrian-footbridges.js';
+import {liftAt,shelterBridgeRain} from './a2-footbridge.js';
+import {worldCoordinates,pavingY,rail as a2Rail,benches as a2Benches} from './a2-site.js';
 import {animateRoadWheels} from './vehicle-motion.js';
 import {stationBenchSeats,nearestStation,uniqueStationPeople} from './station-people.js';
-import {COLLEAGUES} from './colleagues.js';
-import {TRIPO_PEOPLE,TRIPO_VEHICLES,TRIPO_DOGS,TRIPO_CATS,TRIPO_RATS,TRIPO_PETS,loadTripoVehicles} from './tripo-assets.js';
-import {loadTripoPets,clonePet,posePet,createLeash,updateDogFollower,createCats} from './pets.js';
+import {COLLEAGUES,cyclistFile} from './colleagues.js';
+import packedModels from 'virtual:startup-model-urls';
+import {MeshoptDecoder} from 'meshoptimizer/meshopt_decoder.module.js';
+import {loadStartupModels,streamSceneDetails} from './startup-models.js';
+import {TRIPO_PEOPLE,TRIPO_VEHICLES,TRIPO_DOGS,TRIPO_CATS,TRIPO_RATS,TRIPO_PETS,TRIPO_VEHICLE_FILES,loadTripoVehicles} from './tripo-assets.js';
+import {petModel,clonePet,posePet,createLeash,updateDogFollower,createCats} from './pets.js';
 import {FREE_SPAWNS,freeSpawn} from './free-spawns.js';
 import {createLoadingScreen} from './loading-screen.js';
 import {createControlRoom} from './control-room.js';
 import {aspect} from './control-system.js';
 import {loadTramAdverts,tramCampaign,applyTramAdvert} from './tram-adverts.js';
-import {addStationAdverts,addBuildingAdverts,setBillboardLighting} from './station-adverts.js';
+import {addStationAdverts,addBuildingAdverts,setBillboardLighting,loadAdvertTexture} from './station-adverts.js';
 import {createRailway} from './railway.js';
 import {createFullMap} from './full-map.js';
 import {createGovernor} from './adaptive-resolution.js';
@@ -18,14 +24,19 @@ import {autoFullscreen,toggleFullscreen} from './fullscreen.js';
 import {characterLighting,contactShadow,poseCyclist,posePedestrian,tripoPlayer} from './street-models.js';
 import {journeyTerminus,nextStationIndex,fleetPlan,parkingScore,stationStopTarget,NOSE,announcementText} from './service.js';
 import {terminalCurve,depotCurve,depotExitCurve} from './routes.js';
-import {sideCrossing,crossingGeometry} from './alignment.js';
+import {junctionPavement,sideCrossing,crossingGeometry} from './alignment.js';
 import {crossingRoutes} from './city/traffic-routes.js';
 import {cityGraph,cityFootways} from './city/life-headless.js';
-import {createTraffic,createPeople,stageAt} from './city/life.js';
-import {stepCar} from './city/drive.js';
+import {createTraffic,createPeople,midblockStage,stageAt} from './city/life.js';
+import {stepCar,carFits,recoveryLane,updateRide} from './city/drive.js';
+import {carReflections} from './city/car-reflections.js';
+import {streetObstacles} from './city/car-obstacles.js';
+import {DRIVE_FLEET,vehicleOptions} from './city/drive-fleet.js';
+import {playerModel,trafficLights} from './city/car-models.js';
 import {zoneRule,plotPaving,setLotSampler} from './city/blocks.js';
+import {installDirectionSigns} from './city/sign-placement.js';
 import {cityPlots} from './city/plots-headless.js';
-import {renderModernBuildings} from './city/kit/hk-modern.js';
+import {loadModernKit,renderModernBuildings} from './city/kit/hk-modern.js';
 const kitLot=l=>l.model?.type==='massing'&&!!zoneRule(l.zone);// built from street frontage plots (src/city/blocks.js), not by filling the lot
 import * as T from 'three';
 import {TessellateModifier} from 'three/addons/modifiers/TessellateModifier.js';
@@ -34,11 +45,17 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {clone as cloneSkinned} from 'three/addons/utils/SkeletonUtils.js';
 import {createAtmosphere,ATMOS} from './atmosphere.js';
 import {Sky} from 'three/addons/objects/Sky.js';
-import {LENGTH,STOPS,sample,fromChainage,toChainage,LOOP,roadSection,project,projectFrame,END_STOP,CROSSINGS,cycleOffset,cycleHeight,DEPOT,laneOffset,curveRadius,returnOffset,CROSSOVER_START,cycleBridgeHeight,CYCLE_BRIDGES,cycleSample,footpathHeight,PLATFORM_RISE} from './alignment.js';
+import {LENGTH,STOPS,sample,fromChainage,toChainage,LOOP,roadSection,project,projectFrame,END_STOP,CROSSINGS,cycleOffset,cycleHeight,DEPOT,laneOffset,curveRadius,returnOffset,CROSSOVER_START,cycleBridgeHeight,cyclingSection,rideablePosition,CYCLE_BRIDGES,cycleSample,footpathHeight,PLATFORM_RISE,profileHeight,DATUM} from './alignment.js';
+import {setSplatsVisibleForFeed} from './splat-lite.js';
 import {addA1Lion} from './a1-lion.js';
+import {addA1RoundaboutSplats} from './a1-roundabout-splats.js';
+import {addA1RoundaboutVegetation} from './splat-vegetation.js';
+import {addGreenBins} from './green-bin.js';
 import {buildEnvironment,JUNCTIONS,UNDERPASSES,lampFade,sceneryClear,terrainLevel,renderedGround,stationAccess,setSceneryScale} from './environment.js';
 import {buildLots,occupiedBy,nightMaterials as lotNightMaterials} from './lots/massing.js';
-import {networkMask,surfaceSampler,frames,presetOf} from './street/network.js';
+import {streetHeight,networkMask,surfaceSampler,frames,presetOf} from './street/network.js';
+import {RADIO_STATIONS, stationById} from './music-catalog.js';
+import {createCarRadio} from './city/car-radio.js';
 import {createTownHud} from './town-hud.js';
 import {cityDiagnostics,cityOverlay} from './city-plan.js';
 import {createGraphicsPanel} from './graphics-panel.js';
@@ -75,16 +92,24 @@ document.body.innerHTML=`<svg aria-hidden="true" width="0" height="0" style="pos
 <div id="identity"><span class="brand-dot"></span><strong>SGMTS <span>DRIVE</span></strong><small>洪水橋 · 廈村</small></div>
 <button id="clean-view" aria-label="Hide interface" title="Hide interface" aria-pressed="false"><b>◐</b><small>Hide</small></button><div id="top-actions"><label class="operation-control">Headway <select id="headway" aria-label="SGMTS departure headway"><option value="300" selected>5 min · 6 running</option><option value="210">3.5 min · 17 running · pairs</option></select></label><button id="night">Scene: Night</button><button id="sound">Sound on</button><button id="camera">C · Camera</button><button id="pause">Ⅱ Pause</button></div>
 <section id="menu" class="sheet hidden" data-stage="title"><div id="title-screen" class="home"><div class="hm-bar hm-top"><span class="hm-legal">本作為虛構模擬 · 車輛與營運資料僅供遊戲<i></i>Fictional simulation <i></i>鍵盤 · 觸控 皆可遊玩</span><div class="hm-tools"><button type="button" class="hm-tool" id="hm-music">${HOME_ICON.music}<span>音樂 Music</span></button><button type="button" class="hm-tool" id="hm-fullscreen">${HOME_ICON.expand}<span>全螢幕 Full screen</span></button></div></div>
-<div class="hm-left"><img class="hm-logo" src="${logoBase}dark.png" alt="SGMTS Drive · Hung Shui Kiu · Ha Tsuen"><nav class="hm-menu" aria-label="Main menu"><button type="button" class="mbtn focus" data-go="begin">${HOME_ICON.play}<span class="mbtn-label"><b>開始行程</b><small>START JOURNEY</small></span></button><button type="button" class="mbtn" data-go="settings">${HOME_ICON.gear}<span class="mbtn-label"><b>設定</b><small>SETTINGS</small></span></button><button type="button" class="mbtn" data-go="controls">${HOME_ICON.pad}<span class="mbtn-label"><b>操作說明</b><small>CONTROLS</small></span></button></nav></div>
+<div class="hm-left"><img class="hm-logo" src="${logoBase}dark.webp" alt="SGMTS Drive · Hung Shui Kiu · Ha Tsuen"><nav class="hm-menu" aria-label="Main menu"><button type="button" class="mbtn focus" data-go="begin">${HOME_ICON.play}<span class="mbtn-label"><b>開始行程</b><small>START JOURNEY</small></span></button><button type="button" class="mbtn" data-go="settings">${HOME_ICON.gear}<span class="mbtn-label"><b>設定</b><small>SETTINGS</small></span></button><button type="button" class="mbtn" data-go="controls">${HOME_ICON.pad}<span class="mbtn-label"><b>操作說明</b><small>CONTROLS</small></span></button></nav></div>
 <div class="hm-bar hm-bot"><span class="hm-tag">小提示 TIP</span><span class="hm-tip" id="hm-tip"></span><div class="hm-loc"><i></i><b>泥圍 <span>·</span> Nai Wai</b><small>HUNG SHUI KIU · NEW TERRITORIES</small></div></div></div>
-<div id="choose-screen"><div class="emblem emblem-small"><img class="brand-logo" src="${logoBase}light.png" alt=""></div><div class="panel"><h2>Time of day <small>時段</small></h2><div class="option-row" data-for="condition"><button type="button" data-value="morning" data-hotkey="1"><i>☀</i><b>Morning</b><small>早晨班次</small></button><button type="button" data-value="sunset" data-hotkey="2"><i>◐</i><b>Golden hour</b><small>黃昏班次</small></button><button type="button" data-value="rain" data-hotkey="3"><i>☂</i><b>Rainy rush hour</b><small>雨天繁忙時段</small></button><button type="button" data-value="night" data-hotkey="4"><i>☾</i><b>Night</b><small>夜間班次</small></button></div><h2>Play type <small>模式</small></h2><div class="option-row two" data-for="mode"><button type="button" data-value="service" data-hotkey="S"><i>▶</i><b>Full service</b><small>七站服務</small></button><button type="button" data-value="free" data-hotkey="F"><i>✦</i><b>Free roam</b><small>自由探索</small></button><button type="button" data-value="passenger" data-hotkey="P"><i>◉</i><b>Passenger</b><small>乘客模式</small></button><button type="button" data-value="town" data-hotkey="T"><i>⛟</i><b>Drive around town</b><small>市區駕駛</small></button></div><section id="spawn-picker" hidden><label for="spawn-location">Spawn location <small>出發地點</small></label><select id="spawn-location">${FREE_SPAWNS.map(p=>`<option value="${p.id}">${p.name} · ${p.zh}</option>`).join('')}</select></section><fieldset class="music-picker"><legend>Music <small>音樂</small></legend><label for="menu-track">Menu music <small>選單音樂</small></label><select id="menu-track"></select><label for="game-track">Gameplay music <small>遊戲音樂</small></label><select id="game-track"></select><small>Automatic follows the scene. Your choices are saved.</small><output id="music-playing" aria-live="polite"></output></fieldset><div class="launch"><button id="menu-music" type="button">♫ Play menu music</button><button id="begin" class="primary">Begin <span>開始駕駛 ↗</span></button></div><select id="condition" hidden><option value="morning">Morning</option><option value="sunset">Golden hour</option><option value="rain">Rainy rush hour</option><option value="night">Night</option></select><select id="mode" hidden><option value="service">Full service</option><option value="free">Free roam</option><option value="passenger">Passenger</option><option value="town">Drive around town</option></select></div></div></section>
+<div id="choose-screen"><div class="emblem emblem-small"><img class="brand-logo" src="${logoBase}light.webp" alt=""></div><div class="panel"><h2>Time of day <small>時段</small></h2><div class="option-row" data-for="condition"><button type="button" data-value="morning" data-hotkey="1"><i>☀</i><b>Morning</b><small>早晨班次</small></button><button type="button" data-value="sunset" data-hotkey="2"><i>◐</i><b>Golden hour</b><small>黃昏班次</small></button><button type="button" data-value="rain" data-hotkey="3"><i>☂</i><b>Rainy rush hour</b><small>雨天繁忙時段</small></button><button type="button" data-value="night" data-hotkey="4"><i>☾</i><b>Night</b><small>夜間班次</small></button></div><h2>Play type <small>模式</small></h2><div class="option-row two" data-for="mode"><button type="button" data-value="service" data-hotkey="S"><i>▶</i><b>Full service</b><small>七站服務</small></button><button type="button" data-value="free" data-hotkey="F"><i>✦</i><b>Free roam</b><small>自由探索</small></button><button type="button" data-value="passenger" data-hotkey="P"><i>◉</i><b>Passenger</b><small>乘客模式</small></button><button type="button" data-value="town" data-hotkey="T"><i>⛟</i><b>Drive around town</b><small>市區駕駛</small></button></div><section id="vehicle-picker" hidden><label for="start-vehicle">Vehicle <small>車輛</small></label><select id="start-vehicle">${vehicleOptions}</select></section><section id="spawn-picker" hidden><label for="spawn-location">Spawn location <small>出發地點</small></label><select id="spawn-location">${FREE_SPAWNS.map(p=>`<option value="${p.id}">${p.name} · ${p.zh}</option>`).join('')}</select></section><fieldset class="music-picker"><legend>Music <small>音樂</small></legend><label for="menu-track">Menu music <small>選單音樂</small></label><select id="menu-track"></select><label for="game-track">Gameplay music <small>遊戲音樂</small></label><select id="game-track"></select><small>Automatic follows the scene. Your choices are saved.</small><output id="music-playing" aria-live="polite"></output></fieldset><div class="launch"><button id="menu-music" type="button">♫ Play menu music</button><button id="begin" class="primary">Begin <span>開始駕駛 ↗</span></button></div><select id="condition" hidden><option value="morning">Morning</option><option value="sunset">Golden hour</option><option value="rain">Rainy rush hour</option><option value="night">Night</option></select><select id="mode" hidden><option value="service">Full service</option><option value="free">Free roam</option><option value="passenger">Passenger</option><option value="town">Drive around town</option></select></div></div></section>
 <div id="hud" class="hidden"><div id="next-panel"><small id="service-label">LINE 01 · NORTHBOUND</small><div id="stop-banner" hidden></div><h2 id="next">泥圍 · Nai Wai</h2><div id="next-distance"></div><div id="signal-status"></div><div id="board" hidden><div class="clock"><b id="clock-now">08:15:00</b><span id="clock-due"></span></div><div class="cells"><div class="cell" id="time-cell"><small id="time-label">尚餘 TIME LEFT</small><b id="time-left">—</b></div><div class="cell" id="mark-cell"><small id="mark-label">停車位置 STOP MARK</small><b id="stop-mark">—</b></div></div><div id="precision" hidden><div class="track"><i></i></div><span id="precision-label"></span></div><div class="load"><span>乘客 On board <b id="onboard">0</b></span><span id="profit" hidden></span></div></div></div><div id="score-panel"><small>SERVICE SCORE</small><b id="score">0000</b><span id="pax"></span><span id="schedule"></span></div><div id="instruction" role="status"></div><div id="dwell"><i></i><span></span></div><div id="cluster"><div class="speed"><b id="speed">0</b><span>km/h</span><div id="limit">40</div></div><div class="switches"><span id="brake-status"></span><span id="door-status"></span><span id="guide-status"></span><span id="camera-status"></span></div></div><div id="telemetry"></div><div id="route-strip">${STOPS.map(st=>`<div data-stop="${st.id}"><i></i><span>${st.zh}</span></div>`).join('')}</div><div id="mobile-buttons"><button data-action="go">Go / 行駛</button><button data-action="stop">Stop / 停車</button><button data-action="doors">Doors / 車門</button><button data-action="camera">Camera / 視角</button></div><div id="route-choices"><button data-action="recover">Recover vehicle</button><button data-action="express">Skip station</button><button data-action="cruise">Cruise on / off</button><button data-action="depot">Depot</button><button data-action="cab">Change cab</button><button data-action="depot-left">Exit left · Industry Park</button><button data-action="depot-right">Exit right · Nai Wai</button></div><canvas id="minimap" width="190" height="430" aria-label="Live route: gold triangle is you, blue rectangles are other ART vehicles, cream circles are stations. Traffic light symbols show each road and its current phase."></canvas><div id="buttons"><button data-action="park">Parking brake</button><button data-action="doors">Doors</button><button data-action="cruise">Cruise control</button><button data-action="guide">Lane guidance</button><button data-action="ramp">Boarding ramp</button><button data-action="priority">Acknowledge request</button></div></div>
-<div id="toast" role="status"></div><div id="pause-sheet" class="modal hidden pm"><header class="pm-head"><img class="pm-logo" src="${logoBase}dark.png" alt="SGMTS Drive"><span class="pm-title"><b>暫停</b><small>PAUSED</small></span></header><nav class="pm-list" aria-label="Pause menu"><button type="button" id="resume" class="mbtn focus" data-pm="resume">${HOME_ICON.play}<span class="mbtn-label"><b>繼續</b><small>RESUME</small></span></button><button type="button" class="mbtn" data-pm="map">${HOME_ICON.map}<span class="mbtn-label"><b>地圖</b><small>MAP</small></span></button><button type="button" class="mbtn" data-pm="settings">${HOME_ICON.gear}<span class="mbtn-label"><b>設定</b><small>SETTINGS</small></span></button><button type="button" class="mbtn" data-pm="controls">${HOME_ICON.pad}<span class="mbtn-label"><b>操作說明</b><small>CONTROLS</small></span></button><button type="button" class="mbtn" data-pm="fullscreen">${HOME_ICON.expand}<span class="mbtn-label"><b>全螢幕</b><small>FULLSCREEN</small></span></button><button type="button" class="mbtn menu-return" data-pm="title">${HOME_ICON.back}<span class="mbtn-label"><b>回到主選單</b><small>RETURN TO TITLE</small></span></button></nav><section class="pm-stage"><div class="pm-card" id="pm-card"></div><div class="pm-host" id="pm-host" hidden></div></section><footer class="pm-keys"><kbd>Enter</kbd>選擇 <kbd>Esc</kbd>返回 <kbd>P</kbd>繼續</footer></div><div id="report" class="modal hidden"><small>OPERATIONAL PERFORMANCE</small><h1>Journey complete.</h1><div id="report-grade"></div><div id="report-data"></div><button class="menu-return primary">Another journey / 再次出發 ↗</button><button id="explore-tail">Explore beyond Industry Park</button></div><div id="footnote">DRAWING-LED INTERPRETATION · 圖則參考模擬</div>`;
+<div id="toast" role="status"></div><div id="pause-sheet" class="modal hidden pm"><header class="pm-head"><img class="pm-logo" src="${logoBase}dark.webp" alt="SGMTS Drive"><span class="pm-title"><b>暫停</b><small>PAUSED</small></span></header><nav class="pm-list" aria-label="Pause menu"><button type="button" id="resume" class="mbtn focus" data-pm="resume">${HOME_ICON.play}<span class="mbtn-label"><b>繼續</b><small>RESUME</small></span></button><button type="button" class="mbtn" data-pm="map">${HOME_ICON.map}<span class="mbtn-label"><b>地圖</b><small>MAP</small></span></button><button type="button" class="mbtn" data-pm="settings">${HOME_ICON.gear}<span class="mbtn-label"><b>設定</b><small>SETTINGS</small></span></button><button type="button" class="mbtn" data-pm="controls">${HOME_ICON.pad}<span class="mbtn-label"><b>操作說明</b><small>CONTROLS</small></span></button><button type="button" class="mbtn" data-pm="fullscreen">${HOME_ICON.expand}<span class="mbtn-label"><b>全螢幕</b><small>FULLSCREEN</small></span></button><button type="button" class="mbtn menu-return" data-pm="title">${HOME_ICON.back}<span class="mbtn-label"><b>回到主選單</b><small>RETURN TO TITLE</small></span></button></nav><section class="pm-stage"><div class="pm-card" id="pm-card"></div><div class="pm-host" id="pm-host" hidden></div></section><footer class="pm-keys"><kbd>Enter</kbd>選擇 <kbd>Esc</kbd>返回 <kbd>P</kbd>繼續</footer></div><div id="report" class="modal hidden"><small>OPERATIONAL PERFORMANCE</small><h1>Journey complete.</h1><div id="report-grade"></div><div id="report-data"></div><button class="menu-return primary">Another journey / 再次出發 ↗</button><button id="explore-tail">Explore beyond Industry Park</button></div><div id="footnote">DRAWING-LED INTERPRETATION · 圖則參考模擬</div>`;
 const loadingScreen=createLoadingScreen($('#load'),STOPS,logoBase);
 state.loadingVariant=$('#load').dataset.loadingVariant;
 state.menuMusic='auto';state.gameMusic='auto';
-try{const saved=JSON.parse(localStorage.getItem('sgmts-music')||'{}');for(const key of ['menuMusic','gameMusic'])if(['auto','off',...audio.MUSIC_TRACKS.map(t=>t.id)].includes(saved[key]))state[key]=saved[key];}catch{}
-audio.updateMusic(state);audio.initAudio();// loading-screen music: plays now if the browser allows autoplay, else on the first gesture (below)
+try{
+ const saved=JSON.parse(localStorage.getItem('sgmts-music')||'{}');
+ const oldStation=saved.sharedRadio?null:readSetting('city-car-radio');
+ const valid=value=>['auto','off'].includes(value)||audio.MUSIC_TRACKS.some(t=>t.id===value);
+ if(valid(saved.menuMusic))state.menuMusic=saved.menuMusic;
+ const game=oldStation??saved.gameMusic;
+ if(valid(game)||stationById.has(game))state.gameMusic=game;
+ if(oldStation)saveMusicChoices();
+}catch{}
+audio.updateMusic(state); // The first player gesture unlocks audio.
 // Keep infrequent controls in one native dialog; driving controls stay on the edges.
 const options=document.createElement('dialog');options.id='drive-options';options.innerHTML='<button id="close-options" aria-label="Close options">×</button><h2>Journey options</h2><button class="theme-toggle" type="button" aria-label="Switch interface theme">☾ Dark theme</button>';document.body.append(options);
 {const heading=text=>Object.assign(document.createElement('h3'),{textContent:text});const details=document.createElement('details');details.id='service-details';details.innerHTML='<summary>Service & energy details</summary>';details.append($('#score-panel'),$('#telemetry'));const operation=$('#top-actions .operation-control');const music=document.createElement('fieldset');music.className='music-picker journey-music';music.innerHTML='<legend>Music · 音樂</legend><label for="journey-track">Gameplay music</label><select id="journey-track"></select><output id="journey-music-playing" aria-live="polite"></output>';options.append(music,heading('Controls'),$('#buttons'),heading('Service'),operation,details,heading('Display'),$('#top-actions'));}
@@ -100,15 +125,15 @@ $('#speed-control').oninput=e=>{state.speedSetting=Number(e.target.value);$('#ta
 // Fast-forward (edge column) and the event stack under the service board: NEXT STEP chip, then the toast banner.
 const ffButton=document.createElement('button');ffButton.id='ff-button';ffButton.dataset.action='ff';ffButton.setAttribute('aria-label','Fast-forward');ffButton.innerHTML='<b aria-hidden="true">⏩</b><small>Fast 1×</small>';$('#edge-tools').append(ffButton);
 // Touch pad: the joystick and buttons press the same keys as the desktop, so touch and keyboard share one code path.
-const pad=document.createElement('div');pad.id='touch-pad';pad.innerHTML='<div id="joystick" role="application" aria-label="Movement joystick"><i></i></div><button id="pad-enter" data-key="Enter"><b>⏏</b><small>Walk</small></button><button id="pad-talk" data-key="KeyE"><b>💬</b><small>Talk</small></button><button id="pad-up" data-key="Space"><b>▲</b><small>Jump</small></button><button id="pad-down" data-key="ControlLeft"><b>▼</b><small>Down</small></button><button id="pad-sit" data-key="KeyX"><b>⇵</b><small>Sit</small></button>';$('#hud').append(pad);
+const pad=document.createElement('div');pad.id='touch-pad';pad.innerHTML='<div id="joystick" role="application" aria-label="Movement joystick"><i></i></div><button id="pad-enter" data-key="Enter"><b>⏏</b><small>Walk</small></button><button id="pad-talk" data-key="KeyE"><b>💬</b><small>Talk</small></button><button id="pad-up" data-key="Space"><b>▲</b><small>Jump</small></button><button id="pad-down" data-key="ControlLeft"><b>▼</b><small>Down</small></button><button id="pad-fast" data-key="ShiftLeft"><b>»</b><small>Fast</small></button><button id="pad-brake" data-key="Space"><b>■</b><small>Brake</small></button><button id="pad-sit" data-key="KeyX"><b>⇵</b><small>Sit</small></button>';$('#hud').append(pad);
 const capture=(el,e)=>{try{el.setPointerCapture(e.pointerId);}catch{}},press=(code,down)=>dispatchEvent(new KeyboardEvent(down?'keydown':'keyup',{code,key:code}));
-for(const b of pad.querySelectorAll('button')){b.onpointerdown=e=>{e.preventDefault();press(b.dataset.key,true);capture(b,e);};b.onpointerup=b.onpointercancel=()=>press(b.dataset.key,false);}
-const joystick=$('#joystick'),STICK_KEYS=['KeyW','KeyS','KeyA','KeyD','ShiftLeft'];let stick=null;
-function releaseStick(){stick=null;joystick.firstChild.style.transform='';STICK_KEYS.forEach(k=>keys.delete(k));}
+for(const b of pad.querySelectorAll('button')){b.onpointerdown=e=>{e.preventDefault();press(b.dataset.key,true);capture(b,e);};b.onpointerup=b.onpointercancel=b.onlostpointercapture=()=>press(b.dataset.key,false);}
+const joystick=$('#joystick');const STICK_KEYS=['KeyW','KeyS','KeyA','KeyD','ShiftLeft'];let stick=null,stickX=0,stickY=0;
+function releaseStick(){if(stick===null)return;stick=null;stickX=stickY=0;joystick.firstChild.style.transform='';if(state.avatar!=='car')STICK_KEYS.forEach(k=>keys.delete(k));}
 function moveStick(e){const r=joystick.getBoundingClientRect(),R=r.width/2;let x=(e.clientX-r.left-R)/R,y=(e.clientY-r.top-R)/R;const m=Math.hypot(x,y);if(m>1){x/=m;y/=m;}joystick.firstChild.style.transform=`translate(${x*R*.6}px,${y*R*.6}px)`;
- // ponytail: eight-way digital stick (full push = Shift/run); analog speed if players ask for it.
+ stickX=x;stickY=y;if(state.avatar==='car')return;
  const on={KeyW:y<-.35,KeyS:y>.35,KeyA:x<-.35,KeyD:x>.35,ShiftLeft:m>.95};for(const k of STICK_KEYS)on[k]?keys.add(k):keys.delete(k);}
-joystick.onpointerdown=e=>{e.preventDefault();stick=e.pointerId;moveStick(e);capture(joystick,e);};joystick.onpointermove=e=>{if(e.pointerId===stick)moveStick(e);};joystick.onpointerup=joystick.onpointercancel=releaseStick;
+joystick.onpointerdown=e=>{e.preventDefault();if(stick!==null)return;stick=e.pointerId;moveStick(e);capture(joystick,e);};joystick.onpointermove=e=>{if(e.pointerId===stick)moveStick(e);};joystick.onpointerup=joystick.onpointercancel=joystick.onlostpointercapture=e=>{if(stick===e.pointerId)releaseStick();};
 // Keyboard wording in prompts becomes touch wording on phones.
 const touchText=t=>mobile?t.replace(/WASD walk · Shift run( · Space jump)? · (mouse look|click the scene, then move the mouse to look)/,'joystick to walk (push fully to run) · ▲ jump · drag to look').replace('W pedal · S brake','joystick up to pedal · down to brake').replace(/A\/D change side/,'left/right to change side').replace(/\bE (to chat|talk|· talk)/,'💬 $1').replace(/(press )?\bEnter\b/g,'⏏').replace(/move (the )?mouse to look(, scroll to zoom)?/,'drag to look').replace('WASD move · Shift boost · Space/Ctrl altitude','joystick to fly (push fully to boost) · ▲/▼ altitude · drag to look'):t;
 const stack=document.createElement('div');stack.id='hud-stack';stack.append($('#instruction'),$('#toast'));$('#hud').append(stack);
@@ -141,8 +166,8 @@ function updateWind(subject){for(let i=0;i<windSeeds.length;i+=3){windPositions[
 const sky=new Sky();sky.scale.setScalar(45000);sky.material.uniforms.turbidity.value=3;sky.material.uniforms.rayleigh.value=1.25;sky.material.uniforms.mieCoefficient.value=.005;sky.material.uniforms.mieDirectionalG.value=.83;sky.material.uniforms.sunPosition.value.set(-.5,.4,-.3);scene.add(sky);
 const ambient=new T.HemisphereLight(0xd1e2e7,0x697461,.7);scene.add(ambient);const sun=new T.DirectionalLight(0xffe5bd,3.0);sun.castShadow=true;
 // ponytail: phones shadow only the 60 m around the vehicle into a 1024² map (same ~12 cm texel as desktop's 95 m / 2048²) — a third of the shadow-pass geometry.
-const shadowHalf=mobile?60:95,shadowSize=cinematic=>mobile?1024:cinematic?4096:2048;
-sun.shadow.mapSize.setScalar(shadowSize(cinematicGraphics));Object.assign(sun.shadow.camera,{left:-shadowHalf,right:shadowHalf,top:shadowHalf,bottom:-shadowHalf,near:1,far:480});sun.shadow.bias=-.00025;sun.shadow.normalBias=.035;scene.add(sun,sun.target);
+const shadowHalf=mobile?60:95,shadowSize=cinematic=>mobile?1024:2048;
+sun.shadow.mapSize.setScalar(shadowSize(cinematicGraphics));Object.assign(sun.shadow.camera,{left:-shadowHalf,right:shadowHalf,top:shadowHalf,bottom:-shadowHalf,near:1,far:480});sun.shadow.camera.userData.isShadow=true;sun.shadow.bias=-.00025;sun.shadow.normalBias=.035;scene.add(sun,sun.target);
 // Sky-lit reflections, height fog, clouds/night sky and (desktop) AO, sun shafts, bloom and grade.
 const atmosphere=createAtmosphere({renderer,scene,camera,sky,sun,ambient,quality:cinematicGraphics?'high':'low'});atmosphere.onLightning=delay=>audio.thunder(delay);
 // Smooth keeps the world and lighting, with fewer full-screen passes and a smaller shadow map.
@@ -153,13 +178,48 @@ function setGraphics(cinematic,g=gfx?.settings){atmosphere.setCinematic(cinemati
 setGraphics(cinematicGraphics);renderer.info.autoReset=false;// the performance overlay counts every pass of a frame
 gfx=createGraphicsPanel({getPreset:()=>atmosphere.cinematic?'cinematic':'smooth',setPreset:p=>{setGraphics(p==='cinematic');writeSetting('sgmts-graphics',p);},
  apply:g=>{setGraphics(atmosphere.cinematic,g);atmosphere.setPasses({bloom:g.bloom,post:g.post});governor.suspend(1);renderer.setPixelRatio(g.scale==='auto'?governor.ratio:g.scale);renderer.setSize(innerWidth,innerHeight);atmosphere.setSize(innerWidth,innerHeight);}});
-const loader=new GLTFLoader();let manifest,environment,streetKit,railway,colleagueModels,vehicleModels,petModels;
+const loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);let manifest,environment,streetKit,railway,colleagueModels,vehicleModels;
 const PEDESTRIAN_COUNT=TRIPO_PEOPLE.length;
 const GORDON=COLLEAGUES.findIndex(c=>c.name==='Gordon KWAN'),stationCast=STOPS.map(()=>new Set());
-function colleague(index){const entry=TRIPO_PEOPLE[index%TRIPO_PEOPLE.length],group=tripoPlayer(colleagueModels[index%TRIPO_PEOPLE.length],entry.height,entry.name,entry.baked);group.userData.characterId=entry.file;if(entry.age)group.userData.age=entry.age;return group;}
+// Cyclists and the player need their own rigs immediately. Other colleagues first use a ready pedestrian rig.
+const CYCLIST=COLLEAGUES.findIndex(c=>c.file===cyclistFile);
+const starterCast=index=>index>=COLLEAGUES.length||index===GORDON||index===CYCLIST;
+const waitingCast=new Map();
+function colleague(index){
+ index=index%TRIPO_PEOPLE.length;
+ const entry=TRIPO_PEOPLE[index],fallback=COLLEAGUES.length+index%7;
+ const source=colleagueModels[index]??colleagueModels[fallback];
+ const group=tripoPlayer(source,entry.height,entry.name,colleagueModels[index]&&entry.baked);
+ group.userData.characterId=entry.file;
+ if(entry.age)group.userData.age=entry.age;
+ if(!colleagueModels[index]){
+  if(!waitingCast.has(index))waitingCast.set(index,[]);
+  waitingCast.get(index).push(group);
+ }
+ return group;
+}
+async function installColleague(index,source){
+ colleagueModels[index]=source;
+ const entry=TRIPO_PEOPLE[index],actors=waitingCast.get(index)??[];
+ for(const actor of actors){
+  const detail=tripoPlayer(source,entry.height,entry.name,entry.baked);
+  characterLighting(detail);
+  const skin=detail.children[0],old=actor.children[0];
+  // Keep the actor and contact shadow in place (including hidden saloon and scooter shadows).
+  old.removeFromParent();
+  old.traverse(n=>{if(n.isMesh)for(const m of [].concat(n.material))m.dispose();});
+  skin.traverse(n=>{if(n.isSkinnedMesh)n.castShadow=false;});
+  actor.add(skin);
+  Object.assign(actor.userData,{rig:detail.userData.rig,tripoAnimation:detail.userData.tripoAnimation,characterGlow:detail.userData.characterGlow});
+  posePedestrian(actor,0);
+  peopleGlowTick=0;
+  await new Promise(requestAnimationFrame);
+ }
+ waitingCast.delete(index);
+}
 function stationPerson(s,preferred=0){const used=stationCast[nearestStation(s)];for(let n=0;n<TRIPO_PEOPLE.length;n++){const i=(preferred+n)%TRIPO_PEOPLE.length;if(i===GORDON||used.has(i))continue;used.add(i);return streetModel('pedestrian_'+i);}return null;}
 function distinctPeople(){
- const actors=[...sitters,...crossers,...plazaPeople,...walkerObjects.map(p=>({...p,s:STOPS[p.station].s})),...joggers,...cyclists.map(p=>({...p,person:p.group.getObjectByName('seated_rider')})),...scooters.map(p=>({...p,person:p.group.userData.rider}))];
+ const actors=[...sitters,...crossers,...plazaPeople,...walkerObjects.map(p=>({...p,s:STOPS[p.station].s})),...joggers,...cyclists.map(p=>({...p,person:p.rider||p.group.getObjectByName('seated_rider')})),...scooters.map(p=>({...p,person:p.group.userData.rider}))];
  uniqueStationPeople(actors);
  for(const p of sitters)p.seat.taken=p.group.visible;
  if(player.seat)player.seat.taken=true;
@@ -170,17 +230,17 @@ function streetModel(name){
  if(pedestrian){const index=Number(name.slice(11));group=colleague(index===GORDON?0:index);}
  else if(vehicleModels?.has(name)){group=vehicleModels.get(name).clone(true);}
  else{const model=streetKit.getObjectByName(name);if(!model)throw Error('Missing street model '+name);group=name==='cyclist'?cloneSkinned(model):model.clone(true);
-  if(name==='cyclist'){const old=group.getObjectByName('seated_rider');old?.removeFromParent();const rider=colleague(9);rider.name='seated_rider';rider.getObjectByName('contact shadow')?.removeFromParent();group.add(rider);}}
- group.traverse(n=>{if(n.isMesh){n.castShadow=true;n.receiveShadow=true;}});
+  if(name==='cyclist'){const old=group.getObjectByName('seated_rider');old?.removeFromParent();const rider=colleague(CYCLIST);rider.name='seated_rider';rider.getObjectByName('contact shadow')?.removeFromParent();group.add(rider);}}
+ group.traverse(n=>{if(n.isMesh){n.castShadow=!n.isSkinnedMesh;n.receiveShadow=true;}});
  if(/^(pedestrian_|cyclist|scooter)/.test(name)){characterLighting(group);litPeople.push(group);}
  return group;}
-const litPeople=[];let peopleGlowTick=0,peopleWereLit=false;
+const litPeople=[],_glowPos=new T.Vector3();let peopleGlowTick=0,peopleWereLit=false;
 // Baked-style lamp glow on people: the brightest nearby lamp within ~14 m of a person lifts their materials at night.
 function glowPeople(night){
  if(!night){if(peopleWereLit){for(const g of litPeople)g.userData.characterGlow.value=0;peopleWereLit=false;}return;}
  if(peopleGlowTick++%15)return;peopleWereLit=true;
  const lamps=environment.lampPositions.filter(l=>Math.abs(l.x-camera.position.x)<180&&Math.abs(l.z-camera.position.z)<180);
- for(const g of litPeople){if(!g.visible)continue;const p=g.getWorldPosition(new T.Vector3());if(p.distanceToSquared(camera.position)>170*170)continue;let glow=0;
+ for(const g of litPeople){if(!g.visible)continue;const p=g.getWorldPosition(_glowPos);if(p.distanceToSquared(camera.position)>170*170)continue;let glow=0;
   for(const l of lamps){const h=l.y-p.y;if(h<1.5||h>16)continue;const d2=(l.x-p.x)**2+(l.z-p.z)**2,r=l.kind==='mast'?24:13;if(d2<r*r*4)glow=Math.max(glow,Math.exp(-d2/(r*r)));}
   g.userData.characterGlow.value=glow*.55;}}
 window.addEventListener('error',e=>errors.push(e.message));window.addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
@@ -284,19 +344,105 @@ function giveWay(p,r,dt,reach,width=.55){
  if(side!==null){p.dodgeT=side>0||side===0&&p.id>.5?-.7:.7;p.stuck=(p.stuck||0)+dt;if(p.stuck>6){p.dir*=-1;p.stuck=0;}}
  else{p.stuck=0;if(!personNear(p.group,1.6))p.dodgeT=0;}
  p.dodge=(p.dodge||0)+Math.max(-.9*dt,Math.min(.9*dt,(p.dodgeT||0)-(p.dodge||0)));return side===null;}
+const carRadio=createCarRadio($('#hud'),state,()=>{
+ for(const id of ['game-track','journey-track'])$('#'+id).value=state.gameMusic;
+ saveMusicChoices();audio.updateMusic(state);void audio.initAudio();
+});
 let cityTraffic=null,cityPeople=null,cityCats=null,cityLanes=null,cityMask=null,townHud=null;const townLook=new T.Vector3();const cityWalkers=[];
 // City rebuild 2: the player's own car (src/city/drive.js). It exists in explore mode: a city-drive start puts the player at
 // the wheel; on foot, Enter beside it drives it, and Enter on a city street with nothing else nearby brings it to that lane.
 const playerCar={group:null,x:0,y:0,z:0,yaw:0,v:0,steer:0,length:4.6,width:1.95,active:false};
-const inCrossing=(x,z)=>[...JUNCTIONS,...UNDERPASSES].some(j=>{const g=crossingGeometry(j),dx=x-g.C.x,dz=z-g.C.z;return Math.abs(dx*g.n.x+dz*g.n.z)<j.halfWidth&&Math.abs(dx*g.u.x+dz*g.u.z)<j.extent+2;});
-const carWorld={drivable:(x,z)=>cityMask.onRoad(x,z,-.25)||inCrossing(x,z),
- blocked:(x,z,r)=>cityTraffic.cars.some(c=>c.piece&&[-1,0,1].some(k=>Math.hypot(c.x+c.tx*k*c.length/3-x,c.z+c.tz*k*c.length/3-z)<r+1.25))||// three discs along each vehicle
- [vehicle,...ai].some(a=>a.sections.some(b=>b.visible&&Math.hypot(b.position.x-x,b.position.z-z)<r+4.5))};
-// heading (optional): only lanes running that way (keep left: a start must not face the oncoming traffic).
-function nearestLane(x,z,max=40,heading=null){const fx=-Math.sin(heading??0),fz=-Math.cos(heading??0);let best=null,bd=max;for(const p of cityLanes.pieces)if(p.kind==='lane')for(let i=1;i<p.pts.length;i++){const q=p.pts[i],d=Math.hypot(q.x-x,q.z-z),a=p.pts[i-1],l=Math.hypot(q.x-a.x,q.z-a.z)||1,tx=(q.x-a.x)/l,tz=(q.z-a.z)/l;if(d<bd&&(heading===null||tx*fx+tz*fz>.3)){bd=d;best={x:q.x,y:q.y,z:q.z,tx,tz};}}return best;}
-function poseCar(){const g=playerCar.group;g.visible=playerCar.active;g.position.set(playerCar.x,playerCar.y+.03,playerCar.z);g.rotation.y=playerCar.yaw;}
-function placeCar(q){Object.assign(playerCar,{x:q.x,z:q.z,y:q.y,yaw:Math.atan2(-q.tx,-q.tz),v:0,steer:0,active:true});poseCar();}
-function enterCar(){state.avatar='car';player.group.visible=false;orbit.yaw=playerCar.yaw;orbit.pitch=0;orbit.zoom=1;toast('Driving · W accelerate · S brake / reverse · A D steer · Space handbrake · Enter to get out · keep left / 靠左行駛',7);}
+const carModels=new Map();
+let selection=0,streetBlocked=null,reflectCar,corridorFootway=()=>null;
+const chosenVehicle=()=>DRIVE_FLEET.find(v=>v.id===$('#start-vehicle').value)??DRIVE_FLEET.find(v=>v.id==='car');
+$('#start-vehicle').value=readSetting('city-drive-vehicle','car');
+if(!$('#start-vehicle').value)$('#start-vehicle').value='car';
+$('#start-vehicle').onchange=()=>writeSetting('city-drive-vehicle',chosenVehicle().id);
+const driveCrossings=[...JUNCTIONS,...UNDERPASSES].map(j=>({j,g:crossingGeometry(j)}));
+function crossingSurface(x,z){
+ return driveCrossings.some(({j,g})=>{
+  const dx=x-g.C.x,dz=z-g.C.z,along=dx*g.u.x+dz*g.u.z,across=Math.abs(dx*g.n.x+dz*g.n.z);
+  return Math.abs(along)<=j.extent+1&&(across<=j.halfWidth+j.footway||(!j.underpass&&junctionPavement(j,x,z)!=null));
+ });
+}
+const carWorld={
+ drivable:(x,z)=>cityMask.onDriveSurface(x,z)||crossingSurface(x,z)||corridorFootway(x,z)!==null,
+ height:(x,z)=>streetHeight(x,z)??corridorFootway(x,z)??groundAt(x,z,player.s).y,
+ obstructed(c){
+  const box={cx:c.x,cz:c.z,hw:c.width/2-.08,hl:c.length/2-.08,heading:c.yaw},reach=c.length/2+10;
+  if(streetBlocked?.(box,c.y,c.height??2))return true;
+  function touches(x,y,z,width,length,heading){
+   return Math.abs(x-c.x)<reach&&Math.abs(z-c.z)<reach&&Math.abs(y-c.y)<2.5&&
+    boxesOverlap(box,{x,z,heading,hw:width/2,hl:length/2});
+  }
+  for(const a of cityTraffic?.cars??[])if(a.piece&&touches(a.x,a.y,a.z,a.width,a.length,Math.atan2(a.tx,a.tz)))return true;
+  for(const a of [vehicle,...ai])for(const b of a?.sections??[]){
+   const p=b.position;if(b.visible&&touches(p.x,p.y,p.z,2.55,10.6,b.rotation.y))return true;
+  }
+  for(const actor of [...cityWalkers,...crossers,...walkerObjects,...plazaPeople,...joggers,...sitters,...cyclists,...scooters]){
+   const {position:p,visible}=actor.group;if(visible&&touches(p.x,p.y,p.z,.55,.55,0))return true;
+  }
+  return false;
+ }
+};
+function nearestLane(x,z,max=80,heading=null,spec=playerCar){
+ return recoveryLane(cityLanes.pieces,{...spec,x,z,yaw:heading??player.heading},c=>carFits(c,carWorld),max);
+}
+function poseCar(dt=0){
+ const c=playerCar,g=c.group;g.visible=c.active;
+ if(!c.active)return;
+ updateRide(c,carWorld.height,dt);g.position.set(c.x,c.y+.025,c.z);
+ g.rotation.set(c.ride.p,c.yaw,c.ride.r,'YXZ');
+}
+function placeCar(q){
+ Object.assign(playerCar,{x:q.x,z:q.z,y:q.y,yaw:Math.atan2(-q.tx,-q.tz),v:0,steer:0,hit:false,active:true});
+ poseCar();
+}
+function installCar(spec,group){
+ const c=playerCar,next={...c,...spec};
+ let lane;
+ if(c.active&&!carFits(next,carWorld)){
+  lane=nearestLane(c.x,c.z,Infinity,c.yaw,next);if(!lane)return false;
+ }
+ c.group?.removeFromParent();scene.add(group);
+ Object.assign(c,{group,id:spec.id,height:spec.height,width:spec.width,length:spec.length,wheelbase:spec.wheelbase,
+  accel:spec.accel,brake:spec.brake,maxSteer:spec.maxSteer,cam:spec.cam,v:0,steer:0});
+ if(lane)placeCar(lane);else poseCar();
+ group.driveLights(c.lightsOn);return true;
+}
+async function chooseCar(id){
+ const token=++selection,spec=DRIVE_FLEET.find(v=>v.id===id);
+ if(!spec)return false;
+ let load=carModels.get(id);
+ if(!load){
+  if(spec.url&&state.avatar==='car')toast('Loading '+spec.name+'…',3);
+  load=spec.url?Promise.all([import('./city/special-vehicles.js'),new GLTFLoader().loadAsync(asset('vehicles/'+spec.url))])
+    .then(([module,gltf])=>playerModel(module.buildVehicle(gltf,spec),spec)):Promise.resolve(playerModel(streetModel(id),spec));
+  carModels.set(id,load);load.catch(()=>carModels.delete(id));
+ }
+ try{
+  const group=await load;if(token!==selection)return false;
+  if(!installCar(spec,group))throw Error('No clear lane available');
+  $('#start-vehicle').value=id;writeSetting('city-drive-vehicle',id);townHud.setVehicle(id);return true;
+ }catch(error){
+  if(token===selection){toast(spec.name+' unavailable · '+error.message);townHud.setVehicle(playerCar.id);$('#start-vehicle').value=playerCar.id;}
+  return false;
+ }
+}
+function recoverCar(){
+ const c=playerCar,q=nearestLane(c.x,c.z,Infinity,c.yaw);
+ if(!q){toast('No clear lane available');return;}
+ placeCar(q);keys.clear();releaseStick();orbit.yaw=c.yaw;orbit.pitch=0;firstCamera=true;
+ Object.assign(player,{x:c.x,y:c.y,z:c.z,s:project(c.x,c.z),heading:c.yaw});
+ toast('Recovered to a clear lane / 已返回行車線',2);
+}
+function switchLights(){playerCar.lightsOn=!playerCar.lightsOn;playerCar.group.driveLights(playerCar.lightsOn);}
+function enterCar(){
+ releaseStick();state.avatar='car';document.body.dataset.avatar='car';document.exitPointerLock?.();
+ player.group.visible=false;orbit.yaw=playerCar.yaw;orbit.pitch=0;orbit.zoom=1;
+ Object.assign(player,{x:playerCar.x,y:playerCar.y,z:playerCar.z,s:project(playerCar.x,playerCar.z),heading:playerCar.yaw});
+ toast(mobile?'Use the joystick to drive · drag to look':'W/S drive & reverse · A/D steer · Shift boost · Space brake · L lights · R recover · click the street for mouse look · Esc releases · H hide',6);
+}
 function makeTraffic(){
  // City rebuild: general traffic follows lane paths through each rebuilt crossing and out along the OZP network
  // (src/city/traffic-routes.js); at grade it holds at the side-road stop line until the junction's road phase shows green.
@@ -312,11 +458,13 @@ function makeTraffic(){
  // mode but the control centre, which still meters its own route traffic. The two systems meet only at the six corridor
  // crossings, where city cars obey the junction's road phase.
  cityLanes=cityGraph(environment.network);
- townHud=createTownHud({mount:$('#hud'),roads:environment.network.roads.map(r=>{const P=presetOf(r);return {pts:frames(r).map(f=>[f.x,f.z]),cw:P.carriageway,fp:P.footpath};}),
+ townHud=createTownHud({mount:$('#hud'),vehicleOptions,onVehicle:chooseCar,onRecover:recoverCar,onLights:switchLights,roads:environment.network.roads.map(r=>{const P=presetOf(r);return {pts:frames(r).map(f=>[f.x,f.z]),cw:P.carriageway,fp:P.footpath};}),
   corridor:Array.from({length:Math.floor(LENGTH/5)},(_,i)=>{const q=sample(i*5);return [q.x,q.z,roadSection(i*5).right];}),
   onMenu:()=>action('pause'),onWalk:()=>{if(state.avatar==='car')toggleAvatar();},
-  onDrive:()=>{if(state.avatar==='car'||state.avatar!=='foot')return;if(playerCar.active&&Math.hypot(playerCar.x-player.x,playerCar.z-player.z)<4.5){toggleAvatar();return;}
-   const q=nearestLane(player.x,player.z,80,player.heading);if(q){placeCar(q);enterCar();}else toast('No street within 80 m to bring the car to / 附近沒有道路');}});playerCar.group=streetModel('car');playerCar.group.name='player-car';playerCar.group.visible=false;scene.add(playerCar.group);
+  onDrive:()=>{if(state.avatar==='car'||state.avatar!=='foot')return;if(playerCar.active&&Math.hypot(playerCar.x-player.x,playerCar.z-player.z)<Math.max(4.5,playerCar.length/2+1)){toggleAvatar();return;}
+   const q=nearestLane(player.x,player.z,80,player.heading);if(q){placeCar(q);enterCar();}else toast('No street within 80 m to bring the car to / 附近沒有道路'); }});
+ const sedan=DRIVE_FLEET.find(v=>v.id==='car'),model=playerModel(streetModel('car'),sedan);
+ carModels.set('car',Promise.resolve(model));installCar(sedan,model);townHud.setVehicle('car');
  cityTraffic=createTraffic(cityLanes,{count:44,fleet:types.map(t=>({kind:t.id,length:t.length,width:t.width,height:t.height})),
   signal:X=>{const sig=signalObjects.find(s=>s.c===X.c);return !sig||signalAt(sig,true)==='go';}});
  for(const car of cityTraffic.cars){const group=streetModel(car.kind);group.name='traffic-'+car.kind;group.traverse(m=>{if(m.isMesh)m.castShadow=true;});group.visible=false;scene.add(group);
@@ -326,21 +474,19 @@ function makeTraffic(){
  cityPeople=createPeople(footwayPaths,{count:28});
  for(const h of cityPeople.people){const group=streetModel('pedestrian_'+(h.id*7+3)%PEDESTRIAN_COUNT);group.name='city-pedestrian';group.visible=false;scene.add(group);cityWalkers.push({group,h});}
  cityCats=createCats(footwayPaths,{count:20,seed:29});
- for(const c of cityCats.cats){const spec=c.id<15?TRIPO_CATS[c.id%TRIPO_CATS.length]:TRIPO_RATS[0],group=clonePet(petModels.get(spec.id));group.name=(spec.kind==='rat'?'city-rat-':'city-cat-')+spec.id;group.visible=false;characterLighting(group);litPeople.push(group);scene.add(group);cityCatActors.push({group,c});}
 
  STOPS.forEach((st,i)=>{for(let j=0;j<6;j++){const g=stationPerson(st.s,j+i);if(!g)continue;
   const side=j%2?1:-1,phase=2+Math.floor(j/2)*3,origin=point(stopCentre(st,side)+(phase-6)*4,side*(8.35+(phase%2)*.45));origin.y+=.32+PLATFORM_RISE;g.position.copy(origin);g.rotation.y=sample(st.s).heading;scene.add(g);walkerObjects.push({group:g,station:i,side,origin,phase,progress:0,alight:phase<3,roaming:phase>=9});
  }});
 }
-function makeStationChildren(boy,girl){
- for(const [station,characters] of [[0,[[boy,1,'Boy'],[girl,-1,'Girl']]],[6,[[boy,-1,'Boy'],[girl,1,'Girl']]]]){
-  const st=STOPS[station];
-  for(const [gltf,side,name] of characters){
+function makeStationChild(gltf,name){
+ for(const station of [0,6]){
+   const st=STOPS[station],side=(name==='Boy'?1:-1)*(station===0?1:-1);
    const platform=st.platforms.find(p=>p.side===side),centre=st.s+platform.centerOffset,phase=side===1?0:Math.PI;
    const group=tripoPlayer(gltf,name==='Boy'?1.25:1.05,`Station ${st.id} · ${name}`),q=centre+Math.sin(phase)*24;
-   characterLighting(group);litPeople.push(group);group.position.copy(point(q,side*8.35));group.position.y+=.32;group.rotation.y=sample(q).heading;scene.add(group);
+   characterLighting(group);group.traverse(n=>{if(n.isSkinnedMesh)n.castShadow=false;});litPeople.push(group);group.position.copy(point(q,side*8.35));group.position.y+=.32;group.rotation.y=sample(q).heading;scene.add(group);
    walkerObjects.push({group,station,side,origin:group.position.clone(),phase,progress:0,alight:false,roaming:true,patrolCentre:centre,patrolRadius:Math.min(24,st.platformLength/2-5),patrolSpeed:1});
-  }
+   peopleGlowTick=0;
  }
 }
 // E-scooter riders on the footpaths: a standing pedestrian on a procedural stand-up scooter (deck, stem, bars, wheels).
@@ -349,7 +495,7 @@ function scooterGroup(i){const g=new T.Group();g.name='scooter-rider';const dark
  const part=(geo,mat,x,y,z,rx=0)=>{const m=new T.Mesh(geo,mat);m.position.set(x,y,z);m.rotation.x=rx;m.castShadow=true;g.add(m);return m;};
  part(new T.BoxGeometry(.17,.05,.62),dark,0,.14,0);part(new T.CylinderGeometry(.018,.018,1.02),dark,0,.63,-.33,-.12);part(new T.CylinderGeometry(.015,.015,.48),dark,0,1.12,-.39,0).rotation.z=Math.PI/2;
  const wheels=[-.36,.3].map(z=>part(new T.CylinderGeometry(.1,.1,.05,14).rotateZ(Math.PI/2),tyre,0,.1,z));
- const rider=streetModel('pedestrian_'+(i*3+1)%PEDESTRIAN_COUNT);rider.position.set(0,.17,.03);rider.userData.scooterRider=true;rider.getObjectByName('contact shadow').visible=false;g.add(rider);g.userData.rider=rider;g.userData.wheels=wheels;return g;}
+ const rider=streetModel('pedestrian_'+(i*4+1)%PEDESTRIAN_COUNT);rider.position.set(0,.17,.03);rider.userData.scooterRider=true;rider.getObjectByName('contact shadow').visible=false;g.add(rider);g.userData.rider=rider;g.userData.wheels=wheels;return g;}
 function makeScooters(){for(let i=0;i<14;i++){const g=scooterGroup(i);scene.add(g);scooters.push({group:g,s:(i+.5)/14*LENGTH,side:i%2?1:-1,dir:i%3?1:-1,v:3.6+(i%4)*.5,lean:0});}}
 function scooterOk(s){const r=sample(s);return !r.elevated&&s>40&&s<END_STOP-40&&!STOPS.some(st=>Math.abs(st.s-s)<st.footprintLength/2+48)&&!JUNCTIONS.some(j=>Math.abs(j.s-s)<j.halfWidth+14)&&Math.abs(s-DEPOT.gate)>20;}
 function updateScooters(dt){const subject=viewS();for(const c of scooters){let next=c.s+c.dir*c.v*dt;if(!scooterOk(next)){c.dir*=-1;next=c.s;if(!scooterOk(next)){c.s=(c.s+97)%LENGTH;continue;}}c.s=next;
@@ -357,23 +503,35 @@ function updateScooters(dt){const subject=viewS();for(const c of scooters){let n
   g.position.set(r.x+r.lx*lat,r.y+footpathHeight(c.s),r.z+r.lz*lat);g.rotation.y=r.heading+(c.dir===1?0:Math.PI);for(const w of g.userData.wheels)w.rotation.x-=c.v*dt/.1;posePedestrian(g.userData.rider,0,dt);}}
 function makeStreetLife(){
  for(const st of STOPS){const root=stations.find(p=>p.s===st.s).root;seats.push(...stationBenchSeats(root,st,manifest.stations.find(m=>m.id===st.id).platforms));}
- const plaza=STOPS[1];for(const ds of [-80,0,80])for(const dl of [-.8,.8]){const s=plaza.s+ds,r=sample(s),p=point(s,-42+dl);p.y=r.groundY+.32;seats.push({x:p.x,y:p.y,z:p.z,heading:sample(plaza.s).heading+Math.PI,seat:.505,s,station:1,side:0});}
+ for(const [x,z] of a2Benches)for(const dx of [-.8,.8]){const p=worldCoordinates(x+dx,z);seats.push({...p,y:pavingY(x,z),heading:a2Rail.heading+Math.PI,seat:.505,s:project(p.x,p.z),station:1,side:0});}
  const occupiedPlatforms=new Set();for(const seat of seats){const key=seat.station+':'+seat.side;if(!seat.side||occupiedPlatforms.has(key))continue;const group=stationPerson(STOPS[seat.station].s,6+seat.station);if(!group)continue;occupiedPlatforms.add(key);group.name='seated-pedestrian';group.position.set(seat.x,seat.y,seat.z);group.rotation.y=seat.heading;group.userData.action={sit:seat.seat};scene.add(group);seat.taken=true;sitters.push({group,s:seat.s,seat});}
  for(const [i,c] of [...CROSSINGS,...JUNCTIONS.map(j=>({s:crossingGeometry(j).crossS[1],station:j.name,signal:j.c}))].entries()){const group=stationPerson(c.s,i);if(!group)continue;group.name='crossing-pedestrian';scene.add(group);crossers.push({...c,group,dir:i%2?1:-1,wait:5+i%7,active:false});}
- for(let i=0;i<20;i++){const group=streetModel('cyclist'),wheels=['bike_wheel_front','bike_wheel_rear'].map(n=>group.getObjectByName(n)),c={group,wheels,s:LENGTH*(i+.5)/20,dir:i%2?1:-1,v:0,phase:i};poseCyclist(c,0);scene.add(group);cyclists.push(c);}
+ for(let i=0;i<20;i++){const group=streetModel('cyclist'),wheels=['bike_wheel_front','bike_wheel_rear'].map(n=>group.getObjectByName(n)),rider=group.getObjectByName('seated_rider'),c={group,wheels,rider,s:rideablePosition(LENGTH*(i+.5)/20),dir:i%2?1:-1,v:0,phase:i};poseCyclist(c,0);scene.add(group);cyclists.push(c);}
  const st=STOPS[1];
  // Remaining station identities stroll in the plaza without duplicating platform passengers.
- for(let i=0;i<6;i++){const group=stationPerson(st.s,i+4);if(!group)break;group.name='plaza-pedestrian';scene.add(group);plazaPeople.push({group,s:st.s-60+(i%4)*40,lat:i<4?-30:(i===4?-23:-37),phase:i*1.7,hop:false});}
+ for(const [i,[x,z]] of [[-58,3],[-21,68],[-38,47],[-20,-2],[-58,-61],[-36,-90]].entries()){
+  const group=stationPerson(st.s,i+4);if(!group)break;const w=worldCoordinates(x,z);
+  group.name='plaza-pedestrian';scene.add(group);plazaPeople.push({group,s:project(w.x,w.z),laneX:x,laneZ:z,phase:i*1.7,hop:false});
+ }
+ // Joggers run the corridor footpaths, turning back at structures and junctions.
+ for(let i=0;i<10;i++){const group=streetModel('pedestrian_'+[0,1,2,3,5,CYCLIST][i%6]);group.name='jogger';scene.add(group);joggers.push({group,s:LENGTH*(i+.37)/10,dir:i%2?1:-1,side:i%3?1:-1,v:3.4+(i%4)*.2});}
+}
+function addPetSpecies(species,source){
+ const template=petModel(source,species),st=STOPS[1];
+ template.traverse(n=>{if(n.isSkinnedMesh)n.castShadow=false;});
+ for(const c of cityCats.cats){const spec=c.id<15?TRIPO_CATS[c.id%TRIPO_CATS.length]:TRIPO_RATS[0];if(spec!==species)continue;const group=clonePet(template);group.name=(spec.kind==='rat'?'city-rat-':'city-cat-')+spec.id;group.visible=false;characterLighting(group);litPeople.push(group);scene.add(group);cityCatActors.push({group,c});}
  // Dogs follow their masters on leashes (city footways and A2 plaza).
  const dogGround=(x,z,sHint)=>groundAt(x,z,sHint).y;
  cityWalkers.filter((_,i)=>i%3===0).slice(0,9).forEach((w,k)=>{
-  const spec=TRIPO_DOGS[k%TRIPO_DOGS.length],group=clonePet(petModels.get(spec.id)),leash=createLeash();
-  group.name='city-dog-'+spec.id;group.visible=false;leash.visible=false;characterLighting(group);litPeople.push(group);scene.add(group,leash);
+  if(TRIPO_DOGS[k%TRIPO_DOGS.length]!==species)return;
+  const group=clonePet(template),leash=createLeash();
+  group.name='city-dog-'+species.id;group.visible=false;leash.visible=false;characterLighting(group);litPeople.push(group);scene.add(group,leash);
   dogs.push({group,leash,master:w,side:k%2?1:-1,seed:k*2.3,city:true,groundY:dogGround});
  });
  plazaPeople.slice(0,6).forEach((p,k)=>{
-  const spec=TRIPO_DOGS[k%TRIPO_DOGS.length],group=clonePet(petModels.get(spec.id)),leash=createLeash();
-  group.name='plaza-dog-'+spec.id;group.visible=false;leash.visible=false;characterLighting(group);litPeople.push(group);scene.add(group,leash);
+  if(TRIPO_DOGS[k%TRIPO_DOGS.length]!==species)return;
+  const group=clonePet(template),leash=createLeash();
+  group.name='plaza-dog-'+species.id;group.visible=false;leash.visible=false;characterLighting(group);litPeople.push(group);scene.add(group,leash);
   dogs.push({group,leash,master:p,side:k%2?1:-1,seed:10+k*2.3,city:false,groundY:(x,z)=>dogGround(x,z,p.s)});
  });
  // Cats and rats walk around by themselves in A2 plaza and station footpaths.
@@ -389,12 +547,12 @@ function makeStreetLife(){
   {s:STOPS[2].s+28,lat:roadSection(STOPS[2].s+28).right+2.2,span:10,speed:1.00,phase:4.1,footpath:true,spec:TRIPO_RATS[0]},
  ];
  corridorRoamers.forEach((cfg,k)=>{
-  const {spec}=cfg,group=clonePet(petModels.get(spec.id));
-  group.name=(spec.kind==='rat'?'plaza-rat-':'plaza-cat-')+spec.id;characterLighting(group);litPeople.push(group);scene.add(group);
+  if(cfg.spec!==species)return;
+  const spec=cfg.spec,group=clonePet(template);
+  group.name=(spec.kind==='rat'?'plaza-rat-':'plaza-cat-')+species.id;characterLighting(group);litPeople.push(group);scene.add(group);
   plazaCats.push({group,...cfg,x:Math.sin(cfg.phase)*cfg.span,dir:k%2?1:-1,wait:0});
  });
- // Joggers run the corridor footpaths, turning back at structures and junctions.
- for(let i=0;i<10;i++){const group=streetModel('pedestrian_'+[0,1,2,3,10,11][i%6]);group.name='jogger';scene.add(group);joggers.push({group,s:LENGTH*(i+.37)/10,dir:i%2?1:-1,side:i%3?1:-1,v:3.4+(i%4)*.2});}
+ peopleGlowTick=0;
 }
 const birds=[];
 function makeBirds(){for(const [i,st] of STOPS.entries())for(let j=0;j<3;j++){const group=new T.Group(),body=new T.Mesh(new T.SphereGeometry(.12,6,4),new T.MeshStandardMaterial({color:j%2?0x839099:0xb7b9af}));body.scale.set(.8,.8,2);group.add(body);const wings=[];for(const side of [-1,1]){const wing=new T.Mesh(new T.ConeGeometry(.13,.55,3),body.material);wing.rotation.z=side*Math.PI/2;wing.position.x=side*.25;group.add(wing);wings.push({wing,side});}group.name='station-bird';scene.add(group);birds.push({group,wings,station:st,phase:i*4+j*7,offset:j*8});}}
@@ -408,7 +566,7 @@ function resetStreetLife(){
  for(const dir of [1,-1]){const pool=ai.filter(a=>a.dir===dir),count=dir===1?Math.ceil(plan.count/2):Math.floor(plan.count/2),groups=Math.ceil(count/plan.convoy);pool.forEach((a,i)=>{a.active=i<count;if(a.active){const convoy=Math.floor(i/plan.convoy),distance=150+(convoy+.5)*(LENGTH-350)/groups-(i%plan.convoy)*44;startService(a,dir===1?distance:LENGTH-distance);a.convoy=convoy;a.pax=25+i*3;}a.sections.forEach(g=>g.visible=a.active);});nextDispatch[dir]=state.headway;}
 
  crossers.forEach((c,i)=>{const e=roadSection(c.s);c.dir=i%2?1:-1;c.lat=c.dir===1?cycleOffset(c.s)-2.6:e.right+.8;c.active=false;c.wait=5+i%7;});
- cyclists.forEach((c,i)=>{c.s=LENGTH*(i+.5)/20;c.dir=i%2?1:-1;c.v=0;c.liftHeight=cycleBridgeHeight(c.s);});
+ cyclists.forEach((c,i)=>{c.s=rideablePosition(LENGTH*(i+.5)/20);c.dir=i%2?1:-1;c.v=0;c.liftHeight=cycleBridgeHeight(c.s);});
 }
 // Plaza strollers pace ±7 m at a steady 1.2 m/s with 2 s pauses.
 function strollStep(p,dt){
@@ -432,20 +590,21 @@ function updateStreetLife(dt,subjectS){
   if(c.group.visible)posePedestrian(c.group,c.active?1.3*dt:0,dt);
   if(c.active&&c.group.visible)contact(c.group,.5,.5,1.8,'Pedestrian');
  }
- for(const c of cyclists){let stop=c.s+c.dir*1e6;
+ for(const c of cyclists){const section=cyclingSection(c.s),terminal=c.dir===1?section.end:section.start;let stop=terminal;
   for(const j of [...JUNCTIONS,...UNDERPASSES].filter(j=>!CYCLE_BRIDGES.includes(j))){const dist=(j.s-c.s)*c.dir,line=j.s-c.dir*(j.halfWidth+2);if(dist>0&&(line-c.s)*c.dir>=0&&traffic.some(t=>{if(t.cross!==j)return false;const r=sample(j.s),lat=(t.group.position.x-r.x)*r.lx+(t.group.position.z-r.z)*r.lz;return Math.abs(lat-cycleOffset(j.s))<(t.v>.2?25:t.length/2+1);}))stop=c.dir===1?Math.min(stop,line):Math.max(stop,line);}
-  const move=approachStep(c.s,c.v,c.dir,4.2,stop,dt);c.s=move.position;c.v=move.speed;c.liftHeight=cycleBridgeHeight(c.s);if(c.s>LENGTH-4||c.s<4){c.dir*=-1;c.v=0;}
-  poseCyclist(c,dt);
-  const r=cycleSample(c.s);c.group.position.set(r.x+r.lx*c.dir*.85,0,r.z+r.lz*c.dir*.85);c.group.position.y=r.groundY+(c.liftHeight??cycleBridgeHeight(c.s))+.035;c.group.rotation.y=r.heading+(c.dir===1?0:Math.PI);c.group.visible=Math.abs(c.s-subjectS)<400;
+  const move=approachStep(c.s,c.v,c.dir,4.2,stop,dt);c.s=move.position;c.v=move.speed;c.liftHeight=cycleBridgeHeight(c.s);if(Math.abs(c.s-terminal)<.05){c.dir*=-1;c.v=0;}
+  c.group.visible=Math.abs(c.s-subjectS)<400;if(c.group.visible)poseCyclist(c,dt);
+  const r=cycleSample(c.s);c.group.position.set(r.x+r.lx*c.dir*.85,0,r.z+r.lz*c.dir*.85);c.group.position.y=r.groundY+(c.liftHeight??cycleBridgeHeight(c.s))+.035;c.group.rotation.y=r.heading+(c.dir===1?0:Math.PI);
  }
  // Children hop about (ballistic 0.6 s hops, 0.44 m high, landing crouch between them).
- for(const p of plazaPeople){const t=state.time*.65+p.phase,r=sample(p.s),walk=p.hop?Math.sin(t*.4)*2:strollStep(p,dt),lat=p.lat+(p.hop?Math.cos(t*.3)*1.2:p.dodge||0),before=p.group.position.clone();p.group.position.copy(point(p.s+walk,lat));
-  const tau=(state.time*.9+p.phase)%1.4,air=p.hop&&tau<.6;p.group.position.y=r.groundY+.32+(air?2.94*tau-4.905*tau*tau:0);p.group.rotation.y=p.hop?r.heading+(Math.cos(t*.4)<0?Math.PI:0):r.heading+(p.dir<0?Math.PI:0);p.group.userData.action={air};
+ for(const p of plazaPeople){const t=state.time*.65+p.phase,walk=p.hop?Math.sin(t*.4)*2:strollStep(p,dt),x=p.laneX+(p.dodge||0),z=p.laneZ-walk,before=p.group.position.clone(),w=worldCoordinates(x,z);
+  const tau=(state.time*.9+p.phase)%1.4,air=p.hop&&tau<.6;p.group.position.set(w.x,pavingY(x,z)+(air?2.94*tau-4.905*tau*tau:0),w.z);
+  p.group.rotation.y=a2Rail.heading+(p.dir<0?Math.PI:0);p.group.userData.action={air};
   p.group.visible=Math.abs(STOPS[1].s-subjectS)<520;if(p.group.visible)posePedestrian(p.group,Math.hypot(p.group.position.x-before.x,p.group.position.z-before.z)<1?Math.hypot(p.group.position.x-before.x,p.group.position.z-before.z):0,dt);}
  for(const p of plazaCats){
   if(p.wait>0)p.wait-=dt;else{p.x+=p.dir*p.speed*dt;if(Math.abs(p.x)>=p.span){p.x=Math.sign(p.x)*p.span;p.dir=-p.dir;p.wait=1.5+((p.phase*7)%2.5);}}
   const s=p.s+p.x,r=sample(s),pos=point(s,p.lat),before=p.group.position.clone();
-  p.group.position.set(pos.x,p.footpath?groundAt(pos.x,pos.z,s).y+.01:r.groundY+.34,pos.z);
+  p.group.position.set(pos.x,groundAt(pos.x,pos.z,s).y+.01,pos.z);
   p.group.rotation.y=r.heading+(p.dir<0?Math.PI:0);p.group.visible=Math.abs(s-subjectS)<450;
   if(p.group.visible){const d=before.distanceTo(p.group.position);posePet(p.group,d<1?d:0,dt);}
  }
@@ -522,12 +681,19 @@ function serviceBoard(st,d,loop,explore){const service=!loop&&!explore&&!state.d
  $('#onboard').textContent=state.pax;
 }
 // The stack follows the service board; an expanded map pushes it aside (wide screens) or below the map (narrow ones).
-function placeStack(){const a=$('#next-panel').getBoundingClientRect(),b=$('#map-button').getBoundingClientRect();stack.style.marginLeft='';stack.style.top=Math.round(Math.max(a.bottom,b.bottom)+8)+'px';}
+let stackLayoutKey='';
+function placeStack(){
+ const route=$('#next-panel').getBoundingClientRect(),map=$('#map-button').getBoundingClientRect();
+ const top=Math.round(Math.max(route.bottom,map.bottom)+8)+'px';
+ stack.style.marginLeft='';
+ stack.style.top=top;
+ $('#hud').style.setProperty('--below-route',top);
+}
 let ffRate=1;
 // Fast-forward multiplies simulation substeps only; it is available whenever the game is running.
 function ffBlock(){return state.screen==='driving'?'':'paused';}
 // Layout self-check (debug hook): visible HUD panels/controls whose boxes intersect each other or leave the viewport.
-function hudOverlaps(){const els=[...document.querySelectorAll('#map-button,#next-panel,#instruction,#toast,#edge-tools>button,#clean-view,#route-choices>button,#speed-dial,#mobile-buttons>button,#cluster,#dwell,#joystick,#touch-pad>button')].filter(el=>el.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})&&el.getBoundingClientRect().width>0),name=el=>el.id||el.dataset.action,out=[];
+function hudOverlaps(){const els=[...document.querySelectorAll('#map-button,#next-panel,#instruction,#toast,#edge-tools>button,#car-radio>summary,#clean-view,#route-choices>button,#speed-dial,#mobile-buttons>button,#cluster,#dwell,#joystick,#touch-pad>button')].filter(el=>el.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})&&el.getBoundingClientRect().width>0),name=el=>el.id||el.dataset.action,out=[];
  for(const [i,el] of els.entries()){const a=el.getBoundingClientRect();if(a.left<0||a.top<0||a.right>innerWidth||a.bottom>innerHeight)out.push([name(el),'viewport']);for(const other of els.slice(i+1)){const b=other.getBoundingClientRect();if(a.left<b.right-.5&&b.left<a.right-.5&&a.top<b.bottom-.5&&b.top<a.bottom-.5)out.push([name(el),name(other)]);}}return out;}
 // Painted white stop line at every station and direction, on the nose line of a correctly docked vehicle.
 function markTexture(draw,w,h){const c=document.createElement('canvas');c.width=w;c.height=h;draw(c.getContext('2d'));const t=new T.CanvasTexture(c);t.colorSpace=T.SRGBColorSpace;t.anisotropy=8;return t;}
@@ -542,8 +708,8 @@ function makeStopMarkers(){const cjk='"PingFang HK","Noto Sans CJK TC","Microsof
 }
 
 const headlights=[-1,1].map(side=>{const light=new T.SpotLight(0xe5efff,0,65,.4,.6,1.5);light.userData.side=side;scene.add(light,light.target);return light;});
-function weather(){const rain=state.condition==='rain',night=state.condition==='night';atmosphere.setCondition(state.condition);sun.castShadow=!night&&gfx.settings.shadow!==0&&governor.shed<3;// moonlight (0.12) shadows are barely visible but re-render the whole scene into a 4096² map every frame
- environment.weather(rain);environment.setNight(night);scene.userData.nightLights=night?1:0;railway?.setNight(night);environment.markingMaterial.emissive.set(0xece8d3);environment.markingMaterial.emissiveIntensity=night?.22:0;for(const m of environment.nightMaterials){m.emissive.copy(m.color);m.emissiveIntensity=night?.8:0;}setInteriorLighting(night);setBillboardLighting(scene,night);for(const actor of [...traffic,...cyclists])actor.group.traverse(n=>{if(n.isMesh&&['light','red'].includes(n.material?.name)){n.material.emissive.copy(n.material.color);n.material.emissiveIntensity=night?4:.35;}});scene.traverse(n=>{if(n.isLight&&n!==sun&&n!==ambient){if(!night)n.intensity=0;n.visible=night&&n.name!=='Tuen Ma headlight beam';}});$('#night').textContent=night?'Scene: Day':'Scene: Night';}
+function weather(){const rain=state.condition==='rain',night=state.condition==='night';streetLightTick=0;peopleGlowTick=0;atmosphere.setCondition(state.condition);sun.castShadow=!night&&gfx.settings.shadow!==0&&governor.shed<3;// moonlight (0.12) shadows are barely visible but re-render the whole scene into a 4096² map every frame
+ environment.weather(rain);environment.setNight(night);scene.userData.nightLights=night?1:0;trafficLights(night);railway?.setNight(night);environment.markingMaterial.emissive.set(0xece8d3);environment.markingMaterial.emissiveIntensity=night?.22:0;for(const m of environment.nightMaterials){m.emissive.copy(m.color);m.emissiveIntensity=night?.8:0;}environment.materials.lamp.emissiveIntensity=night?2.4:0;setInteriorLighting(night);setBillboardLighting(scene,night);for(const actor of [...traffic,...cyclists,...(playerCar.group?[playerCar]:[])])actor.group.traverse(n=>{if(!n.isMesh)return;const mn=n.material?.name;if(['light','red'].includes(mn)){n.material.emissive.copy(n.material.color);n.material.emissiveIntensity=night?4:.35;}else if(mn==='minibus_cabin'||mn==='minibus_sign'){n.material.emissiveIntensity=night?1.8:.50;}});scene.traverse(n=>{if(n.isLight&&n!==sun&&n!==ambient){if(!night)n.intensity=0;n.visible=night&&n.name!=='Tuen Ma headlight beam';}});$('#night').textContent=night?'Scene: Day':'Scene: Night';}
 function setInteriorLighting(night){for(const tram of [vehicle,...ai,...depotVehicles].filter(Boolean)){const level=tram.isDepot?.18:1.35;for(const section of tram.sections)section.traverse(n=>{if(n.name==='Passenger ceiling light')n.intensity=night?16*level:0;if(n.name==='Interior ceiling LED'){n.visible=night;n.material.color.setHex(tram.isDepot?0x625f58:0xfff0da);}if(n.name==='Interior light spill')n.visible=night&&!tram.isDepot;if(!n.isMesh||!n.material?.emissive)return;const m=n.material;if(m.name==='glass'){m.transparent=true;m.opacity=night?.32:.92;m.depthWrite=false;m.emissive.set(night?0x8b9b8d:0);m.emissiveIntensity=night?.15*level:0;}else if(m.name==='cabin_led'){m.emissive.set(0xffeed5);m.emissiveIntensity=night?3*level:0;}else if(!['light','red','led_orange'].includes(m.name)&&!m.name.startsWith('btn_')&&!n.name.startsWith('cab_display')){m.emissive.copy(m.color);const saloon=n.parent?.name.startsWith('passenger_interior');m.emissiveIntensity=(night?(saloon?.48:m.name==='blue'||m.name==='yellow'?.5:.11):saloon?.14:0)*level;/* saloon lights stay on by day */}});}
  for(const station of stations)station.root.traverse(n=>{if(n.name==='Station canopy LED')n.visible=night;if(n.isMesh&&n.material?.emissive&&n.material.name!=='light'&&!n.name.startsWith('Billboard')){n.material.emissive.copy(n.material.color);n.material.emissiveIntensity=night?(n.material.name.startsWith('sign_text')?1.8:.12):(n.material.name.startsWith('sign_text')?.25:0);}});
 }
@@ -554,23 +720,44 @@ function lightRoadUsers(night){
  roadHeadlights.forEach((light,i)=>{const c=candidates[i];light.intensity=night&&c?(c.bike?24:180):0;if(!night||!c)return;c.root.updateWorldMatrix(true,false);light.position.copy(c.root.localToWorld(new T.Vector3(0,c.bike?1.05:.9,-c.length/2-.08)));light.target.position.copy(c.root.localToWorld(new T.Vector3(0,.03,-c.length/2-22)));});
 }
 // ponytail: six nearby unshadowed lamps bound GPU cost; pavement glow remains for distant lamps.
+let streetLightTick=0;
 const streetLights=Array.from({length:6},()=>{const light=new T.PointLight(0xffe4bb,0,30,2);light.name='Local street illumination';scene.add(light);return light;});
 function lightStreetObjects(night){
  if(mobile||!night){streetLights.forEach(light=>light.intensity=0);return;}
+ if(streetLightTick++%6)return;
  // The few real lights go to lamps nearest the people in view, not to the camera: people 30–60 m ahead at a platform
  // or crossing were left unlit when every light sat on lamps around the camera (pavement glow alone is baked).
- const people=[...walkerObjects,...crossers,...plazaPeople,...cyclists].map(a=>a.group).filter(g=>g&&g.visible&&g.position.distanceToSquared(camera.position)<130*130).map(g=>g.position);
+ const people=[...walkerObjects,...crossers,...plazaPeople,...cyclists,...cityWalkers,...(player.group?[player]:[])].map(a=>a.group).filter(g=>g&&g.visible&&g.position.distanceToSquared(camera.position)<130*130).map(g=>g.position);
  const lamps=environment.lampPositions.map(p=>({p,d:camera.position.distanceTo(p)})).filter(q=>q.d<140).map(q=>{let near=Infinity;for(const g of people){const dx=g.x-q.p.x,dz=g.z-q.p.z;near=Math.min(near,dx*dx+dz*dz);}return {...q,score:people.length?Math.sqrt(near)+q.d*.08:q.d};});
  const fade=lampFade(lamps.map(q=>q.score),streetLights.length),lit=lamps.map((q,i)=>({...q,k:fade[i]})).filter(q=>q.k>0).sort((a,b)=>a.score-b.score);
- streetLights.forEach((light,i)=>{const q=lit[i];if(!q){light.intensity=0;return;}const p=q.p,h=Math.max(1,p.y-sample(project(p.x,p.z)).groundY);light.position.set(p.x,p.y-.15,p.z);light.distance=Math.min(36,Math.max(12,h*2.8));light.intensity=Math.min(160,8*h)*q.k;});}
+ streetLights.forEach((light,i)=>{const q=lit[i];if(!q){light.intensity=0;return;}const p=q.p,h=Math.max(1,p.y-(p.groundY??=sample(project(p.x,p.z)).groundY));light.position.set(p.x,p.y-.15,p.z);light.distance=Math.min(36,Math.max(12,h*2.8));light.intensity=Math.min(160,8*h)*q.k;});}
 // Keep the nighttime shader light count stable; moving lamps change intensity, not visibility.
 function lightScene(){const night=state.condition==='night';glowPeople(night);if(night){lightRoadUsers(true);lightStreetObjects(true);}for(const l of headlights){l.intensity=night&&!noCab()?120:0;if(vehicle){l.position.copy(vehicle.sections[0].localToWorld(new T.Vector3(l.userData.side*.85,1,-5.4)));l.target.position.copy(vehicle.sections[0].localToWorld(new T.Vector3(l.userData.side*1.5,.1,-45)));}}}
 $('#night').onclick=()=>{state.condition=state.condition==='night'?'morning':'night';$('#condition').value=state.condition;weather();};
 $('#headway').onchange=()=>{state.headway=Number($('#headway').value)===210?210:300;resetStreetLife();const p=fleetPlan(state.headway);toast(`${p.count} running services${p.convoy===2?' · two-vehicle convoys':''}`);};
 
 // Drive around town (replaces the control centre in the menu): free roam starting in a car on Road D7, with the town interface.
-function reset(mode=$('#mode').value){const town=mode==='town';if(town)mode='free';document.body.dataset.town=town?'on':'';for(const a of ai)delete a.control;resetAvatar();audio.cancelAnnouncement();if(vehicle.flipped){vehicle.sections.reverse();vehicle.flipped=false;}vehicle.isAI=false;state.returning=false;state.depotRoute=false;state.depotSelected=false;state.depotOutbound=false;state.depotExitDir=1;state.branchCurve=depotCurve;vehicle.terminal=null;Object.assign(state,{screen:'driving',trip:0,parkingAwarded:[],announced:[],contextSpoken:[],speedSetting:0,mode,condition:$('#condition').value,s:stopTarget(STOPS[0]),v:0,lat:5.4,steer:0,yaw:0,park:true,door:0,doorTarget:0,doorSide:1,ramp:0,rampTarget:0,index:0,phase:'approach',dwell:0,pax:0,score:0,energy:0,regen:0,battery:92,time:0,cruise:false,guide:true,mobileBrake:false,cam:0,indicator:0,accel:0,travel:0,served:[],skipped:[],missed:[],incidents:0,penalties:0,crashed:false,eventLog:[],priority:false,loopS:0,loopDone:false,requestAck:false,hold:0,lastKerb:-10,lastCrash:-10,lastHarsh:-10,speedingT:0,freeSpeed:0,walkTip:false,frameTimes:[],frames:0});$('#speed-control').value=0;$('#target-speed').value=0;keys.clear();vehicle.yaws.fill(0);vehicle.posed=false;resetOrbit();firstCamera=true;walkerObjects.forEach(p=>p.progress=0);resetStreetLife();traffic.forEach((c,i)=>{c.lat=c.start;c.v=0;});signalObjects.forEach(s=>s.passed=false);if(mode==='turnback'){state.loopS=0;state.lat=0;state.s=0;state.park=true;}if(mode==='explore'){state.s=35;state.lat=1.9;}if(mode==='free'){Object.assign(state,freeSpawn(town?'city-drive-d7':$('#spawn-location').value));orbit.pitch=state.freePitch;state.s=state.freeS;state.lat=1.9;}ffRate=1;state.arrivals=[];makeSchedule();document.body.dataset.mode=mode;weather();show('driving');if(mode==='control')controlRoom.reset();poseTram(vehicle,state.s,state.lat,false,0,mode==='turnback');audio.initAudio();if(tipsEnabled)toast(mode==='turnback'?'Nai Wai loop · release brake and complete a smooth circuit':mode==='explore'?'Explore the line · move mouse to look, scroll to zoom':mode==='free'?'Free roam · WASD move · Shift boost · Space/Ctrl altitude':'Welcome aboard · E to open the left doors at Nai Wai');if(mode==='free'&&state.freeWalk){state.mode='explore';document.body.dataset.mode='explore';toggleAvatar();const q=groundAt(state.freeX,state.freeZ,state.freeS);Object.assign(player,{x:state.freeX,z:state.freeZ,y:q.y,s:q.s,heading:state.freeHeading});orbit.yaw=state.freeHeading;show('driving');if(state.freeCar){const q=nearestLane(player.x,player.z,80,state.freeHeading);if(q){placeCar(q);enterCar();}}}if(mode==='passenger')board(ai.filter(a=>a.active&&a.dir===1&&!a.terminal).sort((a,b)=>a.s-b.s)[0],true);}
-function show(screen){if(screen==='menu'){resetAvatar();if(['driving','paused','complete'].includes(state.screen))menuStage('choose');}if(screen!=='driving')document.exitPointerLock?.();if(screen!=='menu'&&homeOpen)homePanel(null);state.screen=screen;$('#menu').classList.toggle('hidden',screen!=='menu');$('#hud').classList.toggle('hidden',!['driving','paused'].includes(screen));$('#pause-sheet').classList.toggle('hidden',screen!=='paused');if(screen==='paused')pmOpened();if(screen==='driving')lockMouse();$('#report').classList.toggle('hidden',screen!=='complete');document.body.dataset.screen=screen;for(const el of document.querySelectorAll('#camera,#score-panel,#cluster,#route-strip,#buttons,#dwell'))el.classList.toggle('hidden',state.mode==='free'||state.mode==='passenger'&&el.id!=='camera');}
+async function startJourney(mode=$('#mode').value){
+ if(!ready||state.screen==='loading')return;
+ show('loading');
+ loadingScreen.depart();
+ $('#load').classList.remove('hidden');
+ // Give the browser a paint between the menu click and synchronous journey setup.
+ await nextLoadingFrame();
+ await nextLoadingFrame();
+ try{
+  if(mode==='town'||(mode==='free'&&freeSpawn($('#spawn-location').value).freeCar)){
+   const requested=chosenVehicle();
+   if(!await chooseCar(requested.id))throw Error('Could not start with '+requested.name);
+  }
+  reset(mode);
+  draw(performance.now());
+  loadingScreen.finish();
+  $('#load').classList.add('hidden');
+ }catch(error){failLoading(error);}
+}
+function reset(mode=$('#mode').value){if(!ready)return;const town=mode==='town';if(town)mode='free';document.body.dataset.town=town?'on':'';for(const a of ai)delete a.control;resetAvatar();audio.cancelAnnouncement();if(vehicle.flipped){vehicle.sections.reverse();vehicle.flipped=false;}vehicle.isAI=false;state.returning=false;state.depotRoute=false;state.depotSelected=false;state.depotOutbound=false;state.depotExitDir=1;state.branchCurve=depotCurve;vehicle.terminal=null;Object.assign(state,{screen:'driving',trip:0,parkingAwarded:[],announced:[],contextSpoken:[],speedSetting:0,mode,condition:$('#condition').value,s:stopTarget(STOPS[0]),v:0,lat:5.4,steer:0,yaw:0,park:true,door:0,doorTarget:0,doorSide:1,ramp:0,rampTarget:0,index:0,phase:'approach',dwell:0,pax:0,score:0,energy:0,regen:0,battery:92,time:0,cruise:false,guide:true,mobileBrake:false,cam:0,indicator:0,accel:0,travel:0,served:[],skipped:[],missed:[],incidents:0,penalties:0,crashed:false,eventLog:[],priority:false,loopS:0,loopDone:false,requestAck:false,hold:0,lastKerb:-10,lastCrash:-10,lastHarsh:-10,speedingT:0,freeSpeed:0,walkTip:false,frameTimes:[],frames:0});$('#speed-control').value=0;$('#target-speed').value=0;keys.clear();vehicle.yaws.fill(0);vehicle.posed=false;resetOrbit();firstCamera=true;walkerObjects.forEach(p=>p.progress=0);resetStreetLife();traffic.forEach((c,i)=>{c.lat=c.start;c.v=0;});signalObjects.forEach(s=>s.passed=false);if(mode==='turnback'){state.loopS=0;state.lat=0;state.s=0;state.park=true;}if(mode==='explore'){state.s=35;state.lat=1.9;}if(mode==='free'){Object.assign(state,freeSpawn(town?'city-drive-d7':$('#spawn-location').value));orbit.pitch=state.freePitch;state.s=state.freeS;state.lat=1.9;}ffRate=1;state.arrivals=[];makeSchedule();document.body.dataset.mode=mode;weather();show('driving');if(mode==='control')controlRoom.reset();poseTram(vehicle,state.s,state.lat,false,0,mode==='turnback');audio.initAudio();if(tipsEnabled)toast(mode==='turnback'?'Nai Wai loop · release brake and complete a smooth circuit':mode==='explore'?'Explore the line · move mouse to look, scroll to zoom':mode==='free'?'Free roam · WASD move · Shift boost · Space/Ctrl altitude':'Welcome aboard · E to open the left doors at Nai Wai');if(mode==='free'&&state.freeWalk){state.mode='explore';document.body.dataset.mode='explore';toggleAvatar();const q=groundAt(state.freeX,state.freeZ,state.freeS);Object.assign(player,{x:state.freeX,z:state.freeZ,y:q.y,s:q.s,heading:state.freeHeading});orbit.yaw=state.freeHeading;show('driving');if(state.freeCar){playerCar.lightsOn=state.condition==='night';const q=nearestLane(player.x,player.z,Infinity,state.freeHeading);if(q){placeCar(q);enterCar();}else toast('No clear driving lane available');}}if(mode==='passenger')board(ai.filter(a=>a.active&&a.dir===1&&!a.terminal).sort((a,b)=>a.s-b.s)[0],true);}
+function show(screen){if(screen!=='driving'){carRadio?.close();carMouseLook=false;}if(screen==='menu'){document.body.dataset.town='';resetAvatar();if(['driving','paused','complete'].includes(state.screen))menuStage('choose');}if(screen!=='driving'){document.exitPointerLock?.();if(state.avatar==='car'){keys.clear();releaseStick();}}if(screen!=='menu'&&homeOpen)homePanel(null);state.screen=screen;$('#menu').classList.toggle('hidden',screen!=='menu');$('#hud').classList.toggle('hidden',!['driving','paused'].includes(screen));$('#pause-sheet').classList.toggle('hidden',screen!=='paused');if(screen==='paused')pmOpened();if(screen==='driving')lockMouse();$('#report').classList.toggle('hidden',screen!=='complete');document.body.dataset.screen=screen;for(const el of document.querySelectorAll('#camera,#score-panel,#cluster,#route-strip,#buttons,#dwell'))el.classList.toggle('hidden',state.mode==='free'||state.mode==='passenger'&&el.id!=='camera');}
 function penalty(message,points=20){state.score=Math.max(0,state.score-points);state.penalties++;(state.eventLog ||= []).push({time:state.time,message,points});toast(message+' −'+points);audio.playWarning();}
 // Trilingual like every other announcement: braking/curves use the recorded handrail message.
 function passengerComfort(){
@@ -598,25 +785,38 @@ function action(name){if(name==='camera'&&state.avatar==='ride'){rideView();retu
  }
 }
 const keyActions={Period:'ff',Space:'park',KeyE:'doors',KeyV:'cruise',KeyG:'guide',KeyC:'camera',KeyP:'pause',KeyY:'recover',KeyF:'go',KeyT:'stop',KeyK:'cab',KeyJ:'depot',KeyL:'express',BracketLeft:'depot-left',BracketRight:'depot-right',KeyM:'sound',KeyB:'ramp',KeyQ:'priority',KeyX:'side',KeyZ:'indicator'};
-addEventListener('keydown',e=>{if(e.repeat&&['KeyP','Escape','Enter'].includes(e.code))return;const sheet=state.screen==='paused'?pauseSheet:state.screen==='menu'&&homeOpen?homeSheet:null;if(sheet){const field=['SELECT','INPUT','TEXTAREA'].includes(e.target.tagName);if((!field||e.code==='Escape')&&sheet.key(e))return;}if(state.mode==='control'&&state.screen==='driving'){if((e.code==='KeyP'||e.code==='Escape')&&!['INPUT','SELECT'].includes(e.target.tagName)){e.preventDefault();action('pause');}return;}if(['SELECT','INPUT','TEXTAREA'].includes(e.target.tagName)||e.target.isContentEditable)return;if(state.screen==='menu'&&e.code!=='KeyT'&&!homeOpen&&homeKey(e))return;if(e.code==='Escape'&&state.screen==='driving'&&!options.open){e.preventDefault();action('pause');return;}if(e.code==='Escape'){document.exitPointerLock?.();keys.clear();return;}
- if(state.screen==='menu'){const pick=document.querySelector(`.option-row button[data-hotkey="${e.key.toUpperCase()}"]`);if(pick){e.preventDefault();pick.click();return;}}if(e.target.tagName==='BUTTON'&&['Space','Enter'].includes(e.code)&&!(e.code==='Enter'&&state.screen==='driving'&&!options.open))return;if(e.code==='Enter'&&state.screen==='driving'&&!options.open)e.preventDefault();if(e.repeat)return;if(e.code==='Comma'){shuffleMusic();return;}const shortcuts={KeyO:'#options-button',KeyI:'#map-button',KeyU:'#clean-view',KeyN:'#night'};if(state.screen==='menu'&&e.code==='KeyM'){$('#menu-music').click();return;}if(state.screen==='driving'&&shortcuts[e.code]){e.preventDefault();$(shortcuts[e.code]).click();return;}if(['paused','complete'].includes(state.screen)&&e.code==='Backspace'){e.preventDefault();$((state.screen==='paused'?'#pause-sheet':'#report')+' .menu-return').click();return;}if(state.screen==='complete'&&e.code==='KeyE'&&!$('#explore-tail').classList.contains('hidden')){$('#explore-tail').click();return;}if(options.open)return;if(e.code==='Space'||e.code.startsWith('Arrow'))e.preventDefault();keys.add(e.code);if(e.repeat)return;if(e.code==='Enter'){if(state.screen==='menu'||state.screen==='complete')reset();else if(state.screen==='paused')action('pause');else if(state.screen==='driving'){toggleAvatar();lockMouse();}}if(e.code==='KeyE'&&state.screen==='driving'&&state.avatar!=='drive'){talk();return;}if(e.code==='KeyX'&&state.screen==='driving'&&state.avatar==='foot'){toggleSit();return;}if(state.screen==='driving'&&state.avatar==='ride'&&(e.code==='KeyX'||e.code==='KeyC')){if(e.code==='KeyX')toggleRideSit();else rideView();return;}if(keyActions[e.code]&&(state.mode!=='free'&&state.avatar==='drive'||['pause','sound','ff'].includes(keyActions[e.code])))action(keyActions[e.code]);if(e.code==='KeyH'&&state.mode!=='free'&&state.avatar==='drive')audio.playHorn(true);});
-addEventListener('keyup',e=>{keys.delete(e.code);if(e.code==='KeyH')audio.playHorn(false);});addEventListener('blur',()=>{keys.clear();audio.playHorn(false);if(state.screen==='driving'&&!window.__sgmts?.proof)action('pause');});
+addEventListener('keydown',e=>{if(!ready||state.screen==='loading')return;if(e.repeat&&['KeyP','Escape','Enter'].includes(e.code))return;const sheet=state.screen==='paused'?pauseSheet:state.screen==='menu'&&homeOpen?homeSheet:null;if(sheet){const field=['SELECT','INPUT','TEXTAREA'].includes(e.target.tagName);if((!field||e.code==='Escape')&&sheet.key(e))return;}if(state.screen==='driving'&&!options.open&&!['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)&&!e.target.isContentEditable){
+ if(e.target.closest?.('#car-radio')&&['Space','Enter'].includes(e.code))return;
+ if(!e.ctrlKey&&!e.altKey&&!e.metaKey&&['Slash','Comma'].includes(e.code)){
+  e.preventDefault();if(!e.repeat)carRadio.step(e.code==='Slash'?'station':'song',e.shiftKey?-1:1);return;
+ }
+}if(state.mode==='control'&&state.screen==='driving'){if((e.code==='KeyP'||e.code==='Escape')&&!['INPUT','SELECT'].includes(e.target.tagName)){e.preventDefault();action('pause');}return;}if(['SELECT','INPUT','TEXTAREA'].includes(e.target.tagName)||e.target.isContentEditable)return;if(state.screen==='menu'&&e.code!=='KeyT'&&!homeOpen&&homeKey(e))return;if(e.code==='Escape'&&state.avatar==='car'&&(carMouseLook||document.pointerLockElement===canvas)){keys.clear();carMouseLook=false;if(document.pointerLockElement===canvas)document.exitPointerLock();return;}if(e.code==='Escape'&&state.screen==='driving'&&!options.open){e.preventDefault();action('pause');return;}if(e.code==='Escape'){document.exitPointerLock?.();keys.clear();return;}
+ if(state.screen==='driving'&&state.avatar==='car'){
+  if(e.repeat)return;
+  const actions={KeyR:recoverCar,KeyL:switchLights,KeyH:()=>$('#clean-view').click(),KeyU:()=>$('#clean-view').click(),KeyP:()=>action('pause'),KeyM:()=>action('sound'),Enter:toggleAvatar};
+  if(actions[e.code]){e.preventDefault();actions[e.code]();return;}
+  if(['KeyW','KeyS','KeyA','KeyD','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','ShiftLeft','ShiftRight','Space'].includes(e.code)){e.preventDefault();keys.add(e.code);}
+  return;
+ }
+ if(state.screen==='menu'){const pick=document.querySelector(`.option-row button[data-hotkey="${e.key.toUpperCase()}"]`);if(pick){e.preventDefault();pick.click();return;}}if(e.target.tagName==='BUTTON'&&['Space','Enter'].includes(e.code)&&!(e.code==='Enter'&&state.screen==='driving'&&!options.open))return;if(e.code==='Enter'&&state.screen==='driving'&&!options.open)e.preventDefault();if(e.repeat)return;if(e.code==='Comma'){shuffleMusic();return;}const shortcuts={KeyO:'#options-button',KeyI:'#map-button',KeyU:'#clean-view',KeyN:'#night'};if(state.screen==='menu'&&e.code==='KeyM'){$('#menu-music').click();return;}if(state.screen==='driving'&&shortcuts[e.code]){e.preventDefault();$(shortcuts[e.code]).click();return;}if(['paused','complete'].includes(state.screen)&&e.code==='Backspace'){e.preventDefault();$((state.screen==='paused'?'#pause-sheet':'#report')+' .menu-return').click();return;}if(state.screen==='complete'&&e.code==='KeyE'&&!$('#explore-tail').classList.contains('hidden')){$('#explore-tail').click();return;}if(options.open)return;if(e.code==='Space'||e.code.startsWith('Arrow'))e.preventDefault();keys.add(e.code);if(e.repeat)return;if(e.code==='Enter'){if(state.screen==='menu'||state.screen==='complete')startJourney();else if(state.screen==='paused')action('pause');else if(state.screen==='driving'){toggleAvatar();lockMouse();}}if(e.code==='KeyE'&&state.screen==='driving'&&state.avatar!=='drive'){talk();return;}if(e.code==='KeyX'&&state.screen==='driving'&&state.avatar==='foot'){toggleSit();return;}if(state.screen==='driving'&&state.avatar==='ride'&&(e.code==='KeyX'||e.code==='KeyC')){if(e.code==='KeyX')toggleRideSit();else rideView();return;}if(keyActions[e.code]&&(state.mode!=='free'&&state.avatar==='drive'||['pause','sound','ff'].includes(keyActions[e.code])))action(keyActions[e.code]);if(e.code==='KeyH'&&state.mode!=='free'&&state.avatar==='drive')audio.playHorn(true);});
+addEventListener('keyup',e=>{keys.delete(e.code);if(e.code==='KeyH')audio.playHorn(false);});addEventListener('blur',()=>{releaseStick();keys.clear();audio.playHorn(false);if(state.screen==='driving'&&!window.__sgmts?.proof)action('pause');});
 $('#clean-view').onclick=()=>{const clean=document.body.classList.toggle('clean-view');$('#clean-view').setAttribute('aria-pressed',String(clean));$('#clean-view').setAttribute('aria-label',clean?'Show interface':'Hide interface');$('#clean-view').lastChild.textContent=clean?'Show':'Hide';$('#clean-view').title=clean?'Show interface':'Hide interface';};
-function setUiTheme(theme){document.body.dataset.uiTheme=theme;loadingScreen.setTheme(theme);for(const logo of document.querySelectorAll('.brand-logo,.hm-logo,.pm-logo'))logo.src=logoBase+theme+'.png';for(const button of document.querySelectorAll('.theme-toggle')){button.textContent=theme==='light'?'☾ Dark theme':'☀ Light theme';button.setAttribute('aria-pressed',String(theme==='dark'));}try{localStorage.setItem('sgmts-ui-theme',theme);}catch{}}
+function setUiTheme(theme){document.body.dataset.uiTheme=theme;loadingScreen.setTheme(theme);for(const logo of document.querySelectorAll('.brand-logo,.hm-logo,.pm-logo'))logo.src=logoBase+theme+'.webp';for(const button of document.querySelectorAll('.theme-toggle')){button.textContent=theme==='light'?'☾ Dark theme':'☀ Light theme';button.setAttribute('aria-pressed',String(theme==='dark'));}try{localStorage.setItem('sgmts-ui-theme',theme);}catch{}}
 let savedUiTheme='light';try{if(localStorage.getItem('sgmts-ui-theme')==='dark')savedUiTheme='dark';}catch{}setUiTheme(savedUiTheme);
 document.addEventListener('click',e=>{if(e.target.closest('.theme-toggle'))setUiTheme(document.body.dataset.uiTheme==='light'?'dark':'light');});
 // Touch activation is granted on click/touchend, not the initial pointerdown.
 for(const type of ['pointerdown','click','keydown'])addEventListener(type,()=>audio.initAudio());
-function saveMusicChoices(){try{localStorage.setItem('sgmts-music',JSON.stringify({menuMusic:state.menuMusic,gameMusic:state.gameMusic}));}catch{}}
+function saveMusicChoices(){try{localStorage.setItem('sgmts-music',JSON.stringify({menuMusic:state.menuMusic,gameMusic:state.gameMusic,sharedRadio:true}));}catch{}}
 for(const [id,key] of [['menu-track','menuMusic'],['game-track','gameMusic'],['journey-track','gameMusic']]){
  const select=$('#'+id);
  for(const [value,label] of [['auto','Automatic · 配合場景'],['off','Music off · 關閉音樂']])select.add(new Option(label,value));
- for(const [category,label] of [['loading','Loading & menu'],['gameplay','Gameplay'],['original','Original soundtrack']]){
+ if(key==='gameMusic')for(const station of RADIO_STATIONS)select.add(new Option(station.name,station.id));
+ for(const [category,label] of [['cantonese','Cantopop'],['loading','Loading & menu'],['gameplay','Gameplay'],['original','Original soundtrack']]){
   const group=document.createElement('optgroup');group.label=label;
   for(const track of audio.MUSIC_TRACKS.filter(t=>t.category===category))group.append(new Option(track.title,track.id));select.append(group);
  }
  select.value=state[key];
- select.onchange=()=>{state[key]=select.value;if(key==='gameMusic')for(const id of ['game-track','journey-track'])$('#'+id).value=state.gameMusic;saveMusicChoices();audio.updateMusic(state);audio.initAudio();};
+ select.onchange=()=>{state[key]=select.value;if(key==='gameMusic')state.radioTrack=null;if(key==='gameMusic')for(const id of ['game-track','journey-track'])$('#'+id).value=state.gameMusic;saveMusicChoices();audio.updateMusic(state);audio.initAudio();};
 }
 // Dedicated shuffle-music buttons (menu + HUD, key ","): jump to a random other track, remembered like the pickers.
 function shuffleMusic(){
@@ -627,9 +827,9 @@ function shuffleMusic(){
  $('#menu-track').value=state.menuMusic;for(const id of ['game-track','journey-track'])$('#'+id).value=state.gameMusic;
  saveMusicChoices();audio.updateMusic(state);audio.initAudio();toast('♫ '+next.title,3);
 }
-for(const [host,html,id] of [[$('#choose-screen .launch'),'🔀 Shuffle music',''],[$('#edge-tools'),'<b>🔀</b><small>Music</small>','music-shuffle']]){
- const b=document.createElement('button');b.type='button';b.id=id;b.innerHTML=html;b.setAttribute('aria-label','Shuffle background music / 隨機音樂');b.setAttribute('aria-keyshortcuts',',');b.title='Shuffle background music · ,';b.onclick=shuffleMusic;if(id)b.id=id;host.prepend(b);
-}
+const menuShuffle=document.createElement('button');
+menuShuffle.type='button';menuShuffle.textContent='🔀 Shuffle music';menuShuffle.onclick=shuffleMusic;
+$('#choose-screen .launch').prepend(menuShuffle);
 $('#menu-music').onclick=async()=>{state.muted=false;audio.setMuted(false);if(state.menuMusic==='off'){state.menuMusic='auto';$('#menu-track').value='auto';saveMusicChoices();}audio.updateMusic(state);const playing=await audio.initAudio();$('#menu-music').textContent=playing?'♫ Menu music on':'♫ Tap to retry music';};
 const buttonKeys={'ff':'.','recover':'Y','go':'F','stop':'T','doors':'E','park':'Space','cruise':'V','guide':'G','ramp':'B','priority':'Q','express':'L','depot':'J','cab':'K','depot-left':'[','depot-right':']'};
 for(const b of document.querySelectorAll('[data-action]'))if(buttonKeys[b.dataset.action]){const key=buttonKeys[b.dataset.action];b.title=(b.getAttribute('aria-label')||b.firstChild.textContent).trim()+' · '+key;b.setAttribute('aria-keyshortcuts',key);}
@@ -640,11 +840,12 @@ for(const [id,key] of Object.entries({'camera':'C','pause':'P','options-button':
 {const byAction={...buttonKeys,camera:'C',side:'X',indicator:'Z',pause:'P',sound:'M'},byPad={Enter:'Enter',KeyE:'E',Space:'Space',ControlLeft:'Ctrl'},byId={'close-options':'Esc','menu-music':'M'};
  for(const b of document.querySelectorAll('button')){const key=b.getAttribute('aria-keyshortcuts')||byAction[b.dataset.action]||byPad[b.dataset.key]||byId[b.id];if(!key)continue;
   b.dataset.hotkey=key;b.setAttribute('aria-keyshortcuts',key);if(!b.title.includes(' · '))b.title=(b.getAttribute('aria-label')||b.textContent.trim())+' · '+key;if(getComputedStyle(b).position==='static')b.style.position='relative';}}
-$('#begin').onclick=()=>reset();$('#resume').onclick=()=>action('pause');$('#pause').onclick=()=>action('pause');$('#camera').onclick=()=>action('camera');$('#sound').onclick=()=>action('sound');document.querySelectorAll('[data-action]').forEach(el=>el.onclick=()=>{action(el.dataset.action);if(el.closest('dialog'))options.close();});document.querySelectorAll('.menu-return').forEach(el=>el.onclick=()=>{keys.clear();state.v=0;audio.setDrive(0,false);audio.cancelAnnouncement();state.s=stopTarget(STOPS[1]);state.lat=5.4;show('menu');});$('#explore-tail').onclick=()=>{state.mode='explore';state.park=true;show('driving');toast('Explore the elevated section beyond Industry Park');};$('#condition').onchange=()=>{state.condition=$('#condition').value;weather();};
+$('#begin').onclick=()=>startJourney();$('#resume').onclick=()=>action('pause');$('#pause').onclick=()=>action('pause');$('#camera').onclick=()=>action('camera');$('#sound').onclick=()=>action('sound');document.querySelectorAll('[data-action]').forEach(el=>el.onclick=()=>{action(el.dataset.action);if(el.closest('dialog'))options.close();});document.querySelectorAll('.menu-return').forEach(el=>el.onclick=()=>{keys.clear();state.v=0;audio.setDrive(0,false);audio.cancelAnnouncement();state.s=stopTarget(STOPS[1]);state.lat=5.4;show('menu');});$('#explore-tail').onclick=()=>{state.mode='explore';state.park=true;show('driving');toast('Explore the elevated section beyond Industry Park');};$('#condition').onchange=()=>{state.condition=$('#condition').value;weather();};
 // Opening: title (any key / tap) → chooser. Option buttons drive the hidden selects the rest of the game reads.
 // 'choose' is the home screen with the Journey panel open (Time of day & Play type); 'title' is the bare home screen.
 const menuStage=stage=>{$('#menu').dataset.stage=stage;document.body.dataset.menuStage=stage;if(stage==='choose'?homeOpen!=='journey':homeOpen==='journey')homePanel(stage==='choose'?'journey':null);};
-function syncOptions(){$('#spawn-picker').hidden=$('#mode').value!=='free';for(const row of document.querySelectorAll('.option-row')){const sel=$('#'+row.dataset.for);for(const b of row.querySelectorAll('button'))b.setAttribute('aria-pressed',String(b.dataset.value===sel.value));}}
+$('#spawn-location').addEventListener('change',syncOptions);
+function syncOptions(){$('#vehicle-picker').hidden=!( $('#mode').value==='town'||($('#mode').value==='free'&&freeSpawn($('#spawn-location').value).freeCar));$('#spawn-picker').hidden=$('#mode').value!=='free';for(const row of document.querySelectorAll('.option-row')){const sel=$('#'+row.dataset.for);for(const b of row.querySelectorAll('button'))b.setAttribute('aria-pressed',String(b.dataset.value===sel.value));}}
 for(const row of document.querySelectorAll('.option-row'))for(const b of row.querySelectorAll('button'))b.onclick=()=>{const sel=$('#'+row.dataset.for);sel.value=b.dataset.value;sel.dispatchEvent(new Event('change'));syncOptions();};
 // Home menu (cinematic title): ↑/↓ move the highlight, Enter or a tap chooses. Journey setup is the old chooser panel; Esc / Back returns here.
 const homeItems=[...document.querySelectorAll('.hm-menu .mbtn')],HOME_TIPS=['Stop on the mark, then open the doors · 準確停站再開門','Press Enter after stopping to step out and walk · 停車後按 Enter 落車步行','Press E near a person to chat · 靠近行人按 E 傾偈','Cruise control holds your speed down the line · 巡航可穩定車速','Rain lengthens braking distance · 雨天煞車距離更長','Park a bike at a station and ride it back · 單車可停泊在車站','Press C to change camera view · 按 C 切換視角'];
@@ -751,7 +952,7 @@ function openMap(){if(state.screen==='driving')action('pause');if(state.screen!=
 
 // Title sheet: Start / Time of day & mode / Settings / Controls, in the pause menu's layout.
 const homeSheetEl=document.createElement('div');homeSheetEl.id='home-sheet';homeSheetEl.className='modal hidden pm';
-homeSheetEl.innerHTML=`<header class="pm-head"><img class="pm-logo" src="${logoBase}dark.png" alt="SGMTS Drive"><span class="pm-title"><b>主選單</b><small>MAIN MENU</small></span></header><nav class="pm-list" aria-label="Main menu">${[['begin','play','開始行程','START JOURNEY'],['settings','gear','設定','SETTINGS'],['controls','pad','操作說明','CONTROLS'],['back','back','返回','BACK']].map(([k,icon,zh,en])=>`<button type="button" class="mbtn" data-pm="${k}">${HOME_ICON[icon]}<span class="mbtn-label"><b>${zh}</b><small>${en}</small></span></button>`).join('')}</nav><section class="pm-stage"><div class="pm-host" hidden></div></section><footer class="pm-keys"><kbd>↑ ↓</kbd>移動 <kbd>Enter</kbd>選擇 <kbd>Esc</kbd>返回</footer>`;
+homeSheetEl.innerHTML=`<header class="pm-head"><img class="pm-logo" src="${logoBase}dark.webp" alt="SGMTS Drive"><span class="pm-title"><b>主選單</b><small>MAIN MENU</small></span></header><nav class="pm-list" aria-label="Main menu">${[['begin','play','開始行程','START JOURNEY'],['settings','gear','設定','SETTINGS'],['controls','pad','操作說明','CONTROLS'],['back','back','返回','BACK']].map(([k,icon,zh,en])=>`<button type="button" class="mbtn" data-pm="${k}">${HOME_ICON[icon]}<span class="mbtn-label"><b>${zh}</b><small>${en}</small></span></button>`).join('')}</nav><section class="pm-stage"><div class="pm-host" hidden></div></section><footer class="pm-keys"><kbd>↑ ↓</kbd>移動 <kbd>Enter</kbd>選擇 <kbd>Esc</kbd>返回</footer>`;
 document.body.append(homeSheetEl);
 const homeSheet=makeSheet(homeSheetEl,{
  pick:(what,enter)=>{if(what==='begin')homePanel('journey',enter);else if(what==='back')homePanel(null);else homePanel(what,enter);},
@@ -805,7 +1006,7 @@ function service(dt){if(['explore','turnback'].includes(state.mode))return;const
 const viewS=()=>state.mode==='control'&&state.screen!=='menu'?controlRoom.selectedS:state.screen==='menu'&&attract.subject?attract.subject.s:state.avatar!=='drive'?player.s:state.mode==='free'?state.freeS:state.s;
 function updateFree(dt){
  const forward=(keys.has('KeyW')||keys.has('ArrowUp')?1:0)-(keys.has('KeyS')||keys.has('ArrowDown')?1:0),strafe=(keys.has('KeyA')||keys.has('ArrowLeft')?1:0)-(keys.has('KeyD')||keys.has('ArrowRight')?1:0),lift=(keys.has('Space')?1:0)-(keys.has('ControlLeft')||keys.has('ControlRight')?1:0),speed=keys.has('ShiftLeft')||keys.has('ShiftRight')?65:18;
- const moving=forward||strafe||lift,motion=freeStep(state.freeX,state.freeY,state.freeZ,state.freeHeading+orbit.yaw,forward,strafe,lift,speed,dt);state.freeX=motion.x;state.freeY=motion.y;state.freeZ=motion.z;state.freeS=clamp(project(motion.x,motion.z,state.freeS),0,LENGTH);state.freeY=Math.max(state.freeY,sample(state.freeS).groundY+1.2);state.freeSpeed=moving?speed:0;audio.setDrive(0,false);
+ const moving=forward||strafe||lift,motion=freeStep(state.freeX,state.freeY,state.freeZ,state.freeHeading+orbit.yaw,forward,strafe,lift,speed,dt);state.freeX=motion.x;state.freeY=motion.y;state.freeZ=motion.z;state.freeS=clamp(project(motion.x,motion.z),0,LENGTH);state.freeY=Math.max(state.freeY,sample(state.freeS).groundY+1.2);state.freeSpeed=moving?speed:0;
 }
 function update(dt){state.time+=dt;let onLoop=state.mode==='turnback',p=sample(state.s),v0=state.v,lat0=state.lat;
  if(state.mode==='control'){controlRoom.tick(dt);return;}
@@ -865,7 +1066,7 @@ function update(dt){state.time+=dt;let onLoop=state.mode==='turnback',p=sample(s
  if(state.accel<-2.8&&Math.abs(state.v)>2&&state.time-(state.lastHarsh||-10)>5){penalty('Harsh braking · passenger comfort',8);state.lastHarsh=state.time;}
  passengerComfort();
  if(state.v*3.6>limit+4){state.speedingT=(state.speedingT||0)+dt;if(state.speedingT>5){penalty('Speed limit exceeded',30);state.speedingT=0;}}else state.speedingT=0;
- service(dt);audio.setDrive(Math.abs(state.v)*3.6,accel);
+ service(dt);
 }
 const rampMesh=meshBox(1.4,.06,1.15,0xd6bb54);rampMesh.visible=false;scene.add(rampMesh);
 function contact(group,width,length,height,label){
@@ -927,7 +1128,7 @@ function actors(dt){const subjectS=viewS();
   if(state.mode!=='control'&&!noCab())for(const body of vehicle.sections){const delta=body.position.clone().sub(p),ahead=delta.x*t.x+delta.z*t.z,cross=Math.abs(delta.x*t.z-delta.z*t.x);if(ahead>0&&cross<4&&Math.abs(delta.y)<4)stop=Math.min(stop,c.routeDistance+Math.max(0,ahead-c.length/2-7));}
   const move=approachStep(c.routeDistance,c.v,1,c.speed||11,stop,dt);c.routeDistance=move.position;c.v=move.speed;if(c.routeDistance>length){c.routeDistance=0;if(state.mode==='control')c.releaseAt=state.time+controlRoom.arrivalGap;}const v=clamp(c.routeDistance/length,0,1),q=c.curve.getPointAt(v),h=c.curve.getTangentAt(v);c.group.position.copy(q);c.group.position.y+=.08;c.group.rotation.y=Math.atan2(-h.x,-h.z);c.group.visible=Math.abs(project(q.x,q.z)-subjectS)<500;if(c.group.visible)contact(c.group,c.width,c.length,c.height,'Traffic');continue;}
  }
- for(const c of traffic)if(c.group.visible)animateRoadWheels(c.group,c.v*dt);
+ for(const c of traffic){if(!c.group.visible){c.steer=0;c.prevYaw=undefined;continue;}const yaw=c.group.rotation.y;if(c.prevYaw!==undefined&&dt>1e-4){const dYaw=Math.atan2(Math.sin(yaw-c.prevYaw),Math.cos(yaw-c.prevYaw)),target=Math.abs(c.v)>.2?Math.max(-.48,Math.min(.48,Math.atan((c.length*.5)*(dYaw/dt)/Math.max(Math.abs(c.v),1.5)))):0;c.steer=smooth(c.steer||0,target,Math.min(1,dt*8));}c.prevYaw=yaw;animateRoadWheels(c.group,c.v*dt,c.steer||0);}
  updateStreetLife(dt,subjectS);updateBirds(dt,subjectS);
  for(const p of walkerObjects){
   const previousX=p.group.position.x,previousY=p.group.position.y,previousZ=p.group.position.z;
@@ -944,8 +1145,8 @@ function actors(dt){const subjectS=viewS();
 
  for(const sig of signalObjects)for(const head of sig.heads){const phase=head.axis==='pedestrian'?(head.crossing==='side'?((state.mode==='control'?aspect(sig.control,'road'):signalAt(sig,true))==='stop'?'go':'stop'):state.mode==='control'?aspect(sig.control,'ped'):signalAt(sig)==='stop'?'go':'stop'):signalAt(sig,head.axis==='side'),lit=phase==='go'?2:phase==='amber'?1:0;head.bulbs.forEach((b,i)=>b.material.color.setHex(i===lit?[0xff4633,0xffd65b,0x55ff95][i]:0x1a2120));}
  // City crossroads heads follow the city traffic's stages: red+amber before green and amber after it; the green man flashes for 5 s.
- if(cityTraffic)for(const h of environment.citySignals){h.n??=cityLanes.nodes.filter(n=>n.signal).reduce((a,n)=>Math.hypot(n.x-h.node.x,n.z-h.node.z)<Math.hypot(a.x-h.node.x,a.z-h.node.z)?n:a);
-  const s=stageAt(h.n,cityTraffic.clock),on=h.ped?(h.stage==='major'?s.stage==='major':/^arm/.test(s.stage)):s.stage===h.stage,soon=!h.ped&&s.stage===null&&s.next===h.stage&&s.left<=2;
+ if(cityTraffic)for(const h of environment.citySignals){if(h.midblock==null)h.n??=cityLanes.nodes.filter(n=>n.signal).reduce((a,n)=>Math.hypot(n.x-h.node.x,n.z-h.node.z)<Math.hypot(a.x-h.node.x,a.z-h.node.z)?n:a);
+  const s=h.midblock==null?stageAt(h.n,cityTraffic.clock):midblockStage(h.midblock,cityTraffic.clock),on=h.midblock!=null?s.stage===h.stage:h.ped?(h.stage==='major'?s.stage==='major':/^arm/.test(s.stage)):s.stage===h.stage,soon=!h.ped&&s.stage===null&&s.next===h.stage&&s.left<=2;
   const lit=h.ped?[!on,false,on&&(s.left>5||elapsed%.6<.3)]:[!on,on?s.left<=3:soon,on&&s.left>3];// soon implies red, so red + amber
   h.bulbs.forEach((b,i)=>b.material.color.setHex(lit[i]?[0xff4633,0xffd65b,0x55ff95][i]:0x1a2120));}
 
@@ -965,34 +1166,42 @@ function drawCabScreen(kind){const t=cabScreen(kind),x=t.image.getContext('2d');
 // Live cab monitors (cockpit view only): rear-left and rear-right cameras on the A-pillar screens, and the platform camera on the CCTV screen.
 // One small render target per feed, one feed redrawn per frame (so each runs at a third of the frame rate), shadows left as they are.
 const FEED_SIZE=[320,200],feedTargets=[0,1,2].map(()=>{const t=new T.WebGLRenderTarget(FEED_SIZE[0],FEED_SIZE[1]);t.texture.colorSpace=T.SRGBColorSpace;t.texture.repeat.set(1,-1);t.texture.offset.set(0,1);return t;}),
- FEED_MAP={mirror_l:feedTargets[0].texture,mirror_r:feedTargets[1].texture,cctv:feedTargets[2].texture},feedCamera=new T.PerspectiveCamera(70,FEED_SIZE[0]/FEED_SIZE[1],.3,800);
-let feedTurn=0,cockpitWheel=0;const UP_Y=new T.Vector3(0,1,0),feedQ=new T.Quaternion();
+ FEED_MAP={mirror_l:feedTargets[0].texture,mirror_r:feedTargets[1].texture,cctv:feedTargets[2].texture},feedCamera=new T.PerspectiveCamera(70,FEED_SIZE[0]/FEED_SIZE[1],.3,140);
+feedCamera.userData.isFeed=true;
+let feedTurn=0,cockpitWheel=0,cabGlassKey='',cabSpeedKey='';const UP_Y=new T.Vector3(0,1,0),feedQ=new T.Quaternion(),_feedDir=new T.Vector3(),_feedLeft=new T.Vector3(),_feedPos=new T.Vector3(),_feedAt=new T.Vector3();
 const cockpitLive=()=>state.screen==='driving'&&state.cam===1&&state.avatar==='drive'&&state.mode!=='free'&&state.mode!=='control';
 function renderFeed(){
- const g=vehicle.sections[0],p=g.position,dir=new T.Vector3(0,0,vehicle.flipped?1:-1).applyQuaternion(g.quaternion),left=new T.Vector3(-1,0,0).applyQuaternion(g.quaternion),i=feedTurn++%3,pos=new T.Vector3(),at=new T.Vector3();
+ const g=vehicle.sections[0],p=g.position,dir=_feedDir.set(0,0,vehicle.flipped?1:-1).applyQuaternion(g.quaternion),left=_feedLeft.set(-1,0,0).applyQuaternion(g.quaternion),i=feedTurn++%3,pos=_feedPos,at=_feedAt;
  if(i<2){const side=i===0?1:-1;// A-pillar cameras look back along the flank
   pos.copy(p).addScaledVector(left,side*1.5).addScaledVector(dir,3);pos.y+=2.8;at.copy(pos).addScaledVector(dir,-30).addScaledVector(left,side*5);at.y-=1.2;feedCamera.fov=70;}
  else{// platform side, the same shot as the platform camera
   const side=state.doorSide;pos.copy(p).addScaledVector(left,side*5.3).addScaledVector(dir,2);pos.y+=2.1;at.copy(p).addScaledVector(left,side*1.335);at.y+=1.55;feedCamera.fov=60;}
  feedCamera.position.copy(pos);feedCamera.lookAt(at);feedCamera.updateProjectionMatrix();
  const auto=renderer.shadowMap.autoUpdate,need=renderer.shadowMap.needsUpdate;renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=false;
- renderer.setRenderTarget(feedTargets[i]);renderer.render(scene,feedCamera);renderer.setRenderTarget(null);
+ setSplatsVisibleForFeed(true);
+ try{renderer.setRenderTarget(feedTargets[i]);renderer.render(scene,feedCamera);renderer.setRenderTarget(null);}
+ finally{setSplatsVisibleForFeed(false);}
  renderer.shadowMap.autoUpdate=auto;renderer.shadowMap.needsUpdate=need;}
 // The steering wheel follows the real front-axle angle (key steering and lane guidance alike), every frame.
 function updateWheel(){cockpitWheel+=((state.wheelAngle||0)-cockpitWheel)*.25;for(const {node,base} of vehicle.steering)node.quaternion.copy(base).multiply(feedQ.setFromAxisAngle(UP_Y,-cockpitWheel*4.5));}
-function updateCockpit(){if(!vehicle)return;const inside=state.screen==='driving'&&state.cam===1&&state.mode!=='free';for(const glass of vehicle.glazing)glass.material.opacity=inside?.035:state.condition==='night'?.32:.7;{const hmiKey=[state.door>.1,state.park,Math.round(state.battery),state.guide,state.doorSide].join();if(hmiKey!==cabHmiKey){cabHmiKey=hmiKey;drawCabScreen('hmi');}}for(const display of vehicle.cabDisplays){const kind=display.name.match(/cab_display_(speed|hmi|cctv|mirror_[lr])/)?.[1]||'speed',map=kind==='speed'?cabTexture:FEED_MAP[kind]||cabScreen(kind);if(display.material.map!==map){display.material.map=map;display.material.color.set(0xffffff);display.material.emissive.set(0xffffff);display.material.emissiveMap=map;display.material.emissiveIntensity=.65;display.material.needsUpdate=true;}}const x=cabDisplay.getContext('2d');x.fillStyle='#0e2028';x.fillRect(0,0,512,320);x.strokeStyle='#6bb9c6';x.lineWidth=8;x.beginPath();x.arc(160,166,114,Math.PI*.75,Math.PI*2.25);x.stroke();x.fillStyle='#d7f3e7';x.font='84px sans-serif';x.textAlign='center';x.fillText(Math.round(Math.abs(state.v)*3.6),160,192);x.font='26px sans-serif';x.fillText('km/h',160,240);x.textAlign='left';x.fillText('SGMTS',314,64);x.fillText(state.door>.1?'DOORS OPEN':'DOORS LOCK',296,130);x.fillText('BAT '+state.battery.toFixed(0)+'%',296,188);x.fillText(state.park?'BRAKE ON':'READY',296,244);cabTexture.needsUpdate=true;for(const wheel of vehicle.steering){wheel.node.quaternion.copy(wheel.base);wheel.node.rotateZ(-state.steer*.5);}}
+function updateCockpit(){if(!vehicle)return;const inside=state.screen==='driving'&&state.cam===1&&state.mode!=='free',glassKey=inside?'in':state.condition==='night'?'night':'day',glassOp=inside?.035:state.condition==='night'?.32:.7;if(glassKey!==cabGlassKey||vehicle.glazing[0]?.material.opacity!==glassOp){cabGlassKey=glassKey;for(const glass of vehicle.glazing)glass.material.opacity=glassOp;}{const hmiKey=[state.door>.1,state.park,Math.round(state.battery),state.guide,state.doorSide].join();if(hmiKey!==cabHmiKey){cabHmiKey=hmiKey;drawCabScreen('hmi');}}for(const display of vehicle.cabDisplays){const kind=display.name.match(/cab_display_(speed|hmi|cctv|mirror_[lr])/)?.[1]||'speed',map=kind==='speed'?cabTexture:FEED_MAP[kind]||cabScreen(kind);if(display.material.map!==map){display.material.map=map;display.material.color.set(0xffffff);display.material.emissive.set(0xffffff);display.material.emissiveMap=map;display.material.emissiveIntensity=.65;display.material.needsUpdate=true;}}const speedKey=[Math.round(Math.abs(state.v)*3.6),state.door>.1,Math.round(state.battery),state.park].join();if(!cabSpeedKey||(inside&&speedKey!==cabSpeedKey)){cabSpeedKey=speedKey;const x=cabDisplay.getContext('2d');x.fillStyle='#0e2028';x.fillRect(0,0,512,320);x.strokeStyle='#6bb9c6';x.lineWidth=8;x.beginPath();x.arc(160,166,114,Math.PI*.75,Math.PI*2.25);x.stroke();x.fillStyle='#d7f3e7';x.font='84px sans-serif';x.textAlign='center';x.fillText(Math.round(Math.abs(state.v)*3.6),160,192);x.font='26px sans-serif';x.fillText('km/h',160,240);x.textAlign='left';x.fillText('SGMTS',314,64);x.fillText(state.door>.1?'DOORS OPEN':'DOORS LOCK',296,130);x.fillText('BAT '+state.battery.toFixed(0)+'%',296,188);x.fillText(state.park?'BRAKE ON':'READY',296,244);cabTexture.needsUpdate=true;}for(const wheel of vehicle.steering){wheel.node.quaternion.copy(wheel.base);wheel.node.rotateZ(-state.steer*.5);}}
 const camPos=new T.Vector3(),look=new T.Vector3();let firstCamera=true;
-const orbit={yaw:0,pitch:0,zoom:1};let drag=null;
+const orbit={yaw:0,pitch:0,zoom:1};let drag=null,carMouseLook=false;
 function resetOrbit(){orbit.yaw=state.avatar==='foot'?player.heading:0;orbit.pitch=0;orbit.zoom=1;player.walkInput=null;}
 const canvas=renderer.domElement;canvas.style.touchAction='none';
 // On foot / cycling / riding the mouse steers the camera by default (pointer hidden); Esc releases it. Must run inside a key or click.
-function lockMouse(){if(mobile||state.mode==='control'||state.screen!=='driving'||state.avatar==='drive'||document.pointerLockElement===canvas)return;canvas.requestPointerLock?.()?.catch?.(()=>{});}
-canvas.addEventListener('click',()=>{if(!mobile&&state.mode!=='control'&&state.screen==='driving')canvas.requestPointerLock?.()?.catch?.(()=>toast('Click the scene again to enable mouse look'));});
-canvas.addEventListener('pointerdown',e=>{if(state.screen!=='driving'||!mobile)return;drag={x:e.clientX,y:e.clientY};canvas.setPointerCapture(e.pointerId);});
+function lockMouse(){if(mobile||state.avatar==='car'||state.mode==='control'||state.screen!=='driving'||state.avatar==='drive'||document.pointerLockElement===canvas)return;canvas.requestPointerLock?.()?.catch?.(()=>{});}
+canvas.addEventListener('click',()=>{
+ if(mobile||state.mode==='control'||state.screen!=='driving'||document.pointerLockElement===canvas)return;
+ // Keep movement inside the scene usable in browsers that decline pointer capture.
+ carMouseLook=state.avatar==='car';
+ canvas.requestPointerLock?.()?.catch?.(()=>{if(!carMouseLook)toast('Click the scene again to enable mouse look');});
+});
+canvas.addEventListener('pointerdown',e=>{if(state.screen!=='driving'||(!mobile&&state.avatar!=='car'))return;drag={x:e.clientX,y:e.clientY};canvas.setPointerCapture(e.pointerId);});
 const mouseLook=(dx,dy)=>{orbit.yaw-=dx*.003;if(dx)player.walkInput=null;orbit.pitch=clamp(orbit.pitch-dy*.003,-1.1,1.1);};
-canvas.addEventListener('pointermove',e=>{if(state.screen!=='driving'||document.pointerLockElement)return;if(!mobile)return;if(!drag)return;mouseLook(e.clientX-drag.x,e.clientY-drag.y);drag={x:e.clientX,y:e.clientY};});
-document.addEventListener('mousemove',e=>{if(document.pointerLockElement===canvas&&state.screen==='driving')mouseLook(e.movementX,e.movementY);});
-document.addEventListener('pointerlockchange',()=>{if(tipsEnabled&&document.pointerLockElement)toast('Mouse look · Esc releases the pointer');});
+canvas.addEventListener('pointermove',e=>{if(state.screen!=='driving'||document.pointerLockElement||carMouseLook)return;if(!drag)return;mouseLook(e.clientX-drag.x,e.clientY-drag.y);drag={x:e.clientX,y:e.clientY};});
+document.addEventListener('mousemove',e=>{if(state.screen==='driving'&&(document.pointerLockElement===canvas||(carMouseLook&&e.target===canvas)))mouseLook(e.movementX,e.movementY);});
+document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement)carMouseLook=false;if(tipsEnabled&&document.pointerLockElement)toast('Mouse look · Esc releases the pointer');});
 canvas.addEventListener('pointerup',()=>drag=null);canvas.addEventListener('pointercancel',()=>drag=null);
 canvas.addEventListener('wheel',e=>{e.preventDefault();orbit.zoom=clamp(orbit.zoom*Math.exp(e.deltaY*.001),.25,3);},{passive:false});
 addEventListener('keydown',e=>{if(['INPUT','SELECT'].includes(e.target.tagName))return;if(e.code==='Digit0')resetOrbit();if(['Equal','Minus'].includes(e.code))orbit.zoom=clamp(orbit.zoom*(e.code==='Equal'?.85:1.18),.25,3);});
@@ -1019,14 +1228,16 @@ function makeAvatar(){player.group??=streetModel('pedestrian_0');player.group.na
   if(st.id==='A1'&&dir===-1)continue;
   const access=stationAccess(st,platform,dir),s=clamp(access.end+dir*2,4,LENGTH-4),r=sample(s),lat=platform.side*(roadSection(s).right+2.8),x=r.x+r.lx*lat,z=r.z+r.lz*lat;
   const group=streetModel('cyclist'),b={group,wheels:['bike_wheel_front','bike_wheel_rear'].map(k=>group.getObjectByName(k)),s,lat:1.6,dir:1,v:0,phase:0,parking:{x,z,y:groundAt(x,z,s).y,heading:r.heading},station:st.id};
-  const oldRider=group.getObjectByName('seated_rider');oldRider.removeFromParent();const rider=colleague(GORDON);rider.name='seated_rider';rider.getObjectByName('contact shadow').removeFromParent();characterLighting(rider);litPeople.push(rider);group.add(rider);
+  const oldRider=group.getObjectByName('seated_rider');oldRider?.removeFromParent();const rider=colleague(GORDON);rider.name='seated_rider';rider.getObjectByName('contact shadow')?.removeFromParent();characterLighting(rider);litPeople.push(rider);group.add(rider);
   group.name='parked-bike';poseCyclist(b,0);scene.add(group);bikes.push(b);parkBike(b,true);
  }
 }
 function parkBike(b,parked){b.group.getObjectByName('seated_rider').visible=!parked;placeBike(b);}
 function placeBike(b){if(b.parking){b.group.position.set(b.parking.x,b.parking.y+.035,b.parking.z);b.group.rotation.y=b.parking.heading;return;}const r=cycleSample(b.s);b.group.position.set(r.x+r.lx*b.lat,r.groundY+cycleBridgeHeight(b.s)+.035,r.z+r.lz*b.lat);b.group.rotation.y=r.heading+(b.dir===1?0:Math.PI);}
 
-function resetAvatar(){if(player.sit)standUp();if(player.tram)rideGlass(player.tram,false);if(player.bike){player.bike.v=0;parkBike(player.bike,true);}Object.assign(player,{tram:null,bike:null});state.avatar='drive';if(player.group)player.group.visible=false;playerCar.active=false;playerCar.v=0;if(playerCar.group)playerCar.group.visible=false;}
+function resetAvatar(){releaseStick();selection++;if(player.liftRide){
+ const {lift}=player.liftRide;environment.poseLift(lift,lift.base);player.liftRide=null;
+}if(player.sit)standUp();if(player.tram)rideGlass(player.tram,false);if(player.bike){player.bike.v=0;parkBike(player.bike,true);}Object.assign(player,{tram:null,bike:null});state.avatar='drive';if(player.group)player.group.visible=false;playerCar.active=false;playerCar.v=0;if(playerCar.group)playerCar.group.visible=false;}
 const near2d=(p,max)=>Math.hypot(p.x-player.x,p.z-player.z)<max;
 function nearestTram(){let best=null,bd=6;for(const t of [...(noCab()?[]:[vehicle]),...ai.filter(a=>a.active)])for(const g of t.sections){const d=Math.hypot(g.position.x-player.x,g.position.z-player.z);if(d<bd&&Math.abs(g.position.y-player.y)<3){bd=d;best=t;}}return best;}
 const nearestBike=()=>bikes.filter(b=>b!==player.bike&&near2d(b.group.position,2.5)).sort((a,b)=>a.group.position.distanceTo(player.group.position)-b.group.position.distanceTo(player.group.position))[0];
@@ -1034,21 +1245,21 @@ function nearestPerson(){const people=[...walkerObjects,...crossers,...plazaPeop
 // Step out beside a section on its outer side (platform side at a stop), never into the carriageway centre.
 function leave(g,hint){const right=new T.Vector3(1,0,0).applyQuaternion(g.quaternion).setY(0).normalize(),spot=[1,-1].map(k=>{const p=g.position.clone().addScaledVector(right,k*2.4);return {p,k,g:groundAt(p.x,p.z,hint)};}).sort((a,b)=>Math.abs(b.g.lat)-Math.abs(a.g.lat))[0];
  Object.assign(player,{jumpY:0,vy:0,x:spot.p.x,z:spot.p.z,y:spot.g.y,s:spot.g.s,v:0,tram:null});player.heading=Math.atan2(-right.x*spot.k,-right.z*spot.k);state.avatar='foot';player.walkInput=null;orbit.yaw=player.heading;player.group.visible=true;firstCamera=true;}
-function toggleAvatar(){if(state.mode==='free'||!player.group)return;if(player.sit)standUp();
+function toggleAvatar(){if(player.liftRide)return;if(state.mode==='free'||!player.group)return;if(player.sit)standUp();
  if(state.avatar==='drive'){if(Math.abs(state.v)>.2){toast('Stop the vehicle before getting out / 請先停車');return;}state.cruise=false;state.park=true;audio.setDrive(0,false);orbit.pitch=0;orbit.zoom=1;leave(vehicle.sections[0],state.s);toast('On foot · WASD walk · Shift run · Space jump · X sit · mouse look · Enter at a parked bike or stopped ART · E talk',7);return;}
  if(state.avatar==='ride'){alight();return;}
  if(state.avatar==='car'){if(Math.abs(playerCar.v)>.5){toast('Stop the car before getting out / 請先停車');return;}// out on the driver's (right) side
-  const x=playerCar.x+Math.cos(playerCar.yaw)*1.8,z=playerCar.z-Math.sin(playerCar.yaw)*1.8,g=groundAt(x,z,project(x,z));Object.assign(player,{x,z,y:g.y,s:g.s,v:0,heading:playerCar.yaw});state.avatar='foot';player.walkInput=null;orbit.yaw=player.heading;player.group.visible=true;return;}
- if(playerCar.active&&Math.hypot(playerCar.x-player.x,playerCar.z-player.z)<4.5){enterCar();return;}
- if(state.avatar==='bike'){const b=player.bike;b.v=0;parkBike(b,true);player.bike=null;const r=cycleSample(b.s),q=b.group.position.clone().addScaledVector(new T.Vector3(r.lx,0,r.lz),-b.dir*1.1),g=groundAt(q.x,q.z,b.s);Object.assign(player,{x:q.x,z:q.z,y:g.y,s:g.s,v:0});state.avatar='foot';player.walkInput=null;orbit.yaw=player.heading;player.group.visible=true;return;}
+  const x=playerCar.x+Math.cos(playerCar.yaw)*(playerCar.width/2+.65),z=playerCar.z-Math.sin(playerCar.yaw)*(playerCar.width/2+.65),g=groundAt(x,z,project(x,z));Object.assign(player,{x,z,y:g.y,s:g.s,v:0,heading:playerCar.yaw});releaseStick();keys.clear();carMouseLook=false;state.avatar='foot';carRadio?.close();selection++;if(playerCar)townHud.setVehicle(playerCar.id);document.body.dataset.avatar='foot';playerCar?.group?.driveLights(playerCar.lightsOn);player.walkInput=null;orbit.yaw=player.heading;player.group.visible=true;return;}
+ if(playerCar.active&&Math.hypot(playerCar.x-player.x,playerCar.z-player.z)<Math.max(4.5,playerCar.length/2+1)){enterCar();return;}
+ if(state.avatar==='bike'){const b=player.bike;b.v=0;parkBike(b,true);player.bike=null;const r=cycleSample(b.s),q=b.group.position.clone().addScaledVector(new T.Vector3(r.lx,0,r.lz),-b.dir*1.1),g=groundAt(q.x,q.z,b.s);Object.assign(player,{x:q.x,z:q.z,y:g.y,s:g.s,v:0});releaseStick();keys.clear();state.avatar='foot';selection++;if(playerCar)townHud.setVehicle(playerCar.id);document.body.dataset.avatar='foot';playerCar?.group?.driveLights(playerCar.lightsOn);player.walkInput=null;orbit.yaw=player.heading;player.group.visible=true;return;}
  const bike=nearestBike(),tram=bike?null:nearestTram();
- if(bike){bike.parking=null;const r=cycleSample(bike.s);bike.dir=-Math.sin(orbit.yaw)*r.tx-Math.cos(orbit.yaw)*r.tz>=0?1:-1;bike.lat=bike.dir*.85;bike.v=0;player.bike=bike;parkBike(bike,false);orbit.yaw=bike.group.rotation.y;state.avatar='bike';player.group.visible=false;toast('Cycling · W pedal · S brake (again to turn round) · A/D change side');return;}
+ if(bike){bike.parking=null;bike.s=rideablePosition(bike.s);const r=cycleSample(bike.s);bike.dir=-Math.sin(orbit.yaw)*r.tx-Math.cos(orbit.yaw)*r.tz>=0?1:-1;bike.lat=bike.dir*.85;bike.v=0;player.bike=bike;parkBike(bike,false);orbit.yaw=bike.group.rotation.y;state.avatar='bike';player.group.visible=false;toast('Cycling · W pedal · S brake (again to turn round) · A/D change side');return;}
  if(tram===vehicle){state.avatar='drive';player.group.visible=false;resetOrbit();firstCamera=true;toast('Back in the cab / 返回駕駛室');return;}
  if(tram){if(Math.abs(tram.v)>.5){toast('Wait for it to stop / 請等車停定');return;}board(tram,false);return;}
  {const q=state.mode==='explore'&&cityLanes?nearestLane(player.x,player.z,25):null;if(q){placeCar(q);toast('Your car is on the road beside you · Enter to drive / 你的車已停在旁邊，按 Enter 駕駛',5);return;}}
  toast('Walk up to an ART vehicle or a parked bike, then press Enter');}
 // X sits: on the nearest free bench within 1.8 m, otherwise on the ground. Any movement key or Space stands up.
-function toggleSit(){if(state.avatar!=='foot')return;if(player.sit){standUp();return;}if(player.jumpY>0)return;
+function toggleSit(){if(player.liftRide)return;if(state.avatar!=='foot')return;if(player.sit){standUp();return;}if(player.jumpY>0)return;
  const seat=seats.filter(q=>!q.taken&&Math.hypot(q.x-player.x,q.z-player.z)<1.8&&Math.abs(q.y-player.y)<1).sort((a,b)=>Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z))[0];
  player.v=0;if(seat){Object.assign(player,{x:seat.x,y:seat.y,z:seat.z,heading:seat.heading});seat.taken=true;player.seat=seat;player.sit={sit:seat.seat};player.group.position.set(seat.x,seat.y+.02,seat.z);player.group.rotation.y=seat.heading;toast('Sitting on the bench · move to stand');}
  else{player.sit={sit:0,ground:true};toast('Sitting down · move to stand');}}
@@ -1071,13 +1282,36 @@ function alight(){const t=player.tram;if(Math.abs(t.v)>.3){toast('Wait until the
 // On-board audio follows the ridden vehicle: next-stop call, chime and doors at each stop, terminus message; subtitles in the toast.
 function playCue(cue,st){if(cue==='chime'){audio.playChime();return;}if(cue==='doors-open'||cue==='doors-close'){audio.playDoors(cue==='doors-open');return;}audio.announce(cue);
  if(cue!=='doors'){const [zh,,en]=announcementText(st,cue.startsWith('arrived')?'arrived':'next',cue.endsWith('terminus'));toast(`${zh} · ${en}`,6);}}
-function talk(){if(state.avatar==='ride'){toast('Passenger: “'+passengerLine(99,player.rideTalks++,{condition:state.condition,riding:true})+'”');return;}
+function useLift({lift,stop}){
+ const up=stop==='street';if(player.sit)standUp();
+ player.v=player.vy=player.jumpY=0;
+ player.liftRide={lift,up,time:0,at:{x:player.x,z:player.z}};
+ environment.poseLift(lift,up?lift.base:lift.deck);
+}
+function tickLift(dt){
+ const ride=player.liftRide,{lift,up,at}=ride;
+ const ease=(from,to)=>{const u=clamp((ride.time-from)/(to-from),0,1);return u*u*(3-2*u);};
+ ride.time+=dt;
+ const board=ease(.52,1.32),travel=ease(1.85,5.15),exit=ease(5.7,6.55);
+ const originDoor=ease(0,.5)*(1-ease(1.32,1.83)),exitDoor=ease(5.16,5.68)*(1-ease(6.55,7.04));
+ const landing=up?lift.bridge:lift.street;
+ player.y=up?lift.base+(lift.deck-lift.base)*travel:lift.deck+(lift.base-lift.deck)*travel;
+ player.x=at.x+(lift.car.x-at.x)*board+(landing.x-lift.car.x)*exit;
+ player.z=at.z+(lift.car.z-at.z)*board+(landing.z-lift.car.z)*exit;
+ player.group.position.set(player.x,player.y+.02,player.z);
+ environment.poseLift(lift,player.y,up?originDoor:exitDoor,up?exitDoor:originDoor);
+ if(ride.time>=7.04){player.liftRide=null;toast(up?'Footbridge / 天橋':'Street level / 地面');}
+}
+function talk(){if(player.liftRide)return;
+ if(state.avatar==='foot'){const nearby=(pedestrianLiftAt(player)??liftAt(player));if(nearby){useLift(nearby);return;}}
+ if(state.avatar==='ride'){toast('Passenger: “'+passengerLine(99,player.rideTalks++,{condition:state.condition,riding:true})+'”');return;}
  const p=nearestPerson();if(!p){toast('Nobody close enough to talk to');return;}const n=player.talks.get(p.g)||0;player.talks.set(p.g,n+1);
  if(state.avatar==='foot')player.heading=Math.atan2(player.x-p.g.position.x,player.z-p.g.position.z);
  const pet=p.g.userData.pet;if(pet){const key=pet==='dog'?'woof':pet==='rat'?'squeak':'meow',who=pet==='dog'?'Dog: “汪汪！ · Woof!”':pet==='rat'?'Rat: “吱吱！ · Squeak!”':'Cat: “喵～ · Meow~”';toast(who);bubbles.say(p.g,key,3);return;}
  {const line=passengerLine(p.id,n,{condition:state.condition});toast('Passenger: “'+line+'”');bubbles.say(p.g,['',line],4);}}
 function padLabel(){if(state.avatar==='drive'&&state.mode!=='free'&&stick!==null)releaseStick();
  const key=state.avatar==='foot'?avatarPrompt()[2]:state.avatar,label={drive:'Walk',ride:'Alight',bike:'Park',car:'Get out','car-near':'Drive','bike-near':'Ride','tram-near':nearestTram()===vehicle?'Drive':'Board'}[key]||'Enter';
+ const atLift=key==='lift';$('#pad-talk b').textContent=atLift?'↕':'💬';$('#pad-talk small').textContent=atLift?'Lift':'Talk';$('#pad-talk').setAttribute('aria-label',atLift?'Use lift / 乘升降機':'Talk');
  $('#pad-enter small').textContent=label;if(state.avatar==='ride')$('#pad-sit small').textContent=player.ride.seat===null?'Sit':'Stand';$('#pad-up small').textContent=state.mode==='free'?'Up':'Jump';}
 function avatarPrompt(){if(state.avatar==='ride'){const r=player.ride,t=player.tram;
   if(r.seat!==null)return ['Seated · X stand up · WASD stand and walk · C view · E chat',1,'ride'];
@@ -1085,28 +1319,39 @@ function avatarPrompt(){if(state.avatar==='ride'){const r=player.ride,t=player.t
   if(DOOR_Z.some(z=>Math.abs(r.Z-sectionOf(r.Z)*PITCH-z)<1.1))return [Math.abs(t.v)<.3?'Enter · exit the vehicle / 按 Enter 下車':'Enter to exit once the vehicle stops / 停車後按 Enter 下車',1,'ride'];
   if(nearestSeat(r.Z,r.x,riderSeats,2.4)!==null)return ['X · sit down / 按 X 坐低 · WASD walk the aisle · C view',1,'ride'];
   return ['Standing · WASD walk the aisle to a free seat · C view · E chat',1,'ride'];}
- if(state.avatar==='car')return ['Driving · W S A D · Space handbrake · Enter to get out / 按 Enter 落車',1,'car'];
+ if(state.avatar==='car')return ['',0,'car'];
  if(state.avatar==='bike')return ['Cycling · W pedal · S brake, again to turn round · Enter to park the bike',1,'bike'];
- if(playerCar.active&&Math.hypot(playerCar.x-player.x,playerCar.z-player.z)<4.5)return ['Enter · drive the car / 按 Enter 駕駛',1,'car-near'];
+ if(state.avatar==='foot'){
+  if(player.liftRide)return [player.liftRide.up?'Lift to footbridge / 升降機往天橋':'Lift to street / 升降機往地面',1,'lift'];
+  const near=(pedestrianLiftAt(player)??liftAt(player));if(near)return [near.stop==='street'?'E · Lift to footbridge / 乘升降機往天橋':'E · Lift to street / 乘升降機往地面',1,'lift'];
+ }
+ if(playerCar.active&&Math.hypot(playerCar.x-player.x,playerCar.z-player.z)<Math.max(4.5,playerCar.length/2+1))return ['Enter · drive the car / 按 Enter 駕駛',1,'car-near'];
  if(nearestBike())return ['Enter · take the bike',1,'bike-near'];const tram=nearestTram();
  if(tram)return [tram===vehicle?'Enter · take the driver’s seat':'Enter · board this ART / 按 Enter 上車',1,'tram-near'];
  if(nearestPerson())return ['E · talk to this person',1,'talk'];
  const bike=bikes.map(b=>Math.hypot(b.group.position.x-player.x,b.group.position.z-player.z)).sort((a,b)=>a-b)[0];
  return [`On foot · WASD walk · Shift run · Space jump · X sit · mouse look · Enter near a bike or stopped ART${bike<400?` · nearest parked bike ${Math.round(bike)} m (station access)`:''}`,0,'foot'];}
-function updateAvatar(dt){const has=(...c)=>c.some(k=>keys.has(k)),f=(has('KeyW','ArrowUp')?1:0)-(has('KeyS','ArrowDown')?1:0),side=(has('KeyD','ArrowRight')?1:0)-(has('KeyA','ArrowLeft')?1:0),run=has('ShiftLeft','ShiftRight');
+function updateAvatar(dt){if(player.liftRide){tickLift(dt);return;}const has=(...c)=>c.some(k=>keys.has(k)),f=(has('KeyW','ArrowUp')?1:0)-(has('KeyS','ArrowDown')?1:0),side=(has('KeyD','ArrowRight')?1:0)-(has('KeyA','ArrowLeft')?1:0),run=has('ShiftLeft','ShiftRight');
  if(state.avatar==='ride'){const t=player.tram,r=player.ride,g=rideSection(t,r.Z);Object.assign(player,{x:g.position.x,y:g.position.y,z:g.position.z,s:t.s});if(!t.active&&!t.terminal){rideGlass(t,false);leave(g,player.s);return;}
   // Standing passengers walk the aisle relative to where they look; seated ones stay put until X.
   if(r.seat!==null&&(f||side)){r.seat=null;r.x=0;r.yaw+=orbit.yaw;orbit.yaw=0;}
   if(r.seat===null&&(f||side)){const Y=r.yaw+orbit.yaw,k=(run?2.2:1.2)*dt;Object.assign(r,aisleStep(r.Z,r.x,(-f*Math.cos(Y)-side*Math.sin(Y))*k,(-f*Math.sin(Y)+side*Math.cos(Y))*k));}
   const st=t.terminal?null:STOPS[t.stopIndex];for(const cue of rideCues(r.cues,{stop:st,dir:t.dir,distance:st?(stopTarget(st,t.dir)-t.s)*t.dir:0,dwell:t.dwell}))playCue(cue,st);return;}
- if(state.avatar==='car'){const c=playerCar;for(let t=dt;t>1e-4;t-=.03)stepCar(c,{throttle:f,steer:-side,brake:has('Space')},Math.min(.03,t),carWorld);
-  const g=groundAt(c.x,c.z,project(c.x,c.z));c.y=g.y;poseCar();animateRoadWheels(c.group,c.v*dt);contact(c.group,c.width,c.length,1.5,'Player car');
-  if(Math.abs(c.v)>.5)orbit.yaw+=Math.atan2(Math.sin(c.yaw-orbit.yaw),Math.cos(c.yaw-orbit.yaw))*Math.min(1,dt*3);Object.assign(player,{x:c.x,y:c.y,z:c.z,s:g.s,heading:c.yaw});return;}
+ if(state.avatar==='car'){
+  const c=playerCar,throttle=stick===null?f:-stickY,steer=stick===null?-side:-stickX,brake=has('Space');
+  const input={throttle,steer,brake,boost:run},steps=Math.ceil(dt/.02),yawBeforeTurn=c.yaw;
+  for(let i=0;i<steps;i++){stepCar(c,input,dt/steps,carWorld);if(c.hit)c.bumps=(c.bumps||0)+1;}
+  poseCar(dt);animateRoadWheels(c.group,c.v*dt,c.steer);c.group.rotateWheels(c.v*dt,c.steer);
+  c.group.driveLights(c.lightsOn,brake||c.v*throttle<-.1,c.v<-.1);c.input=input;
+  if(carMouseLook||document.pointerLockElement===canvas)orbit.yaw+=c.yaw-yawBeforeTurn;
+  else if(!drag&&Math.abs(c.v)>.5){const angle=c.yaw+(c.v<0?Math.PI:0)-orbit.yaw;orbit.yaw+=Math.atan2(Math.sin(angle),Math.cos(angle))*Math.min(1,dt*3);}
+  Object.assign(player,{x:c.x,y:c.y,z:c.z,s:project(c.x,c.z),heading:c.yaw});return;
+ }
  if(state.avatar==='bike'){const b=player.bike;
   // S brakes; pressed again at a standstill it turns the bike around.
   if(f<0&&b.v===0&&!b.turning){b.dir*=-1;b.lat=-b.lat;}b.turning=f<0;
   b.v=f>0?Math.min(run?9:6.5,b.v+2.2*dt):Math.max(0,b.v-(f<0?5:.8)*dt);
-  b.s=clamp(b.s+b.dir*b.v*dt,4,LENGTH-4);b.lat=clamp(b.lat-side*b.dir*1.4*dt,-1.7,1.7);placeBike(b);poseCyclist(b,dt);if(b.v>.5)orbit.yaw+=Math.atan2(Math.sin(b.group.rotation.y-orbit.yaw),Math.cos(b.group.rotation.y-orbit.yaw))*Math.min(1,dt*2.5);Object.assign(player,{x:b.group.position.x,y:b.group.position.y,z:b.group.position.z,s:b.s,heading:b.group.rotation.y});return;}
+  const section=cyclingSection(b.s),next=b.s+b.dir*b.v*dt;b.s=clamp(next,section.start,section.end);if(b.s!==next)b.v=0;b.lat=clamp(b.lat-side*b.dir*1.4*dt,-1.7,1.7);placeBike(b);poseCyclist(b,dt);if(b.v>.5)orbit.yaw+=Math.atan2(Math.sin(b.group.rotation.y-orbit.yaw),Math.cos(b.group.rotation.y-orbit.yaw))*Math.min(1,dt*2.5);Object.assign(player,{x:b.group.position.x,y:b.group.position.y,z:b.group.position.z,s:b.s,heading:b.group.rotation.y});return;}
  if(player.sit){if(f||side||has('Space'))standUp();else{player.group.userData.action=player.sit;posePedestrian(player.group,0,dt);return;}}
  const moving=f||side,target=moving?(run?5:1.7):0;player.v=moving?Math.min(target,player.v+8*dt):Math.max(0,player.v-10*dt);
  followWalking(player,orbit,f,side,dt);
@@ -1122,8 +1367,8 @@ function rideCamera(){const r=player.ride,g=rideSection(player.tram,r.Z),q=r.sea
  const eye=g.localToWorld(new T.Vector3(q?r.x*.8:r.x,q?q.y+SIT_EYE:FLOOR_Y+STAND_EYE,r.Z-sectionOf(r.Z)*PITCH)),dir=new T.Vector3(-Math.sin(Y)*Math.cos(P),Math.sin(P),-Math.cos(Y)*Math.cos(P)).applyQuaternion(g.quaternion);
  rideGlass(player.tram,true);camera.fov=82;camera.near=.05;camera.updateProjectionMatrix();return {target:eye,focus:eye.clone().addScaledVector(dir,10)};}
 function rideView(){const r=player.ride;r.outside=!r.outside;rideGlass(player.tram,!r.outside);firstCamera=true;toast(r.outside?'Outside view · C to go back inside':'Inside view / 車廂視角');}
-function avatarCamera(){if(rideInside())return rideCamera();const ride=state.avatar==='ride',bike=state.avatar==='bike',car=state.avatar==='car',dist=(ride?17:car?9.5:bike?5.5:4.2)*orbit.zoom,e=clamp(.28-orbit.pitch,-.25,1.3),focus=new T.Vector3(player.x,player.y+(ride?2.6:car?1.9:bike?1.5:player.group?.userData.height*.886||1.55),player.z),back=new T.Vector3(Math.sin(orbit.yaw)*Math.cos(e),Math.sin(e),Math.cos(orbit.yaw)*Math.cos(e));
- const target=focus.clone().addScaledVector(back,dist);target.y=Math.max(target.y,groundAt(target.x,target.z,player.s).y+.35);camera.fov=55;camera.near=.2;camera.updateProjectionMatrix();return {target,focus};}
+function avatarCamera(){if(rideInside())return rideCamera();const ride=state.avatar==='ride',bike=state.avatar==='bike',car=state.avatar==='car',dist=(ride?17:car?(playerCar.cam?.distance??playerCar.length*1.7):bike?5.5:4.2)*orbit.zoom,e=clamp(.28-orbit.pitch,-.25,1.3),focus=new T.Vector3(player.x,player.y+(ride?2.6:car?(playerCar.cam?.height??playerCar.height*.65):bike?1.5:player.group?.userData.height*.886||1.55),player.z),back=new T.Vector3(Math.sin(orbit.yaw)*Math.cos(e),Math.sin(e),Math.cos(orbit.yaw)*Math.cos(e));
+ const target=focus.clone().addScaledVector(back,dist);target.y=Math.max(target.y,groundAt(target.x,target.z,player.s,player.y).y+.35);camera.fov=55;camera.near=.2;camera.updateProjectionMatrix();return {target,focus};}
 
 // Menu attract mode: live AI service with a cinematic camera. Cuts every 7 s between five shots and hops to another
 // moving tram every second cut: low lead (key-art hero angle), side dolly, rising crane, slow orbit, low chase.
@@ -1168,8 +1413,8 @@ function aim(dt){camera.far=state.mode==='free'&&state.freeY>150?3500:1600;const
  camera.position.copy(camPos);camera.lookAt(look);firstCamera=false;
  const subject=state.screen==='menu'&&attract.subject?attract.subject.sections[0].position:state.mode==='free'?target:state.avatar!=='drive'?focus:p;updateWind(subject);placeSun(subject);}
 // Shadow frustum follows the subject along the sun direction, snapped to whole shadow texels so edges do not crawl.
-const lightRotation=new T.Quaternion(),lightInverse=new T.Quaternion(),lightPoint=new T.Vector3();
-function placeSun(subject){const d=ATMOS.uSunDir.value,texel=(sun.shadow.camera.right-sun.shadow.camera.left)/sun.shadow.mapSize.x;lightRotation.setFromRotationMatrix(new T.Matrix4().lookAt(d,new T.Vector3(),new T.Vector3(0,1,0)));lightInverse.copy(lightRotation).invert();
+const lightRotation=new T.Quaternion(),lightInverse=new T.Quaternion(),lightPoint=new T.Vector3(),_sunMat=new T.Matrix4(),_sunZero=new T.Vector3(),_sunUp=new T.Vector3(0,1,0);
+function placeSun(subject){const d=ATMOS.uSunDir.value,texel=(sun.shadow.camera.right-sun.shadow.camera.left)/sun.shadow.mapSize.x;lightRotation.setFromRotationMatrix(_sunMat.lookAt(d,_sunZero,_sunUp));lightInverse.copy(lightRotation).invert();
  lightPoint.copy(subject).applyQuaternion(lightInverse);lightPoint.x=Math.round(lightPoint.x/texel)*texel;lightPoint.y=Math.round(lightPoint.y/texel)*texel;lightPoint.applyQuaternion(lightRotation);
  sun.target.position.copy(lightPoint);sun.position.copy(lightPoint).addScaledVector(d,220);}
 // Platform displays: every running vehicle (and the driver's own on a service run), turnarounds included. Redrawn once a second near the viewer.
@@ -1186,80 +1431,147 @@ function updateArrivalBoards(){const second=Math.floor(state.time);if(second===b
  const clock=clockText(state.time).slice(0,5);for(const b of arrivalBoards)if(Math.abs(b.st.s-near)<450)drawArrivalBoard(b,{rows:arrivalRows(b.st,b.dir,fleet),clock,condition:state.condition});}
 function hud(){if(state.mode==='control'&&state.screen!=='menu'){controlRoom.draw();return;}document.body.dataset.depot=String(!!state.depotRoute);document.body.dataset.avatar=state.avatar;if(mobile)padLabel();drawMinimap();updateCockpit();let st=STOPS[state.index],target=st?stopTarget(st):LENGTH,d=(target-state.s)*travelDirection(),loop=state.mode==='turnback',explore=state.mode==='explore';
  $('#service-label').textContent=state.mode==='free'?'FREE CAMERA · VEHICLE INDEPENDENT':state.returning?'LINE 01 · SOUTHBOUND':'LINE 01 · NORTHBOUND';
- serviceBoard(st,d,loop,explore);placeStack();ffButton.lastChild.textContent='Fast '+ffRate+'×';ffButton.classList.toggle('active',ffRate>1);ffButton.classList.toggle('blocked',ffRate===1&&!!ffBlock());// dimmed, never aria-disabled: pressing it while blocked is how the driver learns why.
- if(state.mode==='free'){$('#next').textContent='Free roam / 自由探索';$('#next-distance').textContent=`Ch. ${toChainage(state.freeS).toFixed(0)} m · altitude ${state.freeY.toFixed(0)} m`;$('#signal-status').textContent='Vehicle-independent camera';$('#telemetry').innerHTML=`<span>MOVE SPEED <b>${state.freeSpeed.toFixed(0)} m/s</b></span><span>ALTITUDE <b>${state.freeY.toFixed(1)} m</b></span><span>CHAINAGE <b>${toChainage(state.freeS).toFixed(0)} m</b></span><span>BOOST <b>${keys.has('ShiftLeft')||keys.has('ShiftRight')?'ON':'OFF'}</b></span>`;contextualPrompt('WASD move · Shift boost · Space/Ctrl altitude');return;}
+ serviceBoard(st,d,loop,explore);const stackKey=[$('#next').textContent,$('#board').hidden,$('#stop-banner').hidden,$('#signal-status').textContent,state.mode,state.avatar,!!state.depotRoute,innerWidth,innerHeight].join('|');if(stackKey!==stackLayoutKey){stackLayoutKey=stackKey;placeStack();}ffButton.lastChild.textContent='Fast '+ffRate+'×';ffButton.classList.toggle('active',ffRate>1);ffButton.classList.toggle('blocked',ffRate===1&&!!ffBlock());// dimmed, never aria-disabled: pressing it while blocked is how the driver learns why.
+ if(state.mode==='free'){$('#next').textContent='Free roam / 自由探索';$('#next-distance').textContent=`Ch. ${toChainage(state.freeS).toFixed(0)} m · altitude ${state.freeY.toFixed(0)} m`;$('#signal-status').textContent='Vehicle-independent camera';setHTML($('#telemetry'),`<span>MOVE SPEED <b>${state.freeSpeed.toFixed(0)} m/s</b></span><span>ALTITUDE <b>${state.freeY.toFixed(1)} m</b></span><span>CHAINAGE <b>${toChainage(state.freeS).toFixed(0)} m</b></span><span>BOOST <b>${keys.has('ShiftLeft')||keys.has('ShiftRight')?'ON':'OFF'}</b></span>`);contextualPrompt('WASD move · Shift boost · Space/Ctrl altitude');return;}
  if(state.avatar==='ride'){const t=player.tram,nx=t.terminal?null:STOPS[t.stopIndex],left=nx?(stopTarget(nx,t.dir)-t.s)*t.dir:0;$('#board').hidden=$('#stop-banner').hidden=true;$('#next').hidden=$('#next-distance').hidden=false;
   $('#service-label').textContent=t.dir===1?'LINE 01 · TO 產業園 INDUSTRY PARK':'LINE 01 · TO 泥圍 NAI WAI';$('#next').textContent=nx?`Next / 下一站 · ${nx.zh} ${nx.name}`:'Terminus turnaround / 終點站掉頭';$('#next-distance').textContent=t.dwell>0?'Doors open / 車門已開':`${Math.max(0,left).toFixed(0)} m · ${Math.round(Math.abs(t.v)*3.6)} km/h`;contextualPrompt(...avatarPrompt());return;}
  $('#speed').textContent=Math.round(Math.abs(state.v)*3.6);$('#limit').textContent=loop?'15':'40';$('#next').textContent=loop?'泥圍 · Terminal loop':explore?'Explore / 全線探索':st?`${st.zh} · ${st.name}`:'產業園 · 終點';$('#next-distance').textContent=loop?`${Math.max(0,LOOP.length-state.loopS).toFixed(0)} m to complete circuit`:explore?`${Math.max(0,END_STOP-state.s).toFixed(0)} m to end of line · Ch. ${toChainage(state.s).toFixed(0)} m`:`${Math.abs(d).toFixed(0)} m ${d<0?'behind':'ahead'} · Ch. ${toChainage(state.s).toFixed(0)} m`;
  if(state.depotRoute){$('#next').textContent='Depot / 車廠';$('#next-distance').textContent=Math.max(0,(state.branchCurve||depotCurve).getLength()-state.branchDistance).toFixed(0)+(state.depotOutbound?' m to main line':' m into depot');}
  let sig=nextSignal();$('#signal-status').textContent=sig?`${signalAt(sig)==='go'?'● Proceed':'● Prepare to stop'} · ${(sig.s-state.s).toFixed(0)} m`:'● Clear corridor';$('#signal-status').style.color=sig&&signalAt(sig)!=='go'?'#e8b471':'#91c8ad';const crossing=crossers.find(c=>playerYields(c)&&c.s>state.s&&c.s-state.s<150);if(crossing){$('#signal-status').textContent=`Yield to pedestrians · ${(crossing.s-state.s).toFixed(0)} m / 禮讓行人`;$('#signal-status').style.color='#e8b471';}$('#score').textContent=String(state.score).padStart(4,'0');$('#pax').textContent=state.pax+' passengers / 乘客';$('#schedule').textContent=`${clockText(state.time)} · ${state.nextDue?(state.nextDue.left<0?`${Math.round(-state.nextDue.left)} s late`:'On schedule'):'No timetable'}`;
- $('#brake-status').textContent=state.park?'● Parking brake applied':'○ Parking brake released';$('#door-status').textContent=state.door>.01?`● ${state.doorSide===1?'Left':'Right'} doors open`:'○ Doors secured';$('#guide-status').textContent=`${state.guide?'●':'○'} Guidance ${state.guide?'on':'off'} · ${state.cruise?'Cruise on':'Manual power'}`;$('#camera-status').textContent=CAMERAS[state.cam]+' · Mouse look · Scroll ± · 0 reset';$('#telemetry').innerHTML=`<span>Battery <b>${state.battery.toFixed(1)}%</b></span><span>${state.power<0?'Regenerative braking':'Traction power'} <b>${Math.abs(state.power||0).toFixed(0)} kW</b></span><span>Gradient <b>${(sample(state.s).grade*100).toFixed(1)}%</b></span><span>Energy recovered <b>${state.regen.toFixed(2)} kWh</b></span>`;
+ $('#brake-status').textContent=state.park?'● Parking brake applied':'○ Parking brake released';$('#door-status').textContent=state.door>.01?`● ${state.doorSide===1?'Left':'Right'} doors open`:'○ Doors secured';$('#guide-status').textContent=`${state.guide?'●':'○'} Guidance ${state.guide?'on':'off'} · ${state.cruise?'Cruise on':'Manual power'}`;$('#camera-status').textContent=CAMERAS[state.cam]+' · Mouse look · Scroll ± · 0 reset';setHTML($('#telemetry'),`<span>Battery <b>${state.battery.toFixed(1)}%</b></span><span>${state.power<0?'Regenerative braking':'Traction power'} <b>${Math.abs(state.power||0).toFixed(0)} kW</b></span><span>Gradient <b>${(sample(state.s).grade*100).toFixed(1)}%</b></span><span>Energy recovered <b>${state.regen.toFixed(2)} kWh</b></span>`);
  contextualPrompt(...(state.avatar!=='drive'?avatarPrompt():coach(st,d,loop,explore)));$('#dwell').classList.toggle('active',state.phase==='boarding');$('#dwell i').style.width=`${Math.min(100,state.dwell/(state.requiredDwell||1)*100)}%`;$('#dwell span').textContent='PASSENGER EXCHANGE';
  document.querySelectorAll('[data-stop]').forEach(el=>{el.classList.toggle('done',state.served.includes(el.dataset.stop));el.classList.toggle('here',st?.id===el.dataset.stop);el.classList.toggle('missed',state.missed.includes(el.dataset.stop));});$('#route-choices [data-action="cruise"]').textContent=state.cruise?'Cruise off':'Cruise on';document.querySelector('[data-action="ramp"]').style.display=state.mode==='access'?'':'none';document.querySelector('[data-action="priority"]').style.display=state.mode==='priority'?'':'none';document.querySelector('[data-action="recover"]').style.display=state.crashed?'':'none';}
 const rainPositions=new Float32Array(1200*6);
 for(let i=0;i<1200;i++){let x=(Math.random()-.5)*90,y=Math.random()*40,z=(Math.random()-.5)*90;rainPositions.set([x,y,z,x-.18,y-1.2,z-.08],i*6);}
-const rainGeometry=new T.BufferGeometry();rainGeometry.setAttribute('position',new T.BufferAttribute(rainPositions,3));const rainEffect=new T.LineSegments(rainGeometry,new T.LineBasicMaterial({color:0xc6e4e9,transparent:true,opacity:.22,depthWrite:false}));rainEffect.frustumCulled=false;scene.add(rainEffect);
+const rainGeometry=new T.BufferGeometry();rainGeometry.setAttribute('position',new T.BufferAttribute(rainPositions,3));const rainEffect=new T.LineSegments(rainGeometry,new T.LineBasicMaterial({color:0xc6e4e9,transparent:true,opacity:.22,depthWrite:false}));rainEffect.frustumCulled=false;shelterBridgeRain(rainEffect.material);scene.add(rainEffect);
+function freezeStatic(root){if(!root)return;root.updateMatrixWorld(true);root.traverse(n=>{n.matrixAutoUpdate=false;});}
+const nextLoadingFrame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
+function failLoading(error){
+ ready=false;
+ errors.push(String(error));
+ show('loading');
+ $('#load').classList.remove('hidden');
+ loadingScreen.fail(error.message);
+ audio.updateMusic({screen:'error'});
+ console.error(error);
+}
 async function boot(){try{let loaded=0;
- // ponytail: every large model starts downloading at once; the sequence below only awaits them in build order.
- const rosterDownload=Promise.all(TRIPO_PEOPLE.map(c=>loader.loadAsync(asset('characters/tripo/'+c.path))));
- const fleetDownload=rosterDownload.then(roster=>loadTripoVehicles(loader,f=>asset('vehicles/tripo/'+f),roster[14]));
- const petDownload=loadTripoPets(loader,f=>asset('characters/tripo/pets/'+f),TRIPO_PETS);
- const download=Object.fromEntries(['street-kit.glb','tuen-ma-train.glb','art.glb','characters/tripo/schoolboy-white-uniform-blue-backpack-walk.glb','characters/tripo/schoolgirl-blue-uniform-walk.glb',...STOPS.map(st=>`station-${st.id}.glb`)].map(f=>[f,loader.loadAsync(asset(f))]));
-
- [colleagueModels,vehicleModels,petModels]=await Promise.all([rosterDownload,fleetDownload,petDownload]);
+ // ponytail: only starter models block startup; remaining cast, pets and schoolkids stream in quietly after menu/drive start.
+ const people=TRIPO_PEOPLE.map(c=>'characters/tripo/'+c.path);
+ const petFile=f=>'characters/tripo/pets/'+f,vehicleFile=f=>'vehicles/tripo/'+f;
+ const world=['street-kit.glb','tuen-ma-train.glb','art.glb',...STOPS.map(st=>`station-${st.id}.glb`)];
+ const files=[...world,...people.filter((_,i)=>starterCast(i)),...TRIPO_VEHICLE_FILES.map(vehicleFile)];
+ const modelUrl=file=>(MeshoptDecoder.supported&&packedModels[file])||(file.startsWith('hk-modern/')?import.meta.env.BASE_URL+file:asset(file));
+ const [models,lots,furniture,assetManifest]=await Promise.all([
+  loadStartupModels(files,file=>loader.loadAsync(modelUrl(file)),loadingScreen.download),
+  fetch(import.meta.env.BASE_URL+'lots/lots.json').then(r=>r.ok?r.json():{lots:[]}).then(d=>d.lots,()=>[]),
+  fetch(import.meta.env.BASE_URL+'street/furniture.json').then(r=>r.ok?r.json():Promise.reject(r.status)).catch(e=>{console.warn('No street furniture data',e);return NO_FURNITURE;}),
+  fetch(asset('asset-manifest.json')).then(r=>{if(!r.ok)throw Error('Asset manifest unavailable');return r.json();}),
+  loadModernKit({url:modelUrl('hk-modern/kit.glb'),loader})
+ ]);
+ manifest=assetManifest;
+ colleagueModels=people.map((f,i)=>starterCast(i)?models.get(f):undefined);
+ const cached={loadAsync:file=>models.get(file)};
+ vehicleModels=await loadTripoVehicles(cached,vehicleFile,colleagueModels[TRIPO_PEOPLE.findIndex(c=>c.file==='p03-young-woman-rigged.glb')]);
  player.group=colleague(GORDON);player.group.name='Player · Gordon';characterLighting(player.group);litPeople.push(player.group);
- streetKit=(await download['street-kit.glb']).scene;const freight=vehicleModels.get('van').clone(true);freight.name='truck';streetKit.getObjectByName('truck')?.removeFromParent();streetKit.add(freight);loadingScreen.update(1,'Building streets');const lots=await fetch(import.meta.env.BASE_URL+'lots/lots.json').then(r=>r.ok?r.json():{lots:[]}).then(d=>d.lots,()=>[]);const furniture=await fetch(import.meta.env.BASE_URL+'street/furniture.json').then(r=>r.ok?r.json():Promise.reject(r.status)).catch(e=>{console.warn('No street furniture data',e);return NO_FURNITURE;});// OZP streets and lot buildings come first, so the environment keeps its scenery off their roads and paving.
+ streetKit=models.get('street-kit.glb').scene;const freight=vehicleModels.get('van').clone(true);freight.name='truck';streetKit.getObjectByName('truck')?.removeFromParent();streetKit.add(freight);loadingScreen.update(1,'Building streets');await nextLoadingFrame();
+ // OZP streets and lot buildings come first, so the environment keeps its scenery off their roads and paving.
  // City rebuild 2: buildings are plots cut from the street frontages (src/city/blocks.js). They are planned first, from data
  // alone, so the environment keeps hills and planting off them like any built lot.
  const cityBlocks=cityPlots(furniture.network,lots),plotLand=cityBlocks.map(p=>{const g=p.gap/2+1,q=(a,b)=>[p.c[0]+p.u[0]*a+p.v[0]*b,p.c[1]+p.u[1]*a+p.v[1]*b];return {id:p.id,zone:'plot',style:'residential',model:{type:'massing'},poly:[q(-p.w/2-g,-p.d/2-8),q(p.w/2+g,-p.d/2-8),q(p.w/2+g,p.d/2+4),q(-p.w/2-g,p.d/2+4)]};});
  // District behind each kerb for the street furniture rules: the OZP use of the nearest plot (sandbox res / com / ind).
  const DISTRICT={residential:'res',village:'res',civic:'res',commercial:'com',mixed:'com',enterprise:'ind',industry:'ind',utility:'ind'};
  const districtAt=(x,z)=>{let best=null,bd=35;for(const p of cityBlocks){const d=Math.hypot(p.c[0]-x,p.c[1]-z);if(d<bd){bd=d;best=p;}}return DISTRICT[best?.group]||'res';};
- environment=buildEnvironment(scene,streetKit,{occupied:occupiedBy([...lots,...plotLand]),furniture,districtAt});addA1Lion({scene});scene.add(await loadFurnitureModels(furniture,{loader,url:src=>import.meta.env.BASE_URL+'street/models/'+src}));loadingScreen.update(2,'Loading surroundings');
- const drawn=cityMask=networkMask(furniture.network,renderedGround);// lot buildings and trees keep off streets and paving drawn in the street editor
+ environment=buildEnvironment(scene,streetKit,{occupied:occupiedBy([...lots,...plotLand]),furniture,districtAt,lazyNight:true});const a1LionRoot=addA1Lion({scene}),a1Splats=addA1RoundaboutSplats({scene}),a1Veg=addA1RoundaboutVegetation({scene,groundAt:renderedGround}),greenBins=addGreenBins({scene,items:furniture.items,loader,modelUrl:modelUrl('green-bin.glb')}),furnitureModelsGroup=await loadFurnitureModels(furniture,{loader,url:src=>import.meta.env.BASE_URL+'street/models/'+src});scene.add(furnitureModelsGroup);loadingScreen.update(2,'Loading surroundings');await nextLoadingFrame();
+ const drawn=cityMask=networkMask(furniture.network,renderedGround,cityBlocks.roads);// lot buildings and trees keep off streets and paving drawn in the street editor
  const lotGroup=await buildLots(lots.filter(l=>!kitLot(l)),{kit:streetKit,ground:renderedGround,allowed:(x,z,r)=>sceneryClear(x,z,r)&&!drawn.buildingBlocked(x,z,r),allowedKept:(x,z,r)=>sceneryClear(x,z,r),allowedLow:(x,z,r)=>sceneryClear(x,z,r,true)&&!drawn.blocked(x,z,r),modelUrl:src=>import.meta.env.BASE_URL+'lots/models/'+src});scene.add(lotGroup);
  // City rebuild: residential, commercial, mixed-use, industrial, enterprise-park and village lots from the sandbox modern kit.
  const kitSites=cityBlocks.map(p=>({id:p.id,poly:p.poly.map(([x,z])=>({x,z})),edges:p.roles.map(role=>({role})),yaw:p.yaw,y:p.y-.15,modern:p.type,seed:p.seed}));// kit ground floor (y 0.15) on the plinth
  const kitCity=renderModernBuildings(kitSites,{near:220});scene.add(kitCity);await kitCity.userData.ready;
  // Every plot stands on a paved plinth flush with its street's footway, with a forecourt out to the footway (blocks.js
  // plotPaving): hardscape runs unbroken from the kerb to the building, and no building stands in grass.
- {const {pos,idx}=plotPaving(cityBlocks,cityBlocks.roads),geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(pos,3));geo.setIndex(idx);geo.computeVertexNormals();
-  const m=new T.Mesh(geo,new T.MeshStandardMaterial({color:0xb9b3a4,roughness:.95,side:T.DoubleSide}));m.name='Plot paving';m.receiveShadow=true;scene.add(m);setLotSampler(surfaceSampler([m]));}
+ let plotPavingMesh=null;{const {pos,idx}=plotPaving(cityBlocks,cityBlocks.roads),geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(pos,3));geo.setIndex(idx);geo.computeVertexNormals();
+  plotPavingMesh=new T.Mesh(geo,new T.MeshStandardMaterial({color:0xb9b3a4,roughness:.95,side:T.DoubleSide}));plotPavingMesh.name='Plot paving';plotPavingMesh.receiveShadow=true;scene.add(plotPavingMesh);setLotSampler(surfaceSampler([plotPavingMesh]));}
  let planOverlay=null;
  // The City plan overlay (parcels, footprints, paving) stays available for checking at ?debug=city; the ⚙ Graphics button took its place.
  if(new URLSearchParams(location.search).get('debug')==='city'){const warnings=cityDiagnostics(lots,furniture);planOverlay=cityOverlay(lots,lotGroup.userData.cityPlan,renderedGround);scene.add(planOverlay);if(warnings.length)console.warn('City plan:\n'+warnings.join('\n'));}
  const gfxButton=document.createElement('button');gfxButton.id='graphics-button';gfxButton.innerHTML='<b>⚙</b><small>Graphics</small>';gfxButton.setAttribute('aria-label','Graphics settings');gfxButton.setAttribute('aria-pressed','false');$('#edge-tools').append(gfxButton);
  gfxButton.onclick=()=>{gfxButton.blur();gfxButton.setAttribute('aria-pressed',String(gfx.toggle()));};
- environment.nightMaterials.push(...lotNightMaterials());railway=createRailway(scene,(await download['tuen-ma-train.glb']).scene);await addBuildingAdverts(scene,asset,Math.min(mobile?2:8,renderer.capabilities.getMaxAnisotropy()));const model=await download['art.glb'];batchTramModel(model.scene);vehicle=setupTram(model);manifest=await fetch(asset('asset-manifest.json')).then(r=>{if(!r.ok)throw Error('Asset manifest unavailable');return r.json();});
- for(const st of STOPS){loadingScreen.update(3+loaded,'Loading station',loaded);const g=await download[`station-${st.id}.glb`];const root=g.scene;root.updateMatrixWorld(true);root.traverse(n=>{if(!n.isMesh)return;const transform=n.matrixWorld.clone(),inverse=transform.clone().invert(),positions=n.geometry.attributes.position,v=new T.Vector3();for(let i=0;i<positions.count;i++){v.fromBufferAttribute(positions,i).applyMatrix4(transform);v.y+=sample(st.s-v.z).y-sample(st.s).y;v.applyMatrix4(inverse);positions.setXYZ(i,v.x,v.y,v.z);}positions.needsUpdate=true;n.geometry.computeVertexNormals();n.geometry.computeBoundingSphere();});root.position.copy(point(st.s));root.rotation.y=sample(st.s).heading;root.traverse(n=>{if(n.isMesh){n.castShadow=true;n.receiveShadow=true;if(/_tile$/.test(n.name)){n.material=n.material.clone();n.material.color.set(0xffffff);n.material.map=[environment.materials.walkGrey.map,environment.materials.walkBuff.map,environment.materials.walk.map][Number(st.id.slice(1))%3];n.material.roughness=.97;const p=n.geometry.attributes.position,uv=[];n.updateWorldMatrix(true,false);for(let i=0;i<p.count;i++){const v=new T.Vector3().fromBufferAttribute(p,i).applyMatrix4(n.matrixWorld);uv.push(v.x/5,v.z/5);}n.geometry.setAttribute('uv',new T.Float32BufferAttribute(uv,2));}if(/_platform_.*_light$/.test(n.name))n.visible=false;}});for(const platform of st.platforms){
+ environment.nightMaterials.push(...lotNightMaterials());railway=createRailway(scene,models.get('tuen-ma-train.glb').scene);
+ const advertAnisotropy=Math.min(mobile?2:8,renderer.capabilities.getMaxAnisotropy());
+ const buildingAdvertsPromise=addBuildingAdverts(scene,asset,advertAnisotropy);
+ const tramAdvertsPromise=loadTramAdverts(asset,advertAnisotropy);
+ const saloonAdsPromise=Promise.all(INTERIOR_ADVERTS.map(id=>loadAdvertTexture(asset(`adverts/${id}.webp`),advertAnisotropy).then(map=>new T.MeshBasicMaterial({map,color:new T.Color().setScalar(.82),toneMapped:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}))));
+ const model=models.get('art.glb');batchTramModel(model.scene);
+ const stationAdverts=[];
+ for(const st of STOPS){loadingScreen.update(3+loaded,'Loading station',loaded);await nextLoadingFrame();const g=models.get(`station-${st.id}.glb`);const root=g.scene,stationY=sample(st.s).y;root.updateMatrixWorld(true);root.traverse(n=>{if(!n.isMesh)return;const transform=n.matrixWorld.clone(),inverse=transform.clone().invert(),positions=n.geometry.attributes.position,v=new T.Vector3();for(let i=0;i<positions.count;i++){v.fromBufferAttribute(positions,i).applyMatrix4(transform);v.y+=profileHeight(toChainage(st.s-v.z))-DATUM-stationY;v.applyMatrix4(inverse);positions.setXYZ(i,v.x,v.y,v.z);}positions.needsUpdate=true;n.geometry.computeVertexNormals();n.geometry.computeBoundingSphere();});root.position.copy(point(st.s));root.rotation.y=sample(st.s).heading;root.traverse(n=>{if(n.isMesh){n.castShadow=true;n.receiveShadow=true;if(/_tile$/.test(n.name)){n.material=n.material.clone();n.material.color.set(0xffffff);n.material.map=[environment.materials.walkGrey.map,environment.materials.walkBuff.map,environment.materials.walk.map][Number(st.id.slice(1))%3];n.material.roughness=.97;const p=n.geometry.attributes.position,uv=[];n.updateWorldMatrix(true,false);for(let i=0;i<p.count;i++){const v=new T.Vector3().fromBufferAttribute(p,i).applyMatrix4(n.matrixWorld);uv.push(v.x/5,v.z/5);}n.geometry.setAttribute('uv',new T.Float32BufferAttribute(uv,2));}if(/_platform_.*_light$/.test(n.name))n.visible=false;}});for(const platform of st.platforms){
   // Hangs clear of the roof underside (as low as 3.11 m on the pitched A3–A7 roofs) and follows the same gradient as the roof, so it never pokes through.
   const geo=new T.BoxGeometry(.18,.05,72,1,1,36).translate(-platform.side*(7.05+st.width*.5),3.0+PLATFORM_RISE,-platform.centerOffset),p=geo.attributes.position;
   for(let i=0;i<p.count;i++)p.setY(i,p.getY(i)+sample(st.s-p.getZ(i)).y-sample(st.s).y);
-  const strip=new T.Mesh(geo,new T.MeshBasicMaterial({color:0xfff1dd}));strip.name='Station canopy LED';strip.visible=false;root.add(strip);}arrivalBoards.push(...addArrivalScreens(root,st,s=>sample(s).y));await addStationAdverts(root,st,manifest.stations.find(m=>m.id===st.id).platforms,asset(`adverts/${st.id}.webp`),Math.min(mobile?2:8,renderer.capabilities.getMaxAnisotropy()),s=>sample(s).y);scene.add(root);stations.push({root,s:st.s});loadingScreen.update(3+(++loaded),'Loading station',loaded);
+  const strip=new T.Mesh(geo,new T.MeshBasicMaterial({color:0xfff1dd}));strip.name='Station canopy LED';strip.visible=false;root.add(strip);}arrivalBoards.push(...addArrivalScreens(root,st,s=>sample(s).y));stationAdverts.push(addStationAdverts(root,st,manifest.stations.find(m=>m.id===st.id).platforms,asset(`adverts/${st.id}.webp`),advertAnisotropy,s=>sample(s).y));scene.add(root);stations.push({root,s:st.s});loadingScreen.update(3+(++loaded),'Loading station',loaded);
  }
- const tramAdverts=await loadTramAdverts(asset,Math.min(mobile?2:8,renderer.capabilities.getMaxAnisotropy()));loadingScreen.update(4+STOPS.length,'Preparing service',STOPS.length);
+ installDirectionSigns(scene,environment,kitCity,lotGroup);
+ vehicle=setupTram(model);
+ const [tramAdverts,saloonAds]=await Promise.all([tramAdvertsPromise,saloonAdsPromise,buildingAdvertsPromise,...stationAdverts]);loadingScreen.update(4+STOPS.length,'Preparing service',STOPS.length);await nextLoadingFrame();
  for(let i=0;i<17;i++){const dir=i%2?-1:1;ai.push({...setupTram(model,true),dir,homeDir:dir,active:false});}
  // Five stabled ARTs in their painted bays (src/depot.js); sections 10.6 m apart behind the bay's front end.
  PARKED_BAYS.forEach((bay,n)=>{const parked=setupTram(model,true);parked.isDepot=true;parked.sections.forEach((g,i)=>{const back=6.1+i*10.6;g.position.set(bay.front.x-bay.dir.x*back,DEPOT_Y+.08,bay.front.z-bay.dir.z*back);g.rotation.y=Math.atan2(-bay.dir.x,-bay.dir.z);/* model nose is local −z, as sample().heading */g.name='depot-vehicle-'+(n+1)+'-section-'+i;});depotVehicles.push(parked);});
  [vehicle,...ai,...depotVehicles].forEach((tram,i)=>{const campaign=tramCampaign(i);applyTramAdvert(tram,tramAdverts.find(c=>c.id===campaign?.id));});
  // Saloon fit-out and cove adverts reuse the street/station billboard artwork (depot vehicles stay plain).
- const saloonAds=await Promise.all(INTERIOR_ADVERTS.map(id=>new T.TextureLoader().loadAsync(asset(`adverts/${id}.webp`)).then(map=>{map.colorSpace=T.SRGBColorSpace;map.anisotropy=Math.min(mobile?2:8,renderer.capabilities.getMaxAnisotropy());return new T.MeshBasicMaterial({map,color:new T.Color().setScalar(.82),toneMapped:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});})));
  [vehicle,...ai].forEach((tram,i)=>furnishTram(tram,saloonAds,i));
- makeSignals();makeTraffic();makeStationChildren(await download['characters/tripo/schoolboy-white-uniform-blue-backpack-walk.glb'],await download['characters/tripo/schoolgirl-blue-uniform-walk.glb']);makeStreetLife();riders=createRiders({make:i=>{const g=streetModel('pedestrian_'+(i*5+2)%PEDESTRIAN_COUNT);g.name='saloon-rider';const shadow=g.getObjectByName('contact shadow');if(shadow)shadow.visible=false;return g;},pose:posePedestrian});makeScooters();makeBirds();makeStopMarkers();makeAvatar();collectSolids(scene,[sky,windParticles,rainEffect,player.group,...[...walkerObjects,...crossers,...plazaPeople,...cyclists,...bikes,...birds,...scooters,...cityWalkers,...dogs,...cats()].map(a=>a.group),...dogs.map(d=>d.leash)]);resetStreetLife();state.s=stopTarget(STOPS[1]);state.lat=5.4;poseTram(vehicle,state.s,state.lat);environment.update(state.s);weather();tuneForPhone();ready=true;loadingScreen.finish();$('#load').classList.add('hidden');show('menu');audio.initAudio();audio.updateMusic(state);requestAnimationFrame(frame);
- }catch(e){errors.push(String(e));loadingScreen.fail(e.message);audio.updateMusic({screen:'error'});console.error(e);}}
+ makeSignals();makeTraffic();makeStreetLife();riders=createRiders({make:i=>{const g=streetModel('pedestrian_'+(i*7+2)%PEDESTRIAN_COUNT);g.name='saloon-rider';const shadow=g.getObjectByName('contact shadow');if(shadow)shadow.visible=false;return g;},pose:posePedestrian});makeScooters();makeBirds();makeStopMarkers();makeAvatar();
+ for(const st of stations)freezeStatic(st.root);
+ freezeStatic(kitCity);freezeStatic(plotPavingMesh);freezeStatic(a1LionRoot);freezeStatic(furnitureModelsGroup);
+ for(const list of [a1Splats,a1Veg,greenBins])for(const r of list)freezeStatic(r);
+ for(const a of depotVehicles)for(const g of a.sections)freezeStatic(g);
+ if(railway?.root){const movingRail=new Set([...railway.trains.map(t=>t.group),...railway.viaductLights.flatMap(l=>[l,l.target])]);railway.root.updateMatrixWorld(true);railway.root.matrixAutoUpdate=false;for(const child of railway.root.children)if(!movingRail.has(child))freezeStatic(child);}
+ const footways=[];scene.traverse(mesh=>{if(mesh.userData.corridorPaving)footways.push(mesh);});
+ corridorFootway=surfaceSampler(footways);
+ streetBlocked=streetObstacles(environment.fences,[...colliders,...environment.drivePosts,...environment.signals.filter(s=>!s.sharedPole).map(s=>s.group.position)]);
+ collectSolids(scene,[playerCar.group,sky,windParticles,rainEffect,player.group,...[...walkerObjects,...crossers,...plazaPeople,...joggers,...cyclists,...bikes,...birds,...scooters,...cityWalkers,...dogs,...cats()].map(a=>a.group),...dogs.map(d=>d.leash)]);resetStreetLife();state.s=stopTarget(STOPS[1]);state.lat=5.4;poseTram(vehicle,state.s,state.lat);environment.update(state.s);weather();tuneShadows();
+ // Render the title's actual camera view behind the loader, including its first shader compilation.
+ state.screen='menu';
+ frame(performance.now());
+ ready=true;
+ loadingScreen.finish();
+ show('menu');
+ const siteQuery=new URLSearchParams(location.search).get('inspectSite');
+ if(siteQuery){
+  const point=siteQuery.split(',').map(Number);
+  if(point.length===3&&point.every(Number.isFinite)&&Math.abs(point[0])<5000&&Math.abs(point[1])<5000){
+   const [x,z]=point,d=Math.max(45,Math.min(155,point[2])),s=project(x,z+d);
+   reset('free');Object.assign(state,{mode:'free',avatar:'drive',freeWalk:false,freeX:x,freeZ:z+d,freeS:s,freeY:renderedGround(x,z)+d*1.25,freeHeading:0});
+   document.body.dataset.mode='free';Object.assign(orbit,{yaw:0,pitch:-Math.atan(1.25)});environment.update(s);
+  }
+ }
+ if(new URLSearchParams(location.search).has('ozpCapture')){
+  import('./comparison/capture.js').then(m=>m.captureComparison({scene,lots,environment,lotGroup,kitCity,stations,roads:cityBlocks.roads})).then(data=>{
+   window.ozpComparison=data;
+   if(parent!==window)parent.postMessage({type:'sgmts-ozp-capture',data},location.origin);
+  }).catch(error=>{window.ozpCaptureError=error.message;if(parent!==window)parent.postMessage({type:'sgmts-ozp-capture',error:error.message},location.origin);});
+ }
+ $('#load').classList.add('hidden');
+ const details=[
+  ...people.flatMap((file,i)=>starterCast(i)?[]:[{file,install:source=>installColleague(i,source)}]),
+  ...TRIPO_PETS.map(spec=>({file:petFile(spec.file),install:source=>addPetSpecies(spec,source)})),
+  {file:'characters/tripo/schoolboy-white-uniform-blue-backpack-walk.glb',install:source=>makeStationChild(source,'Boy')},
+  {file:'characters/tripo/schoolgirl-blue-uniform-walk.glb',install:source=>makeStationChild(source,'Girl')}
+ ];
+ requestAnimationFrame(()=>streamSceneDetails(details,file=>loader.loadAsync(modelUrl(file))));
+ }catch(error){failLoading(error);}}
 
 // ponytail: phone GPU budget. People (contact blob under each) and instanced beds (trees, railings, ramp trucks) stop casting into the shadow pass,
 // and the shadow map refreshes every other frame. Phones and slow devices also shed resolution: the governor lowers the pixel ratio while frames stay slow.
 if(mobile)autoFullscreen(()=>toast('Tip · Share ▸ Add to Home Screen for full screen · 加到主畫面可全螢幕',7));
 let shadowParity=0,lastCpu=0;
-function tuneForPhone(){if(!mobile)return;renderer.shadowMap.autoUpdate=false;scene.traverse(n=>{if(n.isSkinnedMesh||n.isInstancedMesh)n.castShadow=false;});}
+function tuneShadows(){if(mobile)renderer.shadowMap.autoUpdate=false;scene.traverse(n=>{if(n.isSkinnedMesh||(mobile&&n.isInstancedMesh))n.castShadow=false;});}
 // Apply the governor's verdict: pixel ratio, then scenery distance and shadows as it sheds load.
 function applyGovernor(){renderer.setPixelRatio(governor.ratio);renderer.setSize(innerWidth,innerHeight);atmosphere.setSize(innerWidth,innerHeight);
  const keep=1-.15*governor.shed;setSceneryScale(keep);camera.far=1600*keep;camera.updateProjectionMatrix();setGraphics(atmosphere.cinematic);governor.suspend(1);}
 let lastNow=0;
-function frame(now){renderer.info.reset();const t0=performance.now();draw(now);lastCpu=performance.now()-t0;const i=renderer.info;
- gfx.frame(now-lastNow,lastCpu,{calls:i.render.calls,triangles:i.render.triangles,width:renderer.domElement.width,height:renderer.domElement.height,ratio:renderer.getPixelRatio(),geometries:i.memory.geometries,textures:i.memory.textures,govRatio:governor.ratio,shed:governor.shed});lastNow=now;}
-function draw(now){requestAnimationFrame(frame);const rawFrame=(now-last);if(state.screen==='driving'&&gfx.settings.scale==='auto'){if(governor.tick(rawFrame,lastCpu,rawFrame/1000))applyGovernor();}else governor.suspend(1);if(mobile)renderer.shadowMap.needsUpdate=(shadowParity^=1)===1;const dt=clamp(rawFrame/1000,.001,.05);last=now;elapsed+=dt;
+function frame(now){if(state.screen==='loading'){if(ready)requestAnimationFrame(frame);return;}renderer.info.reset();const t0=performance.now();draw(now);lastCpu=performance.now()-t0;const i=renderer.info;
+ gfx.frame(now-lastNow,lastCpu,{calls:i.render.calls,triangles:i.render.triangles,width:renderer.domElement.width,height:renderer.domElement.height,ratio:renderer.getPixelRatio(),geometries:i.memory.geometries,textures:i.memory.textures,govRatio:governor.ratio,shed:governor.shed});lastNow=now;requestAnimationFrame(frame);}
+function draw(now){const rawFrame=(now-last);if(state.screen==='driving'&&gfx.settings.scale==='auto'){if(governor.tick(rawFrame,lastCpu,rawFrame/1000))applyGovernor();}else governor.suspend(1);if(mobile)renderer.shadowMap.needsUpdate=(shadowParity^=1)===1;const dt=clamp(rawFrame/1000,.001,.05);last=now;elapsed+=dt;
  if(state.screen==='driving'){if(ffRate>1){const why=ffBlock();if(why){ffRate=1;toast('Fast-forward off · '+why);}}let rest=dt*(window.__sgmts?.simulationRate??1)*ffRate;while(rest>0){let d=Math.min(rest,mobile?1/30:1/60);if(state.avatar==='drive')update(d);else{const held=[...keys];keys.clear();update(d);held.forEach(k=>keys.add(k));}actors(d);if(state.avatar!=='drive')updateAvatar(d);updateRiders(d);rest-=d;}if(state.frameTimes.length<90000)state.frameTimes.push(rawFrame);else state.frameTimes[state.frames%90000]=rawFrame;state.frames++;}
  if(state.screen==='menu'){state.time+=dt;actors(dt);poseTram(vehicle,state.s,state.lat);}
  updateScooters(state.screen==='driving'||state.screen==='menu'?dt:0);distinctPeople();
@@ -1267,16 +1579,23 @@ function draw(now){requestAnimationFrame(frame);const rawFrame=(now-last);if(sta
   solid.update(dt,foot?{x:player.x,z:player.z,speed:walkPeak}:null);chatter(dt);if(keys.has('KeyH')&&!hornHeld){hornHeld=true;hornReaction();}else if(!keys.has('KeyH'))hornHeld=false;}
  bubbles.update(dt);
  showDestination(vehicle,travelDirection()===1);for(const a of ai)if(a.active)showDestination(a,a.dir===1);
- const subjectS=state.mode==='turnback'?0:viewS();environment.update(subjectS,elapsed);for(const st of stations)st.root.visible=Math.abs(st.s-subjectS)<600;for(const b of bikes)b.group.visible=Math.abs(b.s-subjectS)<400;if(state.mode!=='control'||state.screen==='menu')aim(dt);if(gfx.settings.far!=='auto'&&camera.far!==gfx.settings.far){camera.far=gfx.settings.far;camera.updateProjectionMatrix();}railway.update(state.time,camera);audio.updateRailwaySound(railway.trains,camera,state.screen==='driving'||state.screen==='menu',dt);
+ const subjectS=state.mode==='turnback'?0:viewS();environment.update(subjectS,elapsed);for(const st of stations)st.root.visible=Math.abs(st.s-subjectS)<600;for(const b of bikes)b.group.visible=Math.abs(b.s-subjectS)<400;if(state.mode!=='control'||state.screen==='menu')aim(dt);if(gfx.settings.far!=='auto'&&camera.far!==gfx.settings.far){camera.far=gfx.settings.far;camera.updateProjectionMatrix();}railway.update(state.time,camera);const worldSoundLevel=state.screen==='driving'?1:state.screen==='menu'?.3:0;audio.updateRailwaySound(railway.trains,camera,worldSoundLevel,dt);
  {const cam=camera.position,dist=o=>o?cam.distanceTo(o):1e9,pos=a=>a.group?.visible===false?null:a.group?.position||a.sections?.[0].position;
-  const running=state.screen==='driving'||state.screen==='menu',driving=state.screen==='driving'&&state.mode!=='free'&&state.avatar==='drive';
-  audio.setDrive(driving?Math.abs(state.v)*3.6:0,driving&&(keys.has('KeyW')||keys.has('KeyF')||state.cruise),driving&&!state.park);
-  audio.updateWorldSound({people:[...walkerObjects,...crossers,...plazaPeople,...cyclists,...scooters].map(a=>dist(pos(a))),cars:traffic.map(a=>dist(pos(a))),trams:ai.filter(a=>a.active).map(a=>dist(pos(a)))},running);}lightScene();audio.updateMusic(state);if(state.screen==='menu'||options.open){const track=audio.musicStatus().find(t=>t.target>0),choice=state.screen==='menu'?state.menuMusic:state.gameMusic,label=state.muted?'Sound muted':track?.error?'Music unavailable · choose another track':track?.playing?'Now playing: '+track.title:choice==='off'?'Music off':state.screen==='paused'?'Music paused':'Choose music to listen';for(const id of ['music-playing','journey-music-playing'])if($('#'+id).textContent!==label)$('#'+id).textContent=label;const buttonLabel=track?.playing&&!state.muted?'♫ Music on':'♫ Play menu music';if($('#menu-music').textContent!==buttonLabel)$('#menu-music').textContent=buttonLabel;}// ponytail: hide saloon/cab detail beyond 30 m (the third-person camera sits ~40 m back); interiors are unreadable through tinted glass there.
- for(const t of [vehicle,...ai,...depotVehicles])for(const it of t?.interiors||[])it.node.visible=it.section.position.distanceToSquared(camera.position)<900;for(const a of depotVehicles)for(const g of a.sections)g.visible=Math.abs(subjectS-DEPOT.s)<700;if(townHud&&document.body.dataset.town==='on'&&state.screen==='driving'){const c=state.avatar==='car'?playerCar:player;camera.getWorldDirection(townLook);townHud.update({x:c.x,z:c.z,fx:townLook.x,fz:townLook.z,speed:Math.abs(c.v||0),avatar:state.avatar});}if(hudTick++%5===0)hud();updateArrivalBoards();updateSaloonScreens();
+  const driving=state.screen==='driving'&&state.mode!=='free'&&state.avatar==='drive';
+  audio.setDrive(driving?Math.abs(state.v)*3.6:0,driving&&(keys.has('KeyW')||keys.has('ArrowUp')||keys.has('KeyF')||state.cruise),driving&&!state.park);
+  const c=playerCar,atWheel=state.screen==='driving'&&state.avatar==='car';
+  if(atWheel){reflectCar??=carReflections(renderer,scene);reflectCar(c.group,Math.abs(c.v)>.5,now);}
+  const direction=camera.getWorldDirection(townLook);
+  const listener=atWheel?{x:cam.x,y:cam.y,z:cam.z,fx:direction.x,fy:direction.y,fz:direction.z}:null;
+  audio.setRoadDrive({active:atWheel,vehicle:c.id,speed:c.v,steer:c.steer,throttle:c.input?.throttle??0,boost:c.input?.boost,handbrake:c.input?.brake,bumps:c.bumps??0,
+   listener,traffic:atWheel?cityTraffic.cars.filter(o=>o.piece).map(o=>({ref:o.id,kind:o.kind,x:o.x,y:o.y,z:o.z,v:o.v})):[],
+   weather:state.condition==='rain'?'rain':'clear',night:state.condition==='night',distance:c.group?cam.distanceTo(c.group.position):8});
+  audio.updateWorldSound({people:[...walkerObjects,...crossers,...plazaPeople,...cyclists,...scooters].map(a=>dist(pos(a))),cars:atWheel?[]:traffic.map(a=>dist(pos(a))),trams:ai.filter(a=>a.active).map(a=>dist(pos(a)))},worldSoundLevel);}lightScene();audio.updateMusic(state);if(state.screen==='driving')carRadio.refresh();if(state.screen==='menu'||options.open){const track=audio.musicStatus().find(t=>t.target>0),choice=state.screen==='menu'?state.menuMusic:state.gameMusic,label=state.muted?'Sound muted':track?.error?'Music unavailable · choose another track':track?.playing?'Now playing: '+track.title:choice==='off'?'Music off':state.screen==='paused'?'Music paused':'Choose music to listen';for(const id of ['music-playing','journey-music-playing'])if($('#'+id).textContent!==label)$('#'+id).textContent=label;const buttonLabel=track?.playing&&!state.muted?'♫ Music on':'♫ Play menu music';if($('#menu-music').textContent!==buttonLabel)$('#menu-music').textContent=buttonLabel;}// ponytail: hide saloon/cab detail beyond 30 m (the third-person camera sits ~40 m back); interiors are unreadable through tinted glass there.
+ for(const t of [vehicle,...ai,...depotVehicles])for(const it of t?.interiors||[])it.node.visible=it.section.position.distanceToSquared(camera.position)<900;for(const a of depotVehicles)for(const g of a.sections)g.visible=Math.abs(subjectS-DEPOT.s)<700;if(townHud&&(document.body.dataset.town==='on'||state.avatar==='car')&&state.screen==='driving'){const c=state.avatar==='car'?playerCar:player;camera.getWorldDirection(townLook);townHud.update({x:c.x,z:c.z,yaw:c.yaw,fx:townLook.x,fz:townLook.z,speed:Math.abs(c.v||0),reverse:c.v<-.1,lights:playerCar.lightsOn,avatar:state.avatar});}if(hudTick++%5===0)hud();updateArrivalBoards();updateSaloonScreens();
  // One reminder per journey, the first time the driver is stationary, that the cab can be left.
  if(tipsEnabled&&state.screen==='driving'&&state.mode!=='control'&&state.mode!=='free'&&state.avatar==='drive'&&!state.walkTip&&state.time>8&&Math.abs(state.v)<.05&&state.phase!=='boarding'){state.walkTip=true;toast('Tip · press Enter to get out: walk around, ride a parked bike or board any ART · 按 Enter 落車',7);}if(toastTime>0){toastTime-=dt;if(toastTime<=0)$('#toast').classList.remove('visible');}rainEffect.visible=state.condition==='rain';if(rainEffect.visible){rainEffect.position.copy(state.mode==='free'||state.avatar!=='drive'?camera.position:vehicle.sections[0].position);rainEffect.position.y-=elapsed*16%30;}atmosphere.update(dt,elapsed,renderedGround(look.x,look.z));if(state.mode==='control'&&state.screen!=='menu')controlRoom.render(now);else{vehicle.sections.forEach(g=>g.visible=!noCab());updateWheel();if(cockpitLive())renderFeed();atmosphere.render();}}
-addEventListener('resize',()=>{governor.suspend(1);renderer.setSize(innerWidth,innerHeight);atmosphere.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();});
-const controlRoom=createControlRoom({state,renderer,scene,getFleet:()=>ai,getSignals:()=>signalObjects,getTraffic:()=>traffic,getCrossers:()=>crossers,clockText,pause:()=>action('pause'),exit:()=>{keys.clear();show('menu');state.mode='service';document.body.dataset.mode='service';for(const a of ai)delete a.control;},restart:()=>reset('control'),setHeadway:value=>{state.headway=value;$('#headway').value=value;resetStreetLife();},prepareView:s=>{
+addEventListener('resize',()=>{governor.suspend(1);renderer.setSize(innerWidth,innerHeight);atmosphere.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();stackLayoutKey='';if(state.screen==='driving')placeStack();});
+const controlRoom=createControlRoom({state,renderer,scene,getFleet:()=>ai,getSignals:()=>signalObjects,getTraffic:()=>traffic,getCrossers:()=>crossers,clockText,pause:()=>action('pause'),exit:()=>{keys.clear();show('menu');state.mode='service';document.body.dataset.mode='service';for(const a of ai)delete a.control;},restart:()=>startJourney('control'),setHeadway:value=>{state.headway=value;$('#headway').value=value;resetStreetLife();},prepareView:s=>{
  environment.update(s,elapsed);for(const st of stations)st.root.visible=Math.abs(st.s-s)<600;for(const a of ai)for(const g of a.sections)g.visible=a.active&&Math.abs(a.s-s)<700;vehicle.sections.forEach(g=>g.visible=false);
  for(const c of traffic)c.group.visible=!c.life&&Math.abs((c.junction?.s??project(c.group.position.x,c.group.position.z))-s)<500;
  for(const list of [crossers,cyclists,sitters,joggers,plazaPeople,plazaCats,bikes])for(const p of list)p.group.visible=Math.abs(p.s-s)<400;
@@ -1287,13 +1606,18 @@ const controlRoom=createControlRoom({state,renderer,scene,getFleet:()=>ai,getSig
 }});
 setUiTheme(document.body.dataset.uiTheme);
 window.__sgmts={get riders(){return riders;},get cityTraffic(){return cityTraffic;},playerCar,get cityPeople(){return cityPeople;},get cityCats(){return cityCats;},dogs,cats,updateRiders,bubbles,solid,crowdPeople,player,controlRoom,fitOneLine,state,atmosphere,STOPS,LENGTH,END_STOP,sample,LOOP,renderer,scene,camera,errors,reset,action,stopTarget,dockError,get ready(){return ready;},get vehicle(){return vehicle;},get manifest(){return manifest;},get signals(){return signalObjects;},get environment(){return environment;},get railway(){return railway;},railwaySoundStatus:audio.railwaySoundStatus,get traffic(){return traffic;},get ai(){return ai;},get crossers(){return crossers;},get cyclists(){return cyclists;},actors,update,terminalStep,terminalLength,weather,lightScene,nextDispatch,get depotVehicles(){return depotVehicles;},get walkers(){return walkerObjects;},get sitters(){return sitters;},get joggers(){return joggers;},get plazaPeople(){return plazaPeople;},seats,toggleSit,player,bikes,toggleAvatar,talk,updateAvatar,orbit,keys,aim,get birds(){return birds;},get stations(){return stations;},CAMERAS,signalAt,JUNCTIONS,setCamera:n=>{state.cam=n;resetOrbit();firstCamera=true;},pose:()=>poseTram(vehicle,state.s,state.lat),musicStatus:audio.musicStatus,announcementStatus:audio.announcementStatus,announce:audio.announce,proof:false,simulationRate:1,get ff(){return ffRate;},ffBlock,hudOverlaps,coach:()=>{const st=STOPS[state.index];return coach(st,st?(stopTarget(st)-state.s)*travelDirection():0,state.mode==='turnback',state.mode==='explore');},makeSchedule,clockText,NOSE};
+show('loading');
 boot();
 
 function drawMinimap(){const c=$('#minimap');if(c.height!==190)c.height=190;drawNearbyMap(c.getContext('2d'));}
 
 function directionMarker(x,a,b,angle,color,size=6){x.save();x.translate(a,b);x.rotate(angle);x.fillStyle=color;x.strokeStyle='#0b0f12';x.lineWidth=1;x.beginPath();x.moveTo(0,-size);x.lineTo(size*.7,size);x.lineTo(0,size*.5);x.lineTo(-size*.7,size);x.closePath();x.fill();x.stroke();x.restore();}
-function drawNearbyMap(x){const g=state.avatar!=='drive'?player:state.mode==='free'?sample(state.freeS):vehicle?.sections[0].position||sample(state.s),scale=.14,map=p=>[95+(p.x-g.x)*scale,92+(p.z-g.z)*scale];x.clearRect(0,0,190,190);x.fillStyle='#12171bed';x.fillRect(0,0,190,190);x.strokeStyle='#bbd0c5';x.lineWidth=4;x.beginPath();for(let s=0;s<=LENGTH;s+=10){const p=map(sample(s));s?x.lineTo(...p):x.moveTo(...p);}x.stroke();x.beginPath();for(let i=0;i<=30;i++){const p=map(depotCurve.getPointAt(i/30));i?x.lineTo(...p):x.moveTo(...p);}x.stroke();const dp=map(depotCurve.getPointAt(1));x.fillStyle='#decaf7';x.fillRect(dp[0]-5,dp[1]-5,10,10);x.font='bold 14px sans-serif';x.fillText('Depot',dp[0]+9,dp[1]+5);
- for(const st of STOPS){const [a,b]=map(sample(st.s));x.fillStyle='#fff3cc';x.beginPath();x.arc(a,b,4,0,7);x.fill();x.fillText(st.zh,a+9,b+5);}for(const sig of signalObjects.filter(s=>!s.underpass)){const [a,b]=map(sample(sig.centre)),phase=signalAt(sig);x.fillStyle=phase==='go'?'#5cf397':phase==='amber'?'#ffd05a':'#ff7770';x.fillRect(a-5,b-5,10,10);}
+const MINIMAP_CORRIDOR=Array.from({length:Math.floor(LENGTH/10)+1},(_,i)=>{const p=sample(Math.min(i*10,LENGTH));return [p.x,p.z];});
+const MINIMAP_DEPOT=Array.from({length:31},(_,i)=>{const p=depotCurve.getPointAt(i/30);return [p.x,p.z];});
+const MINIMAP_DEPOT_END=MINIMAP_DEPOT[MINIMAP_DEPOT.length-1];
+const MINIMAP_STOPS=STOPS.map(st=>{const p=sample(st.s);return {zh:st.zh,x:p.x,z:p.z};});
+function drawNearbyMap(x){const g=state.avatar!=='drive'?player:state.mode==='free'?sample(state.freeS):vehicle?.sections[0].position||sample(state.s),scale=.14,map=p=>[95+(p.x-g.x)*scale,92+(p.z-g.z)*scale];x.clearRect(0,0,190,190);x.fillStyle='#12171bed';x.fillRect(0,0,190,190);x.strokeStyle='#bbd0c5';x.lineWidth=4;x.beginPath();for(let i=0;i<MINIMAP_CORRIDOR.length;i++){const [px,pz]=MINIMAP_CORRIDOR[i],mx=95+(px-g.x)*scale,my=92+(pz-g.z)*scale;i?x.lineTo(mx,my):x.moveTo(mx,my);}x.stroke();x.beginPath();for(let i=0;i<MINIMAP_DEPOT.length;i++){const [px,pz]=MINIMAP_DEPOT[i],mx=95+(px-g.x)*scale,my=92+(pz-g.z)*scale;i?x.lineTo(mx,my):x.moveTo(mx,my);}x.stroke();const dx=95+(MINIMAP_DEPOT_END[0]-g.x)*scale,dy=92+(MINIMAP_DEPOT_END[1]-g.z)*scale;x.fillStyle='#decaf7';x.fillRect(dx-5,dy-5,10,10);x.font='bold 14px sans-serif';x.fillText('Depot',dx+9,dy+5);
+ for(const st of MINIMAP_STOPS){const a=95+(st.x-g.x)*scale,b=92+(st.z-g.z)*scale;x.fillStyle='#fff3cc';x.beginPath();x.arc(a,b,4,0,7);x.fill();x.fillText(st.zh,a+9,b+5);}for(const sig of signalObjects){if(sig.underpass)continue;const sp=sig._pt??=sample(sig.centre),[a,b]=map(sp),phase=signalAt(sig);x.fillStyle=phase==='go'?'#5cf397':phase==='amber'?'#ffd05a':'#ff7770';x.fillRect(a-5,b-5,10,10);}
  for(const a of ai)if(a.active){const p=a.sections[0].position,r=sample(a.s);directionMarker(x,...map(p),Math.atan2(r.tx,-r.tz)+(a.dir===1?0:Math.PI),'#51d7ff',5);}const r=sample(state.s);directionMarker(x,...(state.avatar==='drive'?[95,92]:map(vehicle.sections[0].position)),Math.atan2(r.tx,-r.tz)+(state.returning?Math.PI:0),'#ffbf57',8);if(state.avatar!=='drive'){x.fillStyle='#fff';x.strokeStyle='#0b0f12';x.lineWidth=2;x.beginPath();x.arc(95,92,5,0,7);x.fill();x.stroke();}x.fillStyle='#f0f4ec';x.font='12px sans-serif';x.fillText('N ↑',85,20);
 }
 
@@ -1308,4 +1632,4 @@ function updateBranch(dt){const v0=state.v,braking=state.mobileBrake||keys.has('
  state.v=Math.max(0,Math.min(Math.max(cap,state.v),state.v+(locked||braking?-2.5:state.v>cap?-1.6:go?1.1:-.15)*dt));if(braking&&state.v<.1){state.v=0;state.park=true;state.mobileBrake=false;}
 
  if(state.depotRoute){const curve=state.branchCurve||depotCurve;const movement=approachStep(state.branchDistance,state.v,1,state.v,curve.getLength(),dt);state.branchDistance=movement.position;state.v=movement.speed;poseBranch(curve,state.branchDistance);state.s=project(vehicle.sections[0].position.x,vehicle.sections[0].position.z);if(state.branchDistance>=curve.getLength()){if(state.depotOutbound){state.s=DEPOT.s+state.depotExitDir*55;state.lat=laneOffset(state.s,state.depotExitDir);state.returning=state.depotExitDir===-1;vehicle.isAI=state.returning;vehicle.posed=false;state.depotRoute=false;state.yaw=0;}else{state.v=0;state.park=true;}}}else if(vehicle.terminal==='loop'){vehicle.v=state.v;if(!locked&&!braking)terminalStep(vehicle,dt);state.v=vehicle.v;if(!vehicle.terminal){state.returning=false;vehicle.isAI=false;state.s=35;state.lat=laneOffset(35);state.yaw=0;state.index=0;vehicle.posed=false;}}else{let stop=35;const next=STOPS[state.index];if(next&&state.mode!=='explore')stop=stopTarget(next);for(const sig of signalObjects.filter(s=>!s.underpass)){const line=sig.centre+sig.stop;if(line<=state.s+.03&&signalAt(sig)!=='go')stop=Math.max(stop,line);}stop=Math.max(stop,followingStop(state.s,-1,ai));for(const c of crossers)if(playerYields(c)&&c.s<state.s)stop=Math.max(stop,c.s+9);const move=approachStep(state.s,state.v,-1,state.v,stop,dt);state.s=move.position;state.v=move.speed;state.lat=returnOffset(state.s);poseTram(vehicle,state.s,state.lat,true,state.door);for(const d of vehicle.doors){d.node.position.copy(d.base);if(d.side===state.doorSide)d.node.position.z+=state.door*.75*(d.node.name.endsWith('_0')?1:-1);}if(state.s<=35.03&&state.mode==='explore'){vehicle.terminal='loop';vehicle.loopDistance=0;vehicle.dir=-1;vehicle.s=35;vehicle.active=true;nextDispatch[1]=0;}}
- state.accel=(state.v-v0)/dt;recordDriveTelemetry(dt,sample(state.s).grade);passengerComfort();audio.setDrive(state.v*3.6,go);}
+ state.accel=(state.v-v0)/dt;recordDriveTelemetry(dt,sample(state.s).grade);passengerComfort();}

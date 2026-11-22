@@ -24,7 +24,7 @@ for(const j of JUNCTIONS){const {poly,lattice}=junctionBox(j),w=roadSection(j.s)
  for(const [x,z] of pts)assert(!footpath(x,z),`${j.name}: box point (${x.toFixed(2)},${z.toFixed(2)}) lies on a footpath`);
  assert(lattice.length>10,`${j.name}: criss-cross lattice present`);
  const xs=poly.map(p=>p[0]),zs=poly.map(p=>p[1]);
- assert(Math.abs(Math.max(...zs)-(h+8.25))<1e-6&&Math.abs(Math.max(...xs)-(w-.15))<1e-6&&Math.abs(Math.min(...xs)+(w-.15))<1e-6,`${j.name}: box is confined to the corridor between crossings`);
+ assert(Math.abs(Math.max(...zs)-(h+7.25))<1e-6&&Math.abs(Math.max(...xs)-(w-.15))<1e-6&&Math.abs(Math.min(...xs)+(w-.15))<1e-6,`${j.name}: box is confined to the corridor between crossings`);
  for(const [a,b] of lattice){const ang=Math.abs(Math.atan2(b[1]-a[1],b[0]-a[0]));assert(Math.abs(ang-Math.PI/4)<1e-6||Math.abs(ang-3*Math.PI/4)<1e-6,'lattice runs at 45 degrees');}
 }
 console.log('Yellow box junctions stay on the carriageway and stay within the corridor.');

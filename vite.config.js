@@ -1,3 +1,4 @@
+import {startupModelBuild} from './scripts/startup-model-build.js';
 import { defineConfig } from 'vite';
 import fs from 'fs';
 import path from 'path';
@@ -21,6 +22,6 @@ const editors={name:'editors',configureServer(server){
 // ponytail: relative base so the build works from any path (GitHub Pages project URL, file server, local folder).
 export default defineConfig({
   base: './',
-  plugins: [editors],
-  build: { rollupOptions: { input: { main: 'index.html', editor: 'editor.html', street: 'street.html' } } },
+  plugins: [editors,startupModelBuild()],
+  build: { rollupOptions: { input: { main: 'index.html', editor: 'editor.html', comparison: 'comparison.html', street: 'street.html' } } },
 });

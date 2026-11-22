@@ -159,18 +159,67 @@ export const MUSIC_TRACKS = [
     "category": "original",
     "file": "night.mp3",
     "gain": 0.6
+  },
+  {
+    "id": "canto-dare-to-love",
+    "title": "敢愛敢做 · 林子祥",
+    "category": "cantonese",
+    "file": "soundtrack/canto-dare-to-love.mp3",
+    "gain": 0.56234
+  },
+  {
+    "id": "canto-love-of-my-life",
+    "title": "一生中最愛 · 譚詠麟",
+    "category": "cantonese",
+    "file": "soundtrack/canto-love-of-my-life.mp3",
+    "gain": 0.50758
   }
 ];
+
+export const RADIO_STATIONS = [
+  ['cantonese', '粵語金曲 FM · Cantopop'],
+  ['gameplay', 'Guideway FM · 行車音樂'],
+  ['loading', 'Platform Lounge · 月台音樂'],
+  ['original', 'SGMTS Originals · 原聲台']
+].map(([id, name]) => ({id, name, tracks: MUSIC_TRACKS.filter(track => track.category === id)}));
+
+export const stationById = new Map(RADIO_STATIONS.map(station => [station.id, station]));
+const trackById = new Map(MUSIC_TRACKS.map(track => [track.id, track]));
+const dial = ['auto', ...stationById.keys(), 'off'];
+
+function step(items, index, direction) {
+  return items[(index + direction + items.length) % items.length];
+}
+
+// Entering radio from a fixed song keeps its station. Automatic follows the scene until tuned.
+export function tuneRadio(state, control, direction) {
+  const current = trackById.get(musicChoice(state).id);
+  const station = stationById.get(state.gameMusic) || stationById.get(current?.category);
+  if (control === 'station') {
+    const choice = state.gameMusic ?? 'auto';
+    const channel = dial.includes(choice) ? choice : station?.id || 'auto';
+    return {gameMusic: step(dial, dial.indexOf(channel), direction), radioTrack: null};
+  }
+  const playlist = station || RADIO_STATIONS[0];
+  const index = playlist.tracks.indexOf(current);
+  const next = index < 0 ? playlist.tracks[direction > 0 ? 0 : playlist.tracks.length - 1] : step(playlist.tracks, index, direction);
+  return {gameMusic: playlist.id, radioTrack: next.id};
+}
 
 export function musicChoice(state){
  const {screen,condition,mode,avatar,crashed,park,v=0,menuMusic='auto',gameMusic='auto',loadingVariant='window'}=state;
  if(crashed||screen==='paused'||!['loading','menu','driving','complete'].includes(screen))return {id:null,level:0};
- const menu=screen==='loading'||screen==='menu',choice=menu?menuMusic:gameMusic;
+ const menu=screen==='loading'||screen==='menu',inGame=screen==='driving';
+ const choice=menu?menuMusic:gameMusic;
  if(choice==='off')return {id:null,level:0};
  const exploring=mode==='free'||(avatar&&avatar!=='drive');
  let id=menu?({route:'l04a',departure:'l02b',window:'l01b'}[loadingVariant]||'l01b'):
   screen==='complete'?'l03b':mode==='control'?'g04b':exploring?'g05a':({morning:'g01b',sunset:'g02a',rain:'g03b',night:'g04b'}[condition]||'g01b');
- if(MUSIC_TRACKS.some(t=>t.id===choice))id=choice;
+ const station=inGame?stationById.get(choice):null;
+ if(station){
+  const selected=trackById.get(state.radioTrack);
+  id=selected?.category===station.id?selected.id:station.tracks[0].id;
+ }else if(trackById.has(choice))id=choice;
  const level=menu?.65:screen==='complete'?.5:mode==='control'?.28:exploring?.45:park||Math.abs(v)<1?.28:condition==='rain'?.42:.55;
  return {id,level};
 }

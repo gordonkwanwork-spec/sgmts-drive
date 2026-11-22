@@ -51,7 +51,9 @@ env.setNight(false);assert.equal(glass.emissive.getHex(),0,'day appearance resto
 // Paving light pools: HSK concourse, both HSWRL entrances and every SGMTS ramp end have baked lamp positions.
 const near=(x,z,r)=>env.lampPositions.some(l=>Math.hypot(l.x-x,l.z-z)<r);
 const hall=station.localToWorld(new T.Vector3(-22,0,0));assert(near(hall.x,hall.z,16),'concourse hall lights the plaza');
-for(const entrance of meshes.map(m=>m.parent).filter(g=>g?.name==='HSWRL underground entrance'))assert(near(entrance.position.x,entrance.position.z,10));
+const entrances=scene.getObjectByName('A2 interchange square').children.filter(g=>g.name==='HSWRL underground entrance');
+assert.equal(entrances.length,2);
+for(const entrance of entrances){const p=entrance.getWorldPosition(new T.Vector3());assert(near(p.x,p.z,10));}
 const {stationAccess}=await import('../environment.js');let ramps=0;
 for(const st of STOPS)for(const platform of st.platforms)for(const dir of [-1,1]){if(st.id==='A1'&&dir===-1)continue;const {a,b}=stationAccess(st,platform,dir);for(const p of [a[1],b[1]])assert(near(p.x,p.z,1.5),`ramp lamp at ${st.id}`);ramps++;}
 console.log(`Viaduct checks passed: min radius ${minR.toFixed(1)} m, max heading change ${(maxTurn*1000).toFixed(2)} mrad/${STEP} m, ${straight} m straight through HSK station, one corridor crossing at Ch.${crossings[0].toFixed(0)}.`);
@@ -61,21 +63,21 @@ for(const p of env.plots)assert(sceneryClear(p.x,p.z,p.radius),'Every building c
 assert(env.plantings.length>5000,'Dense planted verges');
 assert.equal(new Set(env.plantings.map(p=>p.kind)).size,5);
 for(const p of env.plantings){const s=project(p.x,p.z),r=sample(s);const low=p.verge&&['grass','meadow'].includes(p.kind);assert(Math.hypot(p.x-r.x,p.z-r.z)>=roadSection(s).right+(p.strip?3.95:low?4:4.2)&&cycleClearance(p.x,p.z)>=(p.strip?2.2:low?2.35:2.7)&&env.plots.every(q=>Math.hypot(q.x-p.x,q.z-p.z)>=q.radius+.5),'Adjacent planting stays outside paths and buildings');assert(p.heightScale>=1.3,'Taller verge planting');}
-for(const road of ['D1','L35-bend','depot','loop','service'])assert(env.lampPositions.some(l=>l.road===road),road+' is lit');
+// City furniture keys the two D1 crossings by junction and underpass chainage.
+for(const road of ['J3971','U4398','depot','service'])assert(env.lampPositions.some(l=>l.road===road),road+' is lit');
 assert(env.lampPositions.some(l=>l.kind==='underbridge'),'underbridges are lit');
 for(const l of env.lampPositions)assert(Number.isFinite(l.x+l.y+l.z),'Finite lamp position');
 for(const m of meshes.filter(m=>m.name==='Road D1 connecting alignment'&&m.material===env.materials.road))assert(m.userData.nightOverlay,'D1 surface receives lighting');
 env.update(800,2);assert.equal(env.windTime.value,2);env.setNight(true);
 assert(meshes.filter(m=>m.name==='Fixed night illumination').every(m=>m.visible));
 
-for(const bridge of scene.children.filter(g=>g.name.startsWith('Cycle footbridge'))){
- const lights=bridge.children.filter(m=>m.name==='Cycle bridge canopy light');assert(lights.length>=4,'Ceiling fixtures throughout each covered span');
- for(const light of lights){assert(light.position.y+light.geometry.parameters.height/2<8.89,'Fixture stays below canopy soffit');const p=bridge.localToWorld(light.position.clone());assert(env.lampPositions.some(l=>Math.hypot(l.x-p.x,l.z-p.z)<.01&&Math.abs(l.y-(p.y-.06))<.001),'Night source beneath ceiling fixture');}
+const {pedestrianBridges}=await import('../pedestrian-footbridges.js');
+const {pavementLight}=await import('../environment.js');
+for(const bridge of pedestrianBridges){
+ for(let z=-bridge.half+1;z<bridge.half;z+=1){
+  const p=bridge.world(0,z);assert(pavementLight(new T.Vector3(p.x,bridge.datum+6.4,p.z),env.lampPositions)>.3,'Pedestrian deck continuously lit');
+ }
 }
-console.log('Cycle bridge ceiling fixtures and night sources verified');
-
-{const {pavementLight}=await import('../environment.js'),{cycleSample,cycleBridgeHeight}=await import('../alignment.js');for(const j of CYCLE_BRIDGES)for(let q=j.s-j.halfWidth-8;q<=j.s+j.halfWidth+8;q+=2){const c=cycleSample(q);assert(pavementLight(new T.Vector3(c.x,c.groundY+cycleBridgeHeight(q),c.z),env.lampPositions)>.3,'Covered cycle deck continuously lit');}}
-console.log('Covered cycle bridge deck light coverage passed');
 // Verges between the left footpath and cycle track are planted wherever at least 0.9 m of open grass exists.
 {const {pavementLight}=await import('../environment.js'),{cycleOffset,cycleSample,cycleCrossing,cycleBridgeAt,cycleBridgeHeight,JUNCTIONS}=await import('../alignment.js');
  const cells=new Map(),key=(x,z)=>Math.floor(x/2)+','+Math.floor(z/2);for(const p of env.plantings){const k=key(p.x,p.z);if(!cells.has(k))cells.set(k,[]);cells.get(k).push(p);}
@@ -86,7 +88,7 @@ console.log('Covered cycle bridge deck light coverage passed');
  assert(planted/open>.9,`verge planted ${planted}/${open}`);
  // Nothing planted between the A2 plaza and the cycle track.
  const a2=STOPS[1];assert(!env.plantings.some(p=>{const s=project(p.x,p.z),r=sample(s),lat=(p.x-r.x)*r.lx+(p.z-r.z)*r.lz;return s>a2.s-110&&s<a2.s+120&&lat<cycleOffset(s)-2&&lat>-84;}),'No vegetation between the A2 plaza and the cycle track');
- // The whole cycle track (ground and bridges) sits in lamp light, except under station roofs and at road crossings.
+ // The ground-level cycle track sits in lamp light, except under station roofs and at road crossings.
  const lamps=env.lampPositions.map(l=>({...l,axis:l.axis||sample(l.s)}));let dark=[];
  for(let s=10;s<LENGTH-10;s+=2){if(cycleCrossing(s)||STOPS.some(st=>Math.abs(s-st.s)<st.footprintLength/2+2)||!cycleBridgeAt(s)&&JUNCTIONS.some(j=>Math.abs(j.s-s)<j.halfWidth+4))continue;const c=cycleSample(s),v=new T.Vector3(c.x,c.groundY+cycleBridgeHeight(s),c.z);if(pavementLight(v,lamps.filter(l=>Math.abs(l.x-v.x)<30&&Math.abs(l.z-v.z)<30))<.3)dark.push(s);}
  assert(dark.length<8,'Cycle track dark at '+dark.slice(0,10).join(','));
@@ -98,16 +100,19 @@ console.log('Covered cycle bridge deck light coverage passed');
  console.log(`Verge fill ${planted}/${open}, clear A2 plaza strip, lit cycle track (${dark.length} dark samples) and lit planting passed`);}
 console.log(`${env.plantings.length} clear verge plantings, wind updates, connecting road lamps and lit D1 surfaces passed`);
 
-const cycleRamps=meshes.filter(m=>m.name==='Cycle bridge approach ramp');
-assert.equal(cycleRamps.length,CYCLE_BRIDGES.length*2);
-for(const m of cycleRamps){const p=m.geometry.attributes.position;for(let i=0;i<p.count;i+=4){assert(Math.abs(p.getY(i+3)-p.getY(i)-.42)<.0001,'Ramp has 420 mm structural depth');assert(Math.abs(p.getY(i+2)-p.getY(i+1)-.42)<.0001);}assert(m.castShadow&&m.receiveShadow);}
-assert.equal(meshes.filter(m=>m.name==='Cycle bridge abutment pier'&&m.parent.name.startsWith('Cycle footbridge')).length,CYCLE_BRIDGES.length*2);
-assert(meshes.filter(m=>m.name.startsWith('cycle-ramp-pier-')).reduce((n,m)=>n+m.count,0)>30,'Ramp piers support long approaches');
+for(const b of pedestrianBridges)for(const lamp of env.lampPositions.filter(l=>l.kind==='lamp_connecting')){
+ const dx=lamp.x-b.frame.x,dz=lamp.z-b.frame.z;
+ const lateral=dx*b.frame.lx+dz*b.frame.lz,along=dx*b.frame.tx+dz*b.frame.tz;
+ if(Math.abs(along)<b.half)assert(Math.abs(lateral)>3,'Lamp inside footbridge roof on '+b.road.name);
+}
+assert.equal(scene.children.filter(g=>g.name.startsWith('Pedestrian footbridge')).length,8);
+assert.equal(meshes.filter(m=>m.name==='Moving lift floor').length,16);
+assert(!meshes.some(m=>m.name==='Cycle bridge approach ramp'||m.name.startsWith('cycle-ramp-pier-')));
 assert(!meshes.some(m=>m.name.startsWith('planter-')),'No concrete tree boxes');
 assert(meshes.some(m=>m.name.startsWith('tree-shrub-')),'Trees have shrub underplanting');
 assert.equal(new Set(env.trees.map(t=>t.kind)).size,6,'Six tree species');assert(env.trees.some(t=>t.kind.startsWith('bare')),'Some trees are leafless');
 assert(!meshes.some(m=>/^(foliage|foliage-leaf)-bare/.test(m.name)),'Leafless species have no crown');
-console.log('Solid cycle decks and piers, six tree species (two leafless) and shrub bases passed');
+console.log('Pedestrian spans and lift floors, six tree species (two leafless) and shrub bases passed');
 
 const plantsWithLOD=meshes.filter(m=>m.userData.full&&m.userData.low);
 assert(plantsWithLOD.length>100,'Planting is divided into small distance-selectable cells');

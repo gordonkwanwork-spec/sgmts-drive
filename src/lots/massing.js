@@ -9,6 +9,7 @@ import {polygonArea,pointInPolygon} from './wand.js';
 import {polygonContains,circleIntersects,rectangle,boundaryDistance} from './geometry.js';
 import {commercialMaterials,commercialPodium,commercialTower} from './commercial.js';
 import {detailMaterials,facadeDetail,nearCorridor} from './detail.js';
+import {canopyTreeAssets,pickCanopySpecies,treeHash} from '../street/canopy-trees.js';
 
 // Plot ratios from S/HSK/2A Notes (Annex III). null = no PR control (height/storeys only).
 const PR={'C(1)':9.5,'C(2)':8,'C(3)':5,'C(4)':3,'C(5)':1.5,'R(A)1':6.5,'R(A)2':6,'R(A)3':5.5,'R(A)4':5,'R(A)5':3.8,'R(A)6':6.2,
@@ -374,11 +375,34 @@ export function massingParts(lot,ctx){
  return {parts,trees,ramps,footprints,surfaces};
 }
 
-const TREE={trunk:new T.CylinderGeometry(.25,.35,3,6).translate(0,1.5,0),crown:new T.IcosahedronGeometry(2.6,1).scale(1,.85,1).translate(0,4.6,0)};
-function treeMeshes(trees){if(!trees.length)return [];const M=lotMaterials(),out=[];
- for(const [geo,mat] of [[TREE.trunk,M.trunk],[TREE.crown,M.crown]]){const mesh=new T.InstancedMesh(geo,mat,trees.length),m=new T.Matrix4();
-  trees.forEach((t,i)=>mesh.setMatrixAt(i,m.compose(new T.Vector3(t.x,t.y,t.z),new T.Quaternion(),new T.Vector3(t.s,t.s,t.s))));mesh.name='lot vegetation';mesh.castShadow=true;mesh.receiveShadow=true;out.push(mesh);}
- return out;}
+function treeMeshes(trees){
+ if(!trees.length)return [];
+ const assets=canopyTreeAssets(),byTrunk=new Map(),bySpecies=new Map(),out=[];
+ const m=new T.Matrix4(),q=new T.Quaternion(),e=new T.Euler(),p=new T.Vector3(),s=new T.Vector3(),c=new T.Color();
+ for(const t of trees){
+  const sp=pickCanopySpecies(treeHash(t.x,t.z,1),assets.species);
+  const yaw=treeHash(t.x,t.z,2)*Math.PI*2;
+  const h=sp.lotHeightScale*t.s*(.92+.16*treeHash(t.x,t.z,3));
+  const w=Math.min(h,5.1*t.s/sp.spreadRatio);
+  const v=.89+.19*treeHash(t.x,t.z,4),j2=treeHash(t.x,t.z,5);
+  e.set(0,yaw,0);q.setFromEuler(e);p.set(t.x,t.y,t.z);s.set(w,h,w);
+  const mat4=m.compose(p,q,s).clone(),tint=c.setRGB(v*(.97+.06*j2),v,v*(1.03-.06*j2)).clone();
+  if(!byTrunk.has(sp.trunk))byTrunk.set(sp.trunk,[]);
+  byTrunk.get(sp.trunk).push({mat4,tint});
+  if(!bySpecies.has(sp.id))bySpecies.set(sp.id,{sp,items:[]});
+  bySpecies.get(sp.id).items.push({mat4,tint});
+ }
+ const emit=(geo,mat,items)=>{
+  const mesh=new T.InstancedMesh(geo,mat,items.length);
+  items.forEach((it,i)=>{mesh.setMatrixAt(i,it.mat4);mesh.setColorAt(i,it.tint);});
+  mesh.name='lot vegetation';mesh.castShadow=true;mesh.receiveShadow=true;
+  mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;
+  mesh.computeBoundingSphere();out.push(mesh);
+ };
+ for(const [kind,items] of byTrunk){const geo=assets.barkByKind[kind];if(geo)emit(geo,assets.lotBarkMaterial,items);}
+ for(const {sp,items} of bySpecies.values())emit(sp.crownGeo,sp.material,items);
+ return out;
+}
 
 function mergeByMaterial(parts){const by=new Map();for(const p of parts){if(!by.has(p.material))by.set(p.material,[]);by.get(p.material).push(p.geometry);}
  return [...by].map(([mat,geos])=>{const mesh=new T.Mesh(mergeGeometries(geos),mat);geos.forEach(g=>g.dispose());mesh.castShadow=mesh.receiveShadow=true;return mesh;});}

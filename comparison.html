@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OZP comparison · SGMTS</title>
+<link rel="icon" href="./branding/icon-512.png">
+<link rel="stylesheet" href="./src/comparison/map.css">
+</head>
+<body>
+<header><div class="brand"><svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><rect width="34" height="34" rx="8" fill="#07594f"/><path d="M7 23h9l10-13M7 17h7l6-8M13 27h7l7-9" stroke="#e9f4ce" fill="none" stroke-width="2.6"/></svg><b>SGMTS</b><span>Planning</span></div><div class="place">洪水橋 / 廈村 <span>Hung Shui Kiu / Ha Tsuen</span></div><a href="./editor.html">Map editor ↗</a></header>
+<main>
+<aside>
+ <div class="intro"><div class="kicker">S/HSK/2A · ANNEX II</div><h1>OZP comparison</h1><p>Compare game buildings with the mapped parcels.</p></div>
+ <div class="search"><label for="query">Find a parcel</label><input type="search" id="query" placeholder="Parcel ID, zone or place"></div>
+ <div class="filters"><label>Land use<select id="use"><option value="review">Infill review</option><option value="all">All land uses</option></select></label><label>Sort by<select id="order"><option value="open">Most open land</option><option value="wide">Largest clear square</option><option value="low">Lowest coverage</option><option value="id">Parcel ID</option></select></label></div>
+ <div class="list-head"><b>Parcels</b><span id="resultCount">Loading…</span></div>
+ <div id="list" aria-label="Parcel results"></div>
+ <div class="source"><details><summary>Sources &amp; measurement</summary><p id="sourceText"></p><p>Coverage uses projected building shells and recorded building footprints. Open area excludes them and mapped roads, forecourts, plazas and transport reserves. The dashed square in Open land shows the largest north-aligned square that fits within one continuous opening in the selected parcel. Areas are estimates at the plan’s pixel resolution. Access, setbacks, terrain and trees still need review.</p><p>Infill review includes residential, village, business, industrial and community uses. Other zones and untraced land remain visible on the plan.</p></details><button id="refresh">Refresh from running game</button><span id="freshness"></span></div>
+</aside>
+<section class="map" aria-label="Interactive comparison map">
+ <canvas id="map" tabindex="0" aria-label="Parcel map. Drag to pan, scroll to zoom, or select a parcel in the list. Arrow keys pan the map."></canvas>
+ <div class="maphead"><div class="modes" aria-label="Comparison view"><button data-mode="overlay" aria-pressed="true">Overlay</button><button data-mode="swipe" aria-pressed="false">Swipe</button><button data-mode="open" aria-pressed="false">Open land</button></div><div class="layers"><button id="layersButton" aria-expanded="false">Layers ☷</button><div id="layers" hidden><label><input id="showOzp" type="checkbox" checked> OZP sheet</label><label><input id="showBuilt" type="checkbox" checked> Game buildings</label><label><input id="showUsed" type="checkbox" checked> Infrastructure &amp; paving</label><label><input id="showLots" type="checkbox" checked> Parcel boundaries</label><label>Sheet opacity <input type="range" id="opacity" min="0" max="100" value="70"></label></div></div></div>
+ <div id="swipeLine" hidden><button id="swipeControl" role="slider" aria-label="OZP and game split" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">‹ ›</button></div>
+ <div id="sideLabels" hidden><span>OZP sheet</span><span>Game</span></div>
+ <div class="tools"><div class="north">▲<b>N</b></div><button id="plus" aria-label="Zoom in">+</button><button id="minus" aria-label="Zoom out">−</button><button id="fit" aria-label="Fit full OZP sheet" title="Fit full sheet">⛶</button></div>
+ <div class="key"><span><i class="built"></i>Game buildings</span><span><i class="used"></i>Infrastructure</span><span class="openKey" hidden><i class="empty"></i>Open land</span><span><i class="route"></i>SGMTS</span></div>
+ <div class="detail" id="detail" hidden><button class="close" id="close" aria-label="Close parcel details">×</button><div class="kicker" id="detailUse"></div><h2 id="detailTitle"></h2><div id="detailBody"></div></div>
+ <div class="scale"><b id="scale"></b><span id="scaleText"></span></div>
+ <div id="status" role="status">Loading the comparison…</div>
+</section>
+</main>
+<script type="module" src="./src/comparison/map.js"></script>
+</body></html>

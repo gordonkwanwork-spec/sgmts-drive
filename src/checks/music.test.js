@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {existsSync} from 'node:fs';
-import {MUSIC_TRACKS,musicChoice} from '../music-catalog.js';
+import {MUSIC_TRACKS,RADIO_STATIONS,musicChoice,tuneRadio} from '../music-catalog.js';
 const drive={screen:'driving',mode:'service',avatar:'drive',condition:'morning',v:10,park:false};
 for(const [condition,id] of Object.entries({morning:'g01b',sunset:'g02a',rain:'g03b',night:'g04b'}))assert.equal(musicChoice({...drive,condition}).id,id);
 for(const [loadingVariant,id] of Object.entries({route:'l04a',window:'l01b',departure:'l02b'}))for(const screen of ['loading','menu'])assert.equal(musicChoice({screen,loadingVariant}).id,id);
@@ -14,8 +14,22 @@ assert.equal(musicChoice({screen:'menu',menuMusic:'off'}).id,null);
 assert.equal(musicChoice({screen:'menu',menuMusic:'l05a'}).id,'l05a');
 assert.equal(musicChoice({...drive,gameMusic:'l02a'}).id,'l02a');
 assert.equal(musicChoice({...drive,gameMusic:'invalid'}).id,'g01b');
-assert.equal(new Set(MUSIC_TRACKS.map(t=>t.id)).size,23);
+assert.equal(new Set(MUSIC_TRACKS.map(t=>t.id)).size,25);
 for(const track of MUSIC_TRACKS){assert(existsSync(new URL('../../public/audio/'+track.file,import.meta.url)),track.file);assert(track.gain>0&&track.gain<=1);}
+assert.deepEqual(RADIO_STATIONS.flatMap(s=>s.tracks.map(t=>t.id)).sort(),MUSIC_TRACKS.map(t=>t.id).sort());
+for(const station of RADIO_STATIONS)assert(existsSync(new URL('../../public/branding/radio/'+station.id+'.webp',import.meta.url)),station.name+' logo');
+const radio={...drive,mode:'free',avatar:'car',gameMusic:'auto'};
+Object.assign(radio,tuneRadio(radio,'station',1));
+assert.equal(radio.gameMusic,'cantonese');
+const [lam,tam]=RADIO_STATIONS.find(s=>s.id==='cantonese').tracks;
+assert.equal(musicChoice(radio).id,lam.id);
+assert.equal(tuneRadio(radio,'song',-1).radioTrack,tam.id);
+assert.equal(tuneRadio({...radio,radioTrack:tam.id},'song',1).radioTrack,lam.id);
+assert.equal(tuneRadio({...radio,gameMusic:'g01a'},'song',1).gameMusic,'gameplay');
+assert.equal(musicChoice({...radio,radioTrack:'g01a'}).id,lam.id);
+assert.equal(musicChoice({...radio,screen:'menu'}).id,'l01b');
+assert.equal(musicChoice({...radio,avatar:'foot'}).id,lam.id);
+assert.equal(musicChoice({...drive,gameMusic:'cantonese'}).id,lam.id);
 // Exercise the real two-deck mixer with a minimal browser audio stand-in.
 const media=[];
 class Media {constructor(){this.paused=true;this.currentTime=0;this.duration=180;media.push(this);}setAttribute(){}play(){this.paused=false;return Promise.resolve();}pause(){this.paused=true;}}
@@ -26,7 +40,7 @@ class Context{constructor(){context=this;this.currentTime=0;this.sampleRate=8;th
 globalThis.window={AudioContext:Context};globalThis.Audio=Media;
 const audio=await import('../audio.js');
 audio.updateMusic({screen:'menu',menuMusic:'l05a'});assert(await audio.initAudio());
-assert.equal(media.length,2,'Only two streaming decks, not 23 eager downloads');
+assert.equal(media.length,2,'Only two streaming decks, no eager playlist downloads');
 assert.equal(audio.musicStatus().find(t=>t.target>0).name,'l05a');
 audio.updateMusic({...drive,condition:'rain'});assert.equal(audio.musicStatus().find(t=>t.target>0).name,'g03b');
 context.currentTime=5;audio.updateMusic({...drive,condition:'rain'});assert.equal(media.filter(m=>!m.paused).length,1,'Outgoing track retires');
@@ -44,4 +58,15 @@ assert.equal(audio.musicStatus().find(t=>t.target>0).target,before,'Music restor
 const clip=level=>({getChannelData:()=>Float32Array.from({length:100},(_,i)=>i%2?level:-level)});
 assert(audio.announcementGain(clip(.05))>audio.announcementGain(clip(.3)),'Quiet voices are lifted towards the louder ones');
 assert(audio.announcementGain(clip(.3))*.3<=.9+1e-9,'Normalising never pushes a peak past full scale');
-console.log('23 soundtrack files, scene routing, overrides, stopping, looping and two-deck lifecycle passed.');
+audio.updateMusic(radio);
+const playing=()=>audio.musicStatus().find(t=>t.target>0).name;
+assert.equal(playing(),lam.id);
+media.find(m=>m.src.endsWith(lam.file)).currentTime=178;
+audio.updateMusic(radio);
+assert.equal(playing(),tam.id,'Station advances as the current song fades out');
+audio.updateMusic(radio);
+assert.equal(playing(),tam.id,'A second tick does not skip again');
+media.find(m=>m.src.endsWith(tam.file)).currentTime=179;
+audio.updateMusic(radio);
+assert.equal(playing(),lam.id,'Station wraps without leaving the channel');
+console.log('25 music assets, radio tuning and rotation, scene routing and two-deck mixer checks passed.');

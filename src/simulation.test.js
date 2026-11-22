@@ -104,7 +104,7 @@ assert(JUNCTIONS.find(j=>j.name==='Road D1').s>STOPS[6].s+80);
 assert.equal(DEPOT.opening,30);assert.equal(BRIDGES[1].end,3524.2);
 // L35 was removed in the city rebuild (5 Nov 2026); the cycle track keeps its outboard line along the former L35 strip.
 assert(-cycleOffset(fromChainage(3020))-2>16);
-for(const j of JUNCTIONS)assert.equal(cycleCrossing(crossingGeometry(j).cycleS),j.halfWidth<=7,'Only at-grade cycle crossings interrupt the surface');
+for(const j of JUNCTIONS)assert(cycleCrossing(crossingGeometry(j).cycleS),'Tracks break at road crossings and pedestrian-only bridges');
 for(const c of CROSSINGS)for(const st of STOPS)assert(Math.abs(c.s-st.s)>st.length/2+20,'Crossing outside platform and bus bay');
 for(const dir of [-1,1]){const leader={s:dir*100,dir,active:true},follower={s:0,v:10,dir,active:true};for(let i=0;i<1200;i++){const m=approachStep(follower.s,follower.v,dir,10,followingStop(follower.s,dir,[leader,follower],follower),1/60);follower.s=m.position;follower.v=m.speed;}assert(Math.abs((leader.s-follower.s)*dir-40)<.001);assert.equal(follower.v,0);leader.s+=dir*20;const m=approachStep(follower.s,follower.v,dir,10,followingStop(follower.s,dir,[leader]),1);assert(m.speed>0);}
 console.log('Latest layout and queue regressions passed: channels, D1, depot opening, rebuilt junction crossing positions and both-direction following.');

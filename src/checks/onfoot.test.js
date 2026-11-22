@@ -49,7 +49,7 @@ const {JUNCTIONS,crossingGeometry}=await import('../alignment.js'),{crossingY}=a
 for(const j of JUNCTIONS){const g=crossingGeometry(j);
  for(const σ of [-1,1])for(const τ of [-1,1]){const k=g.corners[σ][τ],a=(k.a1+k.a2)/2,x=k.O.x+Math.cos(a)*(k.R-1.5),z=k.O.z+Math.sin(a)*(k.R-1.5);
   assert(Math.abs(groundAt(x,z,k.s).y-(crossingY(j,x,z)+.18))<.002,`${j.name}: raised corner`);
-  const d=g.crossD[σ],e=τ*(j.halfWidth+.65),px=g.C.x+g.u.x*d+g.n.x*e,pz=g.C.z+g.u.z*d+g.n.z*e;
+  const d=g.staggers[σ]?.centre(τ)??g.crossD[σ],e=τ*(j.halfWidth+.65),px=g.C.x+g.u.x*d+g.n.x*e,pz=g.C.z+g.u.z*d+g.n.z*e;
   assert(groundAt(px,pz,j.s).y>=crossingY(j,px,pz)+.05+.13*.65/j.footway-.002,`${j.name}: ramp does not sink below paving`);}
 }
 console.log('Raised junction corner and crossing ramp heights passed');

@@ -423,7 +423,7 @@ body[data-ui-theme] .option-row button:focus-visible{outline-offset:-3px}
 @media(max-height:500px){:root{--round:46px}#edge-tools{gap:5px}#edge-tools button b,#clean-view b,#hud #route-choices button::before{font-size:16px;line-height:16px}#edge-tools button b svg{width:17px;height:17px}#edge-tools button small,#clean-view small{font-size:8px}#hud #route-choices button{font-size:7.5px}#clean-view,html.mobile #clean-view{top:8px}#hud #route-choices{gap:5px;flex-wrap:wrap;justify-content:flex-end;max-height:calc(100dvh - 3*var(--round) - 132px)}}
 /* Menu option badges sit inside their button: neighbours and the row's clipping used to hide them. */
 .option-row button[data-hotkey]::after{right:8px;top:7px}
-body.clean-view #music-shuffle{visibility:visible!important}/* Hide keeps the music button, right below it */
+body.clean-view #car-radio{visibility:visible!important}/* Hide keeps the music button, right below it */
 #choose-screen .launch button{white-space:nowrap}
 
 body:has(#load:not(.hidden)) #clean-view{display:none!important}/* no Hide button over the loading screen */
@@ -727,12 +727,67 @@ body[data-ui-theme] #drive-options#drive-options .theme-toggle{border-radius:2px
 #perf-stats{position:fixed;left:50%;transform:translateX(-50%);top:8px;z-index:30;pointer-events:none;white-space:pre;font:12px/1.4 ui-monospace,Menlo,monospace;background:#000b;color:#d6f5e8;padding:6px 10px;border-radius:8px}
 /* Drive around town (src/town-hud.js): the sandbox-style top bar and round city radar replace the corridor minimap and next-stop panel. */
 #town-bar,#town-radar{display:none}
-body[data-town=on] #town-bar{display:flex;position:fixed;top:12px;left:50%;transform:translateX(-50%);gap:8px;z-index:16;pointer-events:auto}
+body:is([data-town=on],[data-avatar=car]) #town-bar{display:flex;position:fixed;top:12px;left:50%;transform:translateX(-50%);gap:8px;z-index:16;pointer-events:auto}
 #town-bar button{font:600 13px/1 system-ui,-apple-system,sans-serif;padding:9px 13px;border-radius:9px;border:1px solid #ffffff44;background:#152024d9;color:#e7f0eb;cursor:pointer;box-shadow:0 2px 8px #0006}
 #town-bar button.active{background:#9ae5c8;color:#152b27;border-color:#9ae5c8}
-body[data-town=on] #town-radar{display:block;position:fixed;left:18px;bottom:18px;width:190px;height:190px;border-radius:50%;overflow:hidden;border:3px solid #0d1214;box-shadow:0 0 0 2px #ffffff55,0 6px 18px #0008;z-index:15;pointer-events:none;background:#1f2b24}
+body:is([data-town=on],[data-avatar=car]) #town-radar{display:block;visibility:visible;position:fixed;left:18px;bottom:18px;width:190px;height:190px;border-radius:50%;overflow:hidden;border:3px solid #0d1214;box-shadow:0 0 0 2px #ffffff55,0 6px 18px #0008;z-index:15;pointer-events:none;background:#1f2b24}
 #town-radar canvas{width:100%;height:100%}
 #town-radar b{position:absolute;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;background:#0d1214;color:#fff;font:bold 12px/20px Arial,sans-serif;text-align:center}
 #town-radar i{position:absolute;left:50%;top:50%;width:0;height:0;margin:-9px 0 0 -7px;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:16px solid #ffd54a;filter:drop-shadow(0 0 2px #000)}
 body[data-town=on] #map-button,body[data-town=on] #next-panel,body[data-town=on] #route-choices,body[data-town=on] #mobile-buttons,body[data-town=on] #ff-button,body[data-town=on] #cluster{display:none!important}
-@media(max-width:650px){body[data-town=on] #town-radar{width:130px;height:130px;left:10px;bottom:10px}}
+@media(max-width:650px){body:is([data-town=on],[data-avatar=car]) #town-radar{width:130px;height:130px;left:10px;bottom:10px}}
+
+/* Road vehicles have their own controls on both town and free-roam starts. */
+body:is([data-town=on],[data-avatar=car])[data-screen=driving] :is(#edge-tools,#next-panel,#map-button,#route-choices,#speed-dial,#cluster,#route-strip,#mobile-buttons,#dwell,#identity,#instruction){display:none!important}
+body:not([data-screen=driving]) :is(#town-bar,#town-radar){display:none!important}
+body:is([data-town=on],[data-avatar=car]) #town-bar{width:max-content;max-width:calc(100vw - 106px);justify-content:center;align-items:center;flex-wrap:wrap;gap:5px}
+#town-bar select,#town-bar output{border-radius:7px;background:#152024ed;color:#e7f0eb;font:600 13px system-ui;padding:6px;border:1px solid #ffffff44}
+#town-bar output{font-variant-numeric:tabular-nums}
+#town-bar button[aria-pressed=true]{color:#152b27;background:#9ae5c8}
+body[data-avatar=car] #town-bar [data-act=drive],body:not([data-avatar=car]) #town-bar :is(select,output,[data-act=lights],[data-act=recover]){display:none}
+#vehicle-picker:not([hidden]){display:flex;align-items:center;gap:.7em;margin:.6em 0}
+#vehicle-picker select{background:var(--m-fill2);color:var(--m-ink);padding:.35em;border:1px solid var(--m-line);border-radius:4px}
+html.mobile body[data-avatar=car] #joystick,html.mobile body[data-avatar=car] :is(#pad-brake,#pad-fast){display:block}
+html.mobile body[data-avatar=car] #touch-pad button:not(#pad-brake,#pad-fast){display:none!important}
+html.mobile body.clean-view[data-avatar=car][data-screen=driving] :is(#joystick,#pad-brake,#pad-fast){visibility:visible!important}
+#pad-fast{right:calc(max(12px,env(safe-area-inset-right)) + var(--round) + 10px);bottom:max(14px,env(safe-area-inset-bottom))}
+#pad-brake{right:max(12px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom))}
+html.mobile body[data-avatar=car] #town-radar{width:88px;height:88px;bottom:140px}
+@media(max-width:650px){#town-bar button,#town-bar select{padding:6px 8px}}
+body:is([data-town=on],[data-avatar=car])[data-screen=driving] #hud #mobile-buttons{display:none!important}
+#hud #town-bar select{width:auto;max-width:12em}
+
+.map-comparison-link{pointer-events:auto;color:inherit;font-weight:700;text-decoration:underline;padding:4px 0}
+
+/* One tuner, mounted in the active gameplay HUD or vehicle toolbar. */
+#car-radio{display:none}
+body[data-screen=driving] #car-radio{display:block;visibility:visible;position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);width:min(282px,calc(100vw - 24px));color:#fff;background:#152025f2;border:1px solid #ffffff50;border-radius:10px;box-shadow:0 3px 12px #0005;pointer-events:auto}
+#car-radio summary{display:flex;align-items:center;gap:10px;min-height:55px;padding:5px 10px 5px 6px;cursor:pointer;list-style:none}
+#car-radio summary::-webkit-details-marker{display:none}
+#car-radio summary:focus-visible{outline:2px solid #9ae5c8;border-radius:9px}
+#car-radio summary img{width:44px;height:44px;border-radius:5px}
+.car-radio-info{flex:1;min-width:0;text-align:left;font:12px/1.35 system-ui}
+.car-radio-info>*{display:block;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.car-radio-info b{color:#9ae5c8;font-size:11px;letter-spacing:.1em}
+.car-radio-info strong{font-size:14px}
+#car-radio summary i{font-style:normal}#car-radio[open] summary i{transform:rotate(180deg)}
+.car-radio-controls{padding:4px 6px 6px;border-top:1px solid #ffffff33}
+.car-radio-presets,.car-radio-actions{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:4px}
+#car-radio button{width:auto;min-width:0;min-height:42px;height:auto;padding:3px;border-radius:6px;font:600 14px system-ui;color:white;background:#243538;border:1px solid #718482}
+#car-radio button[aria-pressed=true]{border-color:#9ae5c8;background:#315447;color:white;outline:2px solid #9ae5c8;outline-offset:-2px}
+.car-radio-presets img{display:block;width:36px;height:36px;border-radius:4px;margin:auto}
+
+#hud>#car-radio{position:fixed;top:12px;right:calc(max(12px,env(safe-area-inset-right)) + var(--round) + 8px);left:auto;transform:none;z-index:15}
+#control-room #car-radio{position:relative;inset:auto;transform:none;flex:0 1 250px;min-width:180px}
+#control-room .car-radio-controls{position:absolute;z-index:20;top:100%;left:0;right:0;background:#152025fa;border-radius:0 0 8px 8px}
+
+@media(max-width:740px) and (orientation:portrait){
+  #hud>#car-radio{left:12px;right:auto;top:var(--below-route,160px);width:min(282px,calc(100vw - var(--round) - 36px))}
+  #hud:has(>#car-radio) #hud-stack #toast{top:max(22vh,calc(var(--below-route,160px) + 72px))!important}
+  html.mobile #hud:has(>#car-radio) #hud-stack #instruction{top:max(calc(22vh + 44px),calc(var(--below-route,160px) + 116px))!important}
+}
+@media(max-height:500px) and (orientation:landscape){
+  html.mobile #hud>#car-radio{top:calc(var(--round) + 16px);right:12px;width:210px}
+  #hud>#car-radio{width:210px}
+  #hud>#car-radio summary img{width:34px;height:34px}
+}

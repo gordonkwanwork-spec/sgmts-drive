@@ -3,6 +3,11 @@ const round=new T.CylinderGeometry(1,1,1,24);
 const diffuser=new T.CylinderGeometry(.44,.12,.3,24);
 const pale=new T.MeshStandardMaterial({color:0xd1d4ce,roughness:.7});
 const dark=new T.MeshStandardMaterial({color:0x30343b,roughness:.65});
+
+export function setParkLampNight(on){
+ pale.emissive.setHex(on?0xffe8c4:0);pale.emissiveIntensity=on?.18:0;
+ dark.emissive.setHex(on?0xffe2b4:0);dark.emissiveIntensity=on?.14:0;
+}
 // Photo reference: straight pale shaft, charcoal drum and a recessed tapered lens with radial ribs.
 export function parkLamp(batch,base,height,lens,chunk=0){
  const put=(name,geometry,material,x,y,z,scale,rotation=new T.Euler())=>batch('park-lamp-'+name,geometry,material,base.clone().add(new T.Vector3(x,y,z)),scale,rotation,chunk);

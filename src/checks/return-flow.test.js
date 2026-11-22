@@ -15,5 +15,14 @@ state.s=1600;state.v=2;context.signalAt=()=> 'go';const travel=state.travel,ener
 // Depot uses the same real branch function and accounting helper.
 state.depotRoute=true;state.depotOutbound=false;state.branchDistance=0;state.branchCurve={getLength:()=>100};state.v=1;context.poseBranch=()=>{};context.project=()=>1600;context.vehicle.sections=[{position:{x:0,z:0}}];const before=state.travel;vm.runInContext('updateBranch(1)',context);assert(state.branchDistance>0);assert(state.travel>before);
 // Run the exact initial repeat guard before the pause/menu paths.
-const start=source.indexOf("addEventListener('keydown',e=>{")+"addEventListener('keydown',e=>{".length,end=source.indexOf('const sheet=',start),guard=source.slice(start,end);let toggles=0;const handler=vm.runInNewContext('(e)=>{'+guard+'toggle();}',{toggle:()=>toggles++});handler({repeat:false,code:'KeyP'});for(let i=0;i<5;i++)handler({repeat:true,code:'KeyP'});for(let i=0;i<5;i++)handler({repeat:true,code:'Escape'});assert.equal(toggles,1);
+const start=source.indexOf("addEventListener('keydown',e=>{")+"addEventListener('keydown',e=>{".length,end=source.indexOf('const sheet=',start),guard=source.slice(start,end);let toggles=0;
+const input={ready:false,state:{screen:'loading'},toggle:()=>toggles++};
+const handler=vm.runInNewContext('(e)=>{'+guard+'toggle();}',input);
+for(const code of ['KeyP','Enter','ArrowDown'])handler({repeat:false,code});
+assert.equal(toggles,0,'keyboard input during loading must not open or change menus');
+input.ready=true;
+handler({repeat:false,code:'Enter'});
+assert.equal(toggles,0,'journey preparation also holds menu shortcuts');
+input.state.screen='driving';
+handler({repeat:false,code:'KeyP'});for(let i=0;i<5;i++)handler({repeat:true,code:'KeyP'});for(let i=0;i<5;i++)handler({repeat:true,code:'Escape'});assert.equal(toggles,1);
 console.log('Current-source return flow: 2,000 red-boundary ticks held; green release, return/depot telemetry and early pause-repeat guard passed');

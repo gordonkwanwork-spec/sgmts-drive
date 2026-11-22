@@ -89,11 +89,18 @@ export function junctionSignalItems(){const items=[],yawOf=w=>Math.atan2(-w.x,-w
    [p,y,toRoad,across]=kerbPole(g.crossS[τ]-τ*2.1,τ);add(`corridor-${τ}-secondary`,p,y,face,toRoad,'corridor',{ped:{x:-across.x,z:-across.z}});
    [p,y,toRoad,across]=kerbPole(g.crossS[-τ]+τ*2.1,τ);add(`corridor-${τ}-pedestrian`,p,y,{x:-across.x,z:-across.z},toRoad,'pedestrian');}
   for(const σ of [1,-1]){// side approach from arm σ travelling −σ·u, keeping left on the σ side of the road
-   const face={x:u.x*σ,z:u.z*σ},near=Math.abs(g.crossD[σ]),far=Math.abs(g.crossD[-σ]),kerbToRoad={x:-n.x*σ,z:-n.z*σ};
+   const face={x:u.x*σ,z:u.z*σ},near=Math.abs(g.crossD[σ]),far=Math.abs(g.staggers[-σ]?.outgoing??g.crossD[-σ]),kerbToRoad={x:-n.x*σ,z:-n.z*σ};
    let [p,y]=armPole(σ*(near+2.3),σ*(h+.95));add(`side-${σ}-primary`,p,y,face,kerbToRoad,'side');
    if(j.median>=2){[p,y]=armPole(σ*(near+2.3),0);add(`side-${σ}-median`,p,y,face,{x:n.x*σ,z:n.z*σ},'side');}
    [p,y]=armPole(-σ*(far-2.1),σ*(h+.95));add(`side-${σ}-secondary`,p,y,face,kerbToRoad,'side',{ped:{x:-n.x*σ,z:-n.z*σ},crossing:'side'});
-   [p,y]=armPole(σ*(near-2.1),σ*(h+.95));add(`side-${σ}-pedestrian`,p,y,{x:-n.x*σ,z:-n.z*σ},kerbToRoad,'pedestrian',{crossing:'side'});}
+   [p,y]=armPole(σ*(near-2.1),σ*(h+.95));add(`side-${σ}-pedestrian`,p,y,{x:-n.x*σ,z:-n.z*σ},kerbToRoad,'pedestrian',{crossing:'side'});
+   const pen=g.staggers[σ];if(pen)for(const side of [-1,1]){
+    const at=pen.centre(side),away=at===Math.min(pen.incoming,pen.outgoing)?-1:1;
+    const e=side*(pen.half-.35),d=at+away*1.85;
+    const [p,y]=armPole(d,e),facing={x:n.x*side,z:n.z*side};
+    add(`side-${σ}-refuge-${side}`,p,y-.144,facing,facing,'pedestrian',{crossing:'side'});
+   }
+  }
  }
  return items;
 }

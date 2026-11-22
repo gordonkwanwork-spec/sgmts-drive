@@ -47,15 +47,15 @@ export const LOOKS={
   cloud:{cover:.5,lit:0xffb27a,shade:0x6d5f70,opacity:.9},bloom:[.24,.6,1.2],shafts:.9,grade:{shadow:[.93,.97,1.08],high:[1.08,1,.9],sat:1.12,contrast:1.08},sky:{turbidity:4.5,rayleigh:2.2,mie:.006,g:.86}},
  rain:{sun:dir(38*DEG,-140*DEG),sunColor:0xc9d3dc,sunI:.9,hemi:[0xaab8bf,0x55605a,.75],env:.65,exposure:1.0,fog:0x8f9ea3,sunFog:0xa4b1b6,density:.0034,
   cloud:{cover:.95,lit:0x9ea8ae,shade:0x4f575d,opacity:1},bloom:[.12,.5,1.3],shafts:0,grade:{shadow:[.97,1,1.04],high:[.98,1,1.02],sat:.82,contrast:1.02},sky:{turbidity:10,rayleigh:.6,mie:.02,g:.7}},
- night:{sun:dir(42*DEG,60*DEG),sunColor:0xa9c3ee,sunI:.12,hemi:[0x3a4c70,0x14171c,.12],env:.22,exposure:1.12,fog:0x0e1826,sunFog:0x1b2638,density:.0016,
-  cloud:{cover:.35,lit:0x3d4a63,shade:0x151b27,opacity:.7},bloom:[.62,.55,.72],shafts:0,grade:{shadow:[.94,.98,1.1],high:[1.06,1,.92],sat:1.04,contrast:1.06},sky:{turbidity:2,rayleigh:.4,mie:.004,g:.8}},
+ night:{sun:dir(42*DEG,60*DEG),sunColor:0xa9c3ee,sunI:.28,hemi:[0x556f99,0x27303c,.34],env:.44,exposure:1.18,fog:0x0e1826,sunFog:0x1b2638,density:.0016,
+  cloud:{cover:.35,lit:0x4a5b7a,shade:0x1a2231,opacity:.7},bloom:[.62,.55,.72],shafts:0,grade:{shadow:[.94,.98,1.1],high:[1.06,1,.92],sat:1.04,contrast:1.06},sky:{turbidity:2,rayleigh:.4,mie:.004,g:.8}},
 };
 
 // ---- Sky layers: drifting cloud deck and a night dome with stars, moon and city glow ----
-const domeVertex=`varying vec3 vRay; void main(){ vRay = (modelMatrix * vec4(position,1.0)).xyz - cameraPosition; vec4 p = projectionMatrix * viewMatrix * modelMatrix * vec4(position,1.0); gl_Position = p.xyww; }`;
+ const domeVertex=`varying vec3 vRay; void main(){ vRay = (modelMatrix * vec4(position,1.0)).xyz - cameraPosition; vec4 p = projectionMatrix * viewMatrix * modelMatrix * vec4(position,1.0); gl_Position = p.xyww; }`;
 const NOISE=`float h21(vec2 p){p=fract(p*vec2(233.34,851.73));p+=dot(p,p+23.45);return fract(p.x*p.y);}
  float n2(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(h21(i),h21(i+vec2(1,0)),f.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x),f.y);}
- float fbm(vec2 p){float v=0.0,a=.5;for(int i=0;i<5;i++){v+=a*n2(p);p=p*2.03+vec2(1.7,9.2);a*=.5;}return v;}`;
+ float fbm(vec2 p){float v=0.0,a=.5;for(int i=0;i<3;i++){v+=a*n2(p);p=p*2.03+vec2(1.7,9.2);a*=.5;}return v;}`;
 function cloudDome(){
  const m=new T.ShaderMaterial({uniforms:{uTime:{value:0},uCover:{value:.4},uLit:{value:new T.Color()},uShade:{value:new T.Color()},uOpacity:{value:1},uSunDir:ATMOS.uSunDir,uSunCol:{value:new T.Color()},uHorizon:{value:new T.Color()}},
   vertexShader:domeVertex,transparent:true,depthWrite:false,depthTest:true,side:T.BackSide,fog:false,
@@ -85,46 +85,67 @@ function nightDome(){
  const mesh=new T.Mesh(new T.SphereGeometry(1500,32,16),m);mesh.name='Night sky';mesh.frustumCulled=false;mesh.renderOrder=-10;return mesh;
 }
 
-// ---- Final pass: depth AO, sun shafts, chromatic fringe, ACES + sRGB, split-tone grade, vignette, grain ----
+// ---- Final pass: half-res depth AO & sun shafts, chromatic fringe, ACES + sRGB, split-tone grade, vignette, grain ----
 class CinematicPass extends Pass{
  constructor(camera){
   super();this.camera=camera;
+  this.aoTarget=new T.WebGLRenderTarget(1,1,{minFilter:T.LinearFilter,magFilter:T.LinearFilter,format:T.RGBAFormat,type:T.UnsignedByteType,depthBuffer:false,stencilBuffer:false});
+  this.aoMaterial=new T.ShaderMaterial({
+   uniforms:{tDepth:{value:null},uRes:{value:new T.Vector2(1,1)},uProj:{value:new T.Matrix4()},uInvProj:{value:new T.Matrix4()},
+    uSunUV:{value:new T.Vector2()},uSunOn:{value:0},uShafts:{value:.4},uAO:{value:1},uFrame:{value:0}},
+   vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }',
+   fragmentShader:`#include <common>
+    uniform sampler2D tDepth; uniform vec2 uRes,uSunUV; uniform mat4 uProj,uInvProj; uniform float uSunOn,uShafts,uAO,uFrame; varying vec2 vUv;
+    vec3 viewPos(vec2 uv){ float d=texture2D(tDepth,uv).x; vec4 p=uInvProj*vec4(uv*2.0-1.0,d*2.0-1.0,1.0); return p.xyz/p.w; }
+    float hash(vec2 p){ return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453); }
+    void main(){
+     float depth=texture2D(tDepth,vUv).x;
+     float aoOut=1.0;
+     if(uAO>0.0&&depth<1.0){
+      vec3 P=viewPos(vUv);
+      if(-P.z<115.0){
+       vec3 N=normalize(cross(dFdx(P),dFdy(P)));
+       vec3 up=abs(N.z)<.9?vec3(0,0,1):vec3(1,0,0);
+       vec3 tx=normalize(cross(up,N)),ty=cross(N,tx);
+       float occ=0.0,ang=hash(gl_FragCoord.xy+uFrame)*6.2831;
+       for(int i=0;i<12;i++){
+        float t=(float(i)+.5)/12.0; float a=ang+float(i)*2.3999; vec3 dir=vec3(cos(a)*sqrt(1.0-t*t*.7),sin(a)*sqrt(1.0-t*t*.7),t*.8+.2);
+        vec3 S=P+(tx*dir.x+ty*dir.y+N*dir.z)*.55*mix(.25,1.0,t);
+        vec4 q=uProj*vec4(S,1.0); vec2 suv=q.xy/q.w*.5+.5;
+        float sceneZ=viewPos(suv).z; float range=smoothstep(0.0,1.0,.55/abs(P.z-sceneZ));
+        occ+=step(S.z+.03,sceneZ)*range;
+       }
+       float ao=1.0-occ/12.0; aoOut=mix(1.0,ao*ao,uAO*(1.0-smoothstep(40.0,110.0,-P.z)));
+      }
+     }
+     float shaftOut=0.0;
+     if(uSunOn>0.0){
+      vec2 stepUV=(uSunUV-vUv)/40.0; vec2 uv=vUv+stepUV*hash(gl_FragCoord.xy+uFrame); float light=0.0,w=1.0;
+      for(int i=0;i<40;i++){ light+=step(.99999,texture2D(tDepth,uv).x)*w; w*=.965; uv+=stepUV; }
+      float fall=1.0-smoothstep(0.0,.75,length((vUv-uSunUV)*vec2(uRes.x/uRes.y,1.0)));
+      shaftOut=clamp(light/40.0*fall*uShafts*uSunOn,0.0,1.0);
+     }
+     gl_FragColor=vec4(aoOut,shaftOut,0.0,1.0);
+    }`});
+  this.aoQuad=new FullScreenQuad(this.aoMaterial);
   this.material=new T.ShaderMaterial({
-   uniforms:{tColor:{value:null},tDepth:{value:null},uRes:{value:new T.Vector2(1,1)},uProj:{value:new T.Matrix4()},uInvProj:{value:new T.Matrix4()},uNear:{value:.1},uFar:{value:1000},
+   uniforms:{tColor:{value:null},tDepth:{value:null},tEffects:{value:this.aoTarget.texture},uHasFx:{value:0},uRes:{value:new T.Vector2(1,1)},uProj:{value:new T.Matrix4()},uInvProj:{value:new T.Matrix4()},uNear:{value:.1},uFar:{value:1000},
     uSunUV:{value:new T.Vector2()},uSunOn:{value:0},uSunCol:{value:new T.Color()},uShafts:{value:.4},uAO:{value:1},uFrame:{value:0},
     uShadowTint:{value:new T.Vector3(1,1,1)},uHighTint:{value:new T.Vector3(1,1,1)},uSat:{value:1},uContrast:{value:1},uFlash:{value:0}},
    vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }',
    fragmentShader:`#include <common>
     // ShaderMaterial already prepends the tone-mapping and colour-space functions.
-    uniform sampler2D tColor,tDepth; uniform vec2 uRes,uSunUV; uniform mat4 uProj,uInvProj; uniform float uNear,uFar,uSunOn,uShafts,uAO,uFrame,uSat,uContrast,uFlash; uniform vec3 uSunCol,uShadowTint,uHighTint; varying vec2 vUv;
-    vec3 viewPos(vec2 uv){ float d=texture2D(tDepth,uv).x; vec4 p=uInvProj*vec4(uv*2.0-1.0,d*2.0-1.0,1.0); return p.xyz/p.w; }
+    uniform sampler2D tColor,tEffects; uniform float uHasFx,uFrame,uSat,uContrast,uFlash; uniform vec3 uSunCol,uShadowTint,uHighTint; varying vec2 vUv;
     float hash(vec2 p){ return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453); }
     void main(){
      vec2 fromCentre=vUv-.5; float edge=dot(fromCentre,fromCentre);
      // Subtle lateral chromatic fringe toward the frame edge.
      vec2 ca=fromCentre*edge*.006;
      vec3 col=vec3(texture2D(tColor,vUv+ca).r,texture2D(tColor,vUv).g,texture2D(tColor,vUv-ca).b);
-     float depth=texture2D(tDepth,vUv).x;
-     // Screen-space ambient occlusion from depth: 12 hemisphere taps, radius 0.55 m, faded out with distance.
-     if(uAO>0.0&&depth<1.0){
-      vec3 P=viewPos(vUv); vec3 N=normalize(cross(dFdx(P),dFdy(P)));
-      float occ=0.0,ang=hash(gl_FragCoord.xy+uFrame)*6.2831;
-      for(int i=0;i<12;i++){
-       float t=(float(i)+.5)/12.0; float a=ang+float(i)*2.3999; vec3 dir=vec3(cos(a)*sqrt(1.0-t*t*.7),sin(a)*sqrt(1.0-t*t*.7),t*.8+.2);
-       vec3 up=abs(N.z)<.9?vec3(0,0,1):vec3(1,0,0); vec3 tx=normalize(cross(up,N)),ty=cross(N,tx);
-       vec3 S=P+(tx*dir.x+ty*dir.y+N*dir.z)*.55*mix(.25,1.0,t);
-       vec4 q=uProj*vec4(S,1.0); vec2 suv=q.xy/q.w*.5+.5;
-       float sceneZ=viewPos(suv).z; float range=smoothstep(0.0,1.0,.55/abs(P.z-sceneZ));
-       occ+=step(S.z+.03,sceneZ)*range;
-      }
-      float ao=1.0-occ/12.0; col*=mix(1.0,ao*ao,uAO*(1.0-smoothstep(40.0,110.0,-P.z)));
-     }
-     // Sun shafts: march toward the sun through open-sky pixels.
-     if(uSunOn>0.0){
-      vec2 stepUV=(uSunUV-vUv)/40.0; vec2 uv=vUv+stepUV*hash(gl_FragCoord.xy+uFrame); float light=0.0,w=1.0;
-      for(int i=0;i<40;i++){ light+=step(.99999,texture2D(tDepth,uv).x)*w; w*=.965; uv+=stepUV; }
-      float fall=1.0-smoothstep(0.0,.75,length((vUv-uSunUV)*vec2(uRes.x/uRes.y,1.0)));
-      col+=uSunCol*light/40.0*fall*uShafts*uSunOn;
+     if(uHasFx>0.5){
+      vec2 fx=texture2D(tEffects,vUv).rg;
+      col*=fx.r;
+      col+=uSunCol*fx.g;
      }
      col+=uFlash*vec3(.75,.8,1.0);
      gl_FragColor=vec4(col,1.0);
@@ -140,10 +161,22 @@ class CinematicPass extends Pass{
   this.quad=new FullScreenQuad(this.material);
  }
  render(renderer,writeBuffer,readBuffer){
-  const u=this.material.uniforms;u.tColor.value=readBuffer.texture;u.tDepth.value=readBuffer.depthTexture;u.uRes.value.set(readBuffer.width,readBuffer.height);
-  u.uProj.value.copy(this.camera.projectionMatrix);u.uInvProj.value.copy(this.camera.projectionMatrixInverse);u.uFrame.value++;
+  const u=this.material.uniforms,au=this.aoMaterial.uniforms;
+  u.uFrame.value++;
+  const runFx=u.uAO.value>0.0||u.uSunOn.value>0.0;
+  u.uHasFx.value=runFx?1.0:0.0;
+  if(runFx){
+   const hw=Math.max(1,readBuffer.width>>1),hh=Math.max(1,readBuffer.height>>1);
+   if(this.aoTarget.width!==hw||this.aoTarget.height!==hh)this.aoTarget.setSize(hw,hh);
+   au.tDepth.value=readBuffer.depthTexture;au.uRes.value.set(hw,hh);
+   au.uProj.value.copy(this.camera.projectionMatrix);au.uInvProj.value.copy(this.camera.projectionMatrixInverse);
+   au.uSunUV.value.copy(u.uSunUV.value);au.uSunOn.value=u.uSunOn.value;au.uShafts.value=u.uShafts.value;au.uAO.value=u.uAO.value;au.uFrame.value=u.uFrame.value;
+   renderer.setRenderTarget(this.aoTarget);this.aoQuad.render(renderer);
+  }
+  u.tColor.value=readBuffer.texture;u.tDepth.value=readBuffer.depthTexture;u.uRes.value.set(readBuffer.width,readBuffer.height);
   renderer.setRenderTarget(this.renderToScreen?null:writeBuffer);this.quad.render(renderer);
  }
+ dispose(){this.aoTarget.dispose();this.aoMaterial.dispose();this.material.dispose();this.aoQuad.dispose();this.quad.dispose();}
 }
 
 export function createAtmosphere({renderer,scene,camera,sky,sun,ambient,quality}){
@@ -164,11 +197,11 @@ export function createAtmosphere({renderer,scene,camera,sky,sun,ambient,quality}
  // Aim the sun at the condition's preset plus the player's offset; every sun consumer reads ATMOS.uSunDir or look.sun.
  function aim(){const b=(LOOKS[condition]||LOOKS.morning).sun;look.sun=dir(T.MathUtils.clamp(Math.asin(b.y)+shift[1]*DEG,.03,1.5),Math.atan2(b.x,b.z)+shift[0]*DEG);ATMOS.uSunDir.value.copy(look.sun);sky.material.uniforms.sunPosition.value.copy(look.sun);}
  if(cinematicOn)buildPost();
- const sunScreen=new T.Vector3();
+ const sunScreen=new T.Vector3(),camDir=new T.Vector3();
  function bake(){
   const isNight=condition==='night',name=condition;
   const layers=[isNight?night:sky,clouds],parents=layers.map(o=>o.parent),skyScale=sky.scale.x;sky.scale.setScalar(400);
-  ground.material.color.set(isNight?0x07090c:name==='rain'?0x3b4240:0x4f5a48);layers.forEach(o=>{envScene.add(o);o.position.set(0,0,0);});
+  ground.material.color.set(isNight?0x181f2a:name==='rain'?0x3b4240:0x4f5a48);layers.forEach(o=>{envScene.add(o);o.position.set(0,0,0);});
   envTarget?.dispose();envTarget=pmrem.fromScene(envScene,0,.1,2000);scene.environment=envTarget.texture;
   layers.forEach((o,i)=>parents[i].add(o));sky.scale.setScalar(skyScale);
  }
@@ -200,7 +233,7 @@ export function createAtmosphere({renderer,scene,camera,sky,sun,ambient,quality}
    if(!cinematicOn||!composer)return;
    const u=cinematic.material.uniforms,g=look.grade;u.uShadowTint.value.fromArray(g.shadow);u.uHighTint.value.fromArray(g.high);u.uSat.value=g.sat;u.uContrast.value=g.contrast;u.uFlash.value=flash*.35;
    sunScreen.copy(camera.position).addScaledVector(look.sun,500).project(camera);
-   const facing=camera.getWorldDirection(new T.Vector3()).dot(look.sun);
+   const facing=camera.getWorldDirection(camDir).dot(look.sun);
    u.uSunUV.value.set(sunScreen.x*.5+.5,sunScreen.y*.5+.5);u.uSunOn.value=look.shafts>0&&sunScreen.z<1?T.MathUtils.smoothstep(facing,.1,.6):0;u.uShafts.value=look.shafts;u.uSunCol.value.set(look.sunColor);
   },
   render(){if(cinematicOn&&composer)composer.render();else renderer.render(scene,camera);},

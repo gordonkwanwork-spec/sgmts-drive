@@ -24,7 +24,11 @@ export function stationAdvertGeometry(st, platforms, elevation) {
   return geometry;
 }
 
-const materials=new Map();
+const materials=new Map(),textureCache=new Map();
+export function loadAdvertTexture(url,anisotropy=8){
+ if(!textureCache.has(url))textureCache.set(url,new T.TextureLoader().loadAsync(url).then(map=>{map.colorSpace=T.SRGBColorSpace;map.anisotropy=anisotropy;return map;}));
+ return textureCache.get(url);
+}
 export const ROOFTOP_ADVERTS={A1:'泥圍慢活',A2:'洪水橋大學城',A3:'連接中國',A4:'綠意新生活',A5:'創意在此相遇',A6:'物流空間出租',A7:'智造未來'};
 export const BUILDING_ADVERTS=['coffee','dining','fitness','family','shopping','harbour'];
 
@@ -35,8 +39,8 @@ export const billboardMaterial=map=>new T.MeshBasicMaterial({map,color:new T.Col
 
 export async function addBuildingAdverts(scene,asset,anisotropy){
   const palette=await Promise.all(BUILDING_ADVERTS.map(async id=>{
-    const map=await new T.TextureLoader().loadAsync(asset(`adverts/billboard-${id}.webp`));
-    map.colorSpace=T.SRGBColorSpace;map.anisotropy=anisotropy;return billboardMaterial(map);
+    const map=await loadAdvertTexture(asset(`adverts/billboard-${id}.webp`),anisotropy);
+    return billboardMaterial(map);
   }));
   let index=0;
   scene.traverse(board=>{
@@ -98,14 +102,13 @@ export function setBillboardLighting(root,night){
 export async function addStationAdverts(root,st,platforms,url,anisotropy,elevation){
   const palette=await Promise.all(Array.from({length:7},(_,i)=>{
     const source=url.replace(/A[1-7]\.webp/,'A'+(i+1)+'.webp');
-    if(!materials.has(source))materials.set(source,new T.TextureLoader().loadAsync(source).then(map=>{map.colorSpace=T.SRGBColorSpace;map.anisotropy=anisotropy;return new T.MeshBasicMaterial({map,toneMapped:false,...ART_OFFSET});}));
+    if(!materials.has(source))materials.set(source,loadAdvertTexture(source,anisotropy).then(map=>new T.MeshBasicMaterial({map,toneMapped:false,...ART_OFFSET})));
     return materials.get(source);
   }));
   const posters=new T.Mesh(stationAdvertGeometry(st,platforms,elevation),palette);
   posters.name=`Station adverts ${st.id}`;root.add(posters);
   if(ROOFTOP_ADVERTS[st.id]){
-    const map=await new T.TextureLoader().loadAsync(url.replace(/A[1-7]\.webp/,`billboard-${st.id}.webp`));
-    map.colorSpace=T.SRGBColorSpace;map.anisotropy=anisotropy;
+    const map=await loadAdvertTexture(url.replace(/A[1-7]\.webp/,`billboard-${st.id}.webp`),anisotropy);
     root.add(stationBillboards(st,platforms,billboardMaterial(map),elevation));
   }
 }

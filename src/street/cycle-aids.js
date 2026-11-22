@@ -1,12 +1,13 @@
 // Visual adaptation of TD's typical traffic-aids arrangements (not a dimensioned engineering layout).
 import * as T from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
-import {LENGTH,CROSSINGS,JUNCTIONS,CYCLE_BRIDGES,CYCLE_RAMP,cycleBridgeAt,cycleCrossing,cycleSample,cycleBridgeHeight} from '../alignment.js';
+import {LENGTH,CROSSINGS,LEVEL_TRACK_GAPS,CYCLE_GAPS,cycleBridgeAt,cycleCrossing,cycleSample,cycleBridgeHeight} from '../alignment.js';
 import {cycleSymbol} from './furniture.js';
 
-export const CYCLE_ENDS=[{s:0,dir:-1},{s:LENGTH,dir:1},...JUNCTIONS.filter(j=>!CYCLE_BRIDGES.includes(j)).flatMap(j=>[-1,1].map(d=>({s:j.s+d*(j.halfWidth+.8),dir:-d})))];
+export const BRIDGE_TRACK_ENDS=CYCLE_GAPS.flatMap(g=>[{s:g.start,dir:1},{s:g.end,dir:-1}]);
+const signedEnds=[...BRIDGE_TRACK_ENDS,...LEVEL_TRACK_GAPS.flatMap(g=>[{s:g.start,dir:1},{s:g.end,dir:-1}])];
+export const CYCLE_ENDS=[...signedEnds,{s:0,dir:-1},{s:LENGTH,dir:1}];
 export const CYCLE_PEDESTRIAN=CROSSINGS.filter(c=>!cycleCrossing(c.s));
-export const CYCLE_DOWNHILL=CYCLE_BRIDGES.flatMap(j=>[-1,1].map(dir=>({s:j.s+dir*(j.halfWidth+18),dir,end:j.s+dir*(j.halfWidth+8+CYCLE_RAMP)})));
 const clear=(s,half=0)=>s-half>=0&&s+half<=LENGTH&&![s-half,s,s+half].some(cycleCrossing);
 const surface=s=>cycleSample(s).groundY+cycleBridgeHeight(s);
 
@@ -35,6 +36,9 @@ export function buildCycleAids(ribbon,white,metal){
   }else if(kind==='keep-left'||kind==='cycle'){
    x.fillStyle='#0756af';x.beginPath();x.arc(128,128,119,0,Math.PI*2);x.fill();x.strokeStyle='white';x.lineWidth=6;x.stroke();
    if(kind==='cycle')bike();else{x.strokeStyle='white';x.lineWidth=29;x.beginPath();x.moveTo(178,76);x.lineTo(78,176);x.moveTo(78,115);x.lineTo(78,176);x.lineTo(139,176);x.stroke();}
+  }else if(kind==='track-end'){
+   x.fillStyle='white';x.fillRect(4,28,248,200);x.strokeStyle='#202828';x.lineWidth=5;x.strokeRect(4,28,248,200);
+   text('單車徑終止',95,40);text('End of',148,34);text('cycle track',193,37);
   }else if(kind==='dismount'||kind==='slow-sign'){
    x.fillStyle='white';x.fillRect(3,3,250,250);x.strokeStyle='#111';x.lineWidth=6;x.strokeRect(3,3,250,250);
    if(kind==='dismount'){text('Cyclists',54,38);text('dismount',98,38);text('騎單車者',162,43);text('下車',222,48);}else{text('SLOW',105,63);text('慢駛',198,72);}
@@ -61,10 +65,16 @@ export function buildCycleAids(ribbon,white,metal){
  for(let s=25;s<LENGTH-5;s+=70){if(crossingNear(s,26)||endNear(s))continue;for(const dir of [-1,1])mark('bike',s,dir,3.2);}
  for(const e of CYCLE_ENDS){hatch(Math.min(e.s-e.dir*15,e.s-e.dir*2),Math.max(e.s-e.dir*15,e.s-e.dir*2));mark('end',e.s-e.dir*5.3,e.dir,4);
   sign('dismount',e.s-e.dir*9,e.dir);if(e.s===0||e.s===LENGTH)sign('cycle',e.s-e.dir*2,-e.dir);}
- for(const d of CYCLE_DOWNHILL){mark('slow',d.s-d.dir*5,d.dir);sign('slope',d.s,d.dir,{y:2.8});sign('slow-sign',d.s,d.dir,{y:2.05,size:.6,post:false});sign('dismount',d.s+d.dir*4,d.dir);
-  // Only show chevrons where the sampled alignment actually turns, and on its outside verge.
-  const a=cycleSample(Math.max(0,Math.min(LENGTH,d.end-d.dir*20))),b=cycleSample(Math.max(0,Math.min(LENGTH,d.end+d.dir*12))),turn=Math.atan2(Math.sin(b.heading-a.heading),Math.cos(b.heading-a.heading));
-  if(Math.abs(turn)>.12)for(const offset of [-4,0,4])sign(turn>0?'chevron-left':'chevron-right',d.end+offset,d.dir,{lat:-Math.sign(turn)*d.dir*verge(d.end+offset),y:1.5,size:.7});}
+ const yellow=new T.MeshStandardMaterial({color:0xffca18,roughness:.64});
+ for(const e of signedEnds){
+  const s=e.s-e.dir*.32;
+  sign('track-end',s,e.dir,{size:.90});sign('cycle',s,-e.dir);
+  for(const lat of [-1.58,0,1.58]){
+   const p=cycleSignPose(s,e.dir,lat);
+   add('Yellow cycle terminal bollards',new T.CapsuleGeometry(.084,.78,4,10).translate(p.x,p.y+.45,p.z),yellow);
+   for(const h of [.62,.77])add('Cycle bollard reflective bands',new T.CylinderGeometry(.087,.087,.053,10).translate(p.x,p.y+h,p.z),white);
+  }
+ }
  for(const [name,{m,parts}] of buckets){const mesh=new T.Mesh(mergeGeometries(parts),m);mesh.name=name;mesh.receiveShadow=true;group.add(mesh);for(const p of parts)p.dispose();}
  return group;
 }

@@ -1,5 +1,5 @@
-// Street amenities ported from the city-rules sandbox (hydrants.js, city-amenities.js): the WSD pedestal fire hydrant, the HyD
-// H4109 Type B bus shelter with its RM1047/1048 bus stop marking, and the H5144A tree pit with its guard. Each builder returns
+// Street amenities ported from the city-rules sandbox (hydrants.js, city-amenities.js): the WSD pedestal fire hydrant, the Hong Kong kerbside and lay-by shelters
+// with bilingual carriageway markings, and the H5144A tree pit with its guard. Each builder returns
 // [{geometry, material}] in its own frame for the environment's batcher. Materials and canvases are made on first use, so Node
 // tests can import this module. Frames: hydrant local −Z faces the road; shelter and tree pit use a kerb frame (x along the
 // kerb, +z from the kerb face into the footway, y from the paving).
@@ -41,26 +41,73 @@ export const treePit=(W,D)=>once('pit'+W+'x'+D,()=>{const g=new T.Group(),c=mat(
  for(const y of [.08,.62,1.16]){const ring=new T.Mesh(new T.CylinderGeometry(R,R,.06,24,1,true),gd);ring.position.y=y;g.add(ring);}
  for(let i=0;i<16;i++){const a=i/16*Math.PI*2;cyl(g,gd,Math.cos(a)*R,0,Math.sin(a)*R,.0075,1.2);}return g;});
 
-// H4109 Type B RC bus shelter (columns 1.84 m from the kerb face, roof 0.5–2.0 m, 2.25 m clear, 14.4 m long) and the
-// franchised bus stop marking RM1047/1048 on the carriageway (13 m box, 3 m out; 站 / 巴士 / STOP / BUS reading along travel).
-// travel: ±1, the direction of traffic along local X.
-export const SHELTER_HALF=7.2;
-export const busStop=travel=>once('bus-stop'+travel,()=>{const g=new T.Group(),c=mat('#b8b5aa',{roughness:.92}),col=1.84,clear=2.25,fall=Math.atan(1/24),top=clear+.25,L=2*SHELTER_HALF,COLS=[-5.4,-1.8,1.8,5.4];
- for(const x of COLS){cyl(g,c,x,0,col,.15,clear);box(g,c,x,clear-.15,col,.32,top-clear+.15,.32);}
- box(g,c,0,clear,col,L-.6,top-clear-.06,.32);
- {const z0=.5,z1=2,mid=(z0+z1)/2,rise=Math.abs(mid-col)*Math.tan(fall);box(g,c,0,top-.09+rise,mid,L,.09,z1-z0+.01,mid<col?fall:-fall);}
- const route=plate('bus-route',7/3,1,(cx,W,H)=>{cx.fillStyle='#f4f2ea';cx.fillRect(0,0,W,H);cx.strokeStyle='#30302f';cx.lineWidth=10;cx.strokeRect(5,5,W-10,H-10);text(cx,'K65  K66  K73',W/2,H*.42,64,'#30302f');text(cx,'巴士站 BUS STOP',W/2,H*.75,46,'#7a1d1a');});
- for(const s of [-1,1])box(g,route,s*(SHELTER_HALF-.4),top+.15,col,.05,.3,.7);
- const lit=mat('#fff1d6',{emissive:'#fff1d6',emissiveIntensity:.8});for(const x of [-3.6,0,3.6]){const d=new T.Mesh(geo.disc,lit);d.scale.set(.12,.12,1);d.rotation.x=Math.PI/2;d.position.set(x,top-.1,col-.7);g.add(d);}
- const x0=COLS[0]+.15,x1=COLS.at(-1)-.15,s=mat('#c9cdcf',{metalness:.7,roughness:.35}),gl=mat('#bcd3d6',{transparent:true,opacity:.28,roughness:.08,metalness:.1,depthWrite:false});
- box(g,s,0,1.08,col,x1-x0,.028,.025);box(g,s,0,.1,col,x1-x0,.025,.025);box(g,gl,0,.12,col,x1-x0,.96,.01);for(let x=x0;x<=x1+1e-6;x+=(x1-x0)/12)box(g,s,x,.1,col,.025,1,.028);
- for(const [a,b] of [[-1.65,-.6],[.6,1.65]]){box(g,gl,(a+b)/2,1.12,col,b-a,1.03,.01);box(g,s,(a+b)/2,2.15,col,b-a,.025,.028);for(const x of [a,b])box(g,s,x,1.1,col,.025,1.07,.028);}
- return g;});
+// Open-fronted shelters, local +Z into the footway. Route flags stand at the
+// boarding end (traffic travels along −X). Panels face approaching passengers.
+function roadsidePanel(group,material,x,y,z,width,height){
+ const panel=new T.Mesh(new T.PlaneGeometry(width,height),material);
+ panel.rotation.y=Math.PI;panel.position.set(x,y,z);group.add(panel);
+}
+
+export const busStop=kind=>once('bus-stop-'+kind,()=>{
+ const g=new T.Group(),bay=kind==='layby',length=bay?13.8:4.6;
+ const frame=mat('#83908b',{metalness:.42}),green=mat('#28563f'),roof=mat('#c8cab9'),seat=mat('#87938f',{metalness:.45});
+ const flagRed=mat('#a83232'),ochre=mat('#b96930'),dark=mat('#424c48');
+ const posts=bay?[-6.2,-3.1,0,3.1,6.2]:[-1.82,1.82];
+ for(const x of posts){
+  box(g,frame,x,-.16,1.42,.09,2.73,.11);
+  box(g,frame,x,2.51,.98,.075,.09,1.45);
+ }
+ // Folded sheet roof with a shallow fall, fine seams and painted edge beam.
+ box(g,roof,0,2.61,.99,length,.065,1.65,-.045);
+ box(g,green,0,2.43,.2,length,.17,.09);
+ box(g,green,0,2.55,1.8,length,.12,.07);
+ for(const x of posts)box(g,frame,x,2.675,.99,.025,.022,1.64,-.045);
+ for(const x of (bay?[-3.45,3.45]:[0])){
+  const w=bay?2.65:1.68;
+  for(const dx of [-w*.35,w*.35])box(g,dark,x+dx,-.09,1.06,.1,.53,.24);
+  box(g,seat,x,.44,1.06,w,.095,.36);
+  box(g,mat('#fff1d6',{emissive:'#fff1d6',emissiveIntensity:.8}),x,2.51,.84,.75,.035,.09);
+ }
+ if(!bay)box(g,ochre,1.82,-.08,1.33,.22,2.58,.37);
+ const flagX=-length/2-.67;
+ cyl(g,frame,flagX,-.12,.67,.038,3.08);
+ box(g,flagRed,flagX,2.40,.67,.43,.66,.075);
+ const flag=plate('hk-route-flag',.43,.66,(c,w,h)=>{
+  c.fillStyle='#ab3535';c.fillRect(0,0,w,h);text(c,'巴士站',w/2,h*.18,39,'#fff4da');
+  c.fillStyle='#f3ca53';c.fillRect(5,h*.34,w-10,h*.61);
+  text(c,'K65',w/2,h*.51,50,'#552e2a');text(c,'K66   K73',w/2,h*.80,27,'#552e2a');
+ });
+ roadsidePanel(g,flag,flagX,2.73,.628,.43,.66);
+ const timetable=plate('hk-stop-timetable',.36,.83,(c,w,h)=>{
+  c.fillStyle='#f4edda';c.fillRect(0,0,w,h);
+  for(const [i,route] of ['K65','K66','K73'].entries()){
+   const top=i*h/3;c.fillStyle=i===1?'#e5b44d':'#a73b34';c.fillRect(0,top,w,h*.10);
+   text(c,route,w/2,top+h*.05,20,'#fff8ed');
+   for(let row=0;row<5;row++){c.fillStyle='#73746b';c.fillRect(w*.10,top+h*.14+row*8,w*(row%2?.54:.78),2);}
+  }
+ });
+ box(g,flagRed,flagX,.98,.67,.41,.90,.09);
+ roadsidePanel(g,timetable,flagX,1.43,.622,.36,.83);
+ if(bay){
+  const x=posts.at(-1)-.51;
+  box(g,frame,x,.14,1.40,.87,2.15,.12);
+  roadsidePanel(g,timetable,x,1.28,1.335,.74,1.84);
+ }
+ return g;
+});
 // The franchised bus stop marking (RM1047/1048) in the same kerb frame, flat at y = 0: the caller drapes every vertex onto the road
 // surface (the road climbs and crowns under a 13 m box). White broken box 3 m out, open to the kerb; 站 / 巴士 / STOP / BUS along travel.
-export function busStopMarks(travel){const g=new T.Group(),white=mat('#ecebe4',{roughness:.8,emissive:'#ecebe4',emissiveIntensity:.18}),Lm=13,Wm=3,flat=(m,x,z,w,d)=>{const q=new T.Mesh(new T.PlaneGeometry(w,d).rotateX(-Math.PI/2),m);q.position.set(x,0,z);g.add(q);return q;},dash=(x,z,w,d)=>flat(white,x,z,w,d);
- for(let x=-Lm/2;x<Lm/2-1;x+=2)dash(x+.5,-Wm+.05,1,.1);dash(Lm/2-.5,-Wm+.05,1,.1);for(const e of [-1,1])for(const z0 of [-Wm,-1])dash(e*(Lm/2-.05),z0+.5,.1,1);
- let at=-Lm/2+.7;for(const [label,len,cn] of [['站',2.7,1],['巴士',2.7,1],['STOP',1.6],['BUS',1.6]]){const across=cn?2.2:2;
+export function busStopMarks(travel,kind){const g=new T.Group(),white=mat('#ecebe4',{roughness:.8,emissive:'#ecebe4',emissiveIntensity:.18}),Lm=kind==='layby'?20:13,Wm=3,flat=(m,x,z,w,d)=>{const q=new T.Mesh(new T.PlaneGeometry(w,d).rotateX(-Math.PI/2),m);q.position.set(x,0,z);g.add(q);return q;},dash=(x,z,w,d)=>flat(white,x,z,w,d);
+ const count=Math.round((Lm+1)/2);
+ for(let i=0;i<count;i++)dash(-Lm/2+.5+i*(Lm-1)/(count-1),-Wm+.05,1,.1);
+ for(const e of [-1,1])for(const z0 of [-Wm,-1])dash(e*(Lm/2-.05),z0+.5,.1,1);
+ // Yellow boarding queue corners on the paving beside the route flag.
+ const queueX=kind==='layby'?-7.6:-3.0,queuePaint=mat('#dcb548',{roughness:.9});
+ for(const sign of [-1,1]){
+  flat(queuePaint,queueX+sign*.55,.88,.05,.96);
+  flat(queuePaint,queueX+sign*.42,.42,.26,.05);
+ }
+ let at=-13/2+.7;for(const [label,len,cn] of [['站',2.7,1],['巴士',2.7,1],['STOP',1.6],['BUS',1.6]]){const across=cn?2.2:2;
   const m=plate('rm-'+label,across/len,1,(cx,Wc,Hc)=>{cx.fillStyle='#ecebe4';cx.font=`bold ${Hc*.86}px ${cn?'"PingFang HK","Heiti TC",sans-serif':'"Helvetica Neue",Arial,sans-serif'}`;const w=cx.measureText(label).width||Wc;cx.setTransform(Wc*.86/w,0,0,1,Wc/2,Hc*.52);cx.textAlign='center';cx.textBaseline='middle';cx.fillText(label,0,0);});
   Object.assign(m,{transparent:false,alphaTest:.5,roughness:.8,polygonOffset:true,polygonOffsetFactor:-2});m.map.generateMipmaps=true;
   flat(m,travel*(at+len/2),-Wm/2,across,len).rotation.y=-travel*Math.PI/2;at+=len+1;}

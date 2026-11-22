@@ -37,9 +37,9 @@ for(const campaign of TRAM_CAMPAIGNS){
    const shader={uniforms:{},vertexShader:T.ShaderLib.standard.vertexShader,fragmentShader:T.ShaderLib.standard.fragmentShader};
    mesh.material.onBeforeCompile(shader);
    const section=sections.find(s=>{for(let n=mesh.parent;n;n=n.parent)if(n===s)return true;}),index=sections.indexOf(section);
-   assert.equal(shader.uniforms.tramHero.value,index===1?1:0,'Only the middle section prints the hero, including renamed depot vehicles');
+   assert.equal(shader.uniforms.tramHero.value,1,'Every car prints the hero, including renamed depot vehicles');
    assert.deepEqual(shader.uniforms.tramWindowRange.value.toArray(),tramWindowRange(['section_front','section_mid','section_rear'][index]));
-   assert(shader.fragmentShader.includes('vTramPosition.y<=2.10'),'Film ends halfway up passenger glazing');
+   assert(shader.fragmentShader.includes('vTramPosition.y<=2.70')&&shader.fragmentShader.includes('vTramPosition.y<=3.13'),'Film covers the full passenger glazing and the print meets the roof');
    if(before.material.name!=='glass')assert(!mesh.material.transparent,'Body panels stay opaque');
    if(/_door_(left|right)_[01](_leaf_[ab])?$/.test(mesh.parent.name)){
     if(before.material.name==='body_white')doors++;else assert.match(before.material.name,/^(livery_|glass$|body_black$)/,'Only door panels, frames and glass carry the print');
@@ -50,8 +50,8 @@ for(const campaign of TRAM_CAMPAIGNS){
  const plain=model.scene.clone(true),plainTram={sections:[plain]};applyTramAdvert(plainTram,null);
  assert(!plainTram.advert);plain.traverse(n=>assert(!n.userData.tramAdvert));
 }
-console.log('Tram wraps: half of the fleet, four campaigns, one hero per side and lower-half passenger window film; shared originals unchanged.');
+console.log('Tram wraps: half of the fleet, four campaigns, hero on every car, full-height passenger window film; shared originals unchanged.');
 
-assert.deepEqual(tramWindowRange('section_front'),[-2.15,2.85]);
-assert.deepEqual(tramWindowRange('section_mid'),[-2.85,2.85]);
-assert.deepEqual(tramWindowRange('section_rear'),[-2.85,2.15]);
+assert.deepEqual(tramWindowRange('section_front'),[-2.15,4.85]);
+assert.deepEqual(tramWindowRange('section_mid'),[-4.85,4.85]);
+assert.deepEqual(tramWindowRange('section_rear'),[-4.85,2.15]);

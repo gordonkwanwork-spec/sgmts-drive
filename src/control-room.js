@@ -62,6 +62,7 @@ export function createControlRoom(api){
   if(shiftDone)return;
   for(const a of fleet().filter(a=>a.active)){a.control.skipped=a.control.skipped.filter(id=>(a.s-STOPS.find(st=>st.id===id).s)*a.dir<160);a.control.wait=a.v<.2&&!a.dwell?a.control.wait+dt:0;delay+=a.v<.2&&!a.dwell?dt:0;const count=a.served.length,previous=served.get(a)||0;if(count>previous)completedStops+=count-previous;served.set(a,count);}
   for(const c of api.getTraffic()){
+   if(!c.curve&&!c.junction)continue; // City street traffic follows its own lane controllers.
    const line=c.curve?(c.signalHold?.at??-Infinity):null;
    const upstream=c.curve?c.routeDistance+c.length/2<=line+.3:c.lat*c.dir<-(sideCrossing(c.junction,c.dir)+3+c.length/2)+.5;
    if(c.releaseAt||!upstream){c.queueWait=0;c.wasQueued=false;}else if(c.v<.3||c.wasQueued){c.queueWait+=dt;c.wasQueued=c.queueWait>=1;}else c.queueWait=0;

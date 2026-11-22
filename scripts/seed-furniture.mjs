@@ -3,7 +3,7 @@
 // Run: node scripts/seed-furniture.mjs [--force]
 import fs from 'node:fs';
 import * as T from 'three';
-import {LENGTH,STOPS,sample,roadSection,footpathHeight,JUNCTIONS,UNDERPASSES,CROSSINGS,DEPOT,L35,l35Offset,sideCrossing,curveRadius,cycleSample,cycleOffset,cycleBridgeAt,cycleCanopyAt,cycleBridgeHeight,cycleCrossing,CYCLE_BRIDGES,D1ROAD,LOOP,fromChainage} from '../src/alignment.js';
+import {LENGTH,STOPS,sample,roadSection,footpathHeight,JUNCTIONS,UNDERPASSES,CROSSINGS,DEPOT,L35,l35Offset,sideCrossing,curveRadius,cycleSample,cycleOffset,cycleBridgeAt,cycleCanopyAt,cycleBridgeHeight,cycleCrossing,D1ROAD,LOOP,fromChainage} from '../src/alignment.js';
 import {l35BendCurve,depotCurve,depotInner} from '../src/routes.js';
 import {fenceAllowed,crossingGap} from '../src/environment.js';
 import {record,ROAD,pose,CV_FRAME,junctionSignalItems} from '../src/street/roads.js';
@@ -34,8 +34,6 @@ for(let s=10,run=18,prev=cycleSample(10);s<LENGTH-4;s+=1){const here=cycleSample
  if(cycleCanopyAt(s)||cycleCrossing(s)||!bridge&&[...JUNCTIONS,...UNDERPASSES].some(j=>Math.abs(j.s-s)<j.halfWidth+2))continue;
  const lat=Math.abs(cycleOffset(s)+edge);if(STOPS.some(st=>Math.abs(st.s-s)<st.footprintLength/2+2&&lat<roofHalf(st)+1.6))continue;
  const c=cycleSample(s);add('lamp_cycle','cycleway',{x:c.x+c.lx*edge,y:c.groundY+cycleBridgeHeight(s),z:c.z+c.lz*edge},armYaw(-c.lx,-c.lz),{ref:'centre',guess:s,params:{height:5}});run=0;}
-// Cycle-only entry signs face riders entering the track after each road crossing.
-for(const j of JUNCTIONS.filter(j=>!CYCLE_BRIDGES.includes(j)))for(const end of [-1,1]){const s=j.s+end*(j.halfWidth+2.8),r=cycleSample(s);add('cycle_sign','cycleway',{x:r.x+r.lx*end*2.5,y:r.groundY+cycleBridgeHeight(s),z:r.z+r.lz*end*2.5},r.heading+(end===1?Math.PI:0),{ref:'centre',guess:s});}
 // Roadside furniture on an 18 m rhythm: manholes, post boxes and wayfinding signs.
 for(let q=35;q<LENGTH-25;q+=18)for(const side of [-1,1]){
  if(groundCrossing(q)||crossingGap(q-5,q+5)||STOPS.some(st=>Math.abs(st.s-q)<st.footprintLength/2+12)||side===1&&inDepot(q))continue;

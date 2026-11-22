@@ -75,6 +75,12 @@ altitude, drag to look.
 
 ---
 
+## In-game radio
+
+Open **RADIO · 收音機** during play to see the four station logos. Full Service, Free Roam and Passenger show the station and song at the upper right, or below the map and route information on a narrow portrait screen. Drive around town places the same radio below its vehicle toolbar, and the Control Centre includes it in the header. Tap a logo to tune or use the arrows to skip a song. Press **/** for the next station or **comma** for the next song. Hold **Shift** to go backwards. Your station choice carries between modes.
+
+**粵語金曲 FM · Cantopop** (pink microphone) plays 林子祥《敢愛敢做》 and 譚詠麟《一生中最愛》. The other stations are Guideway FM, Platform Lounge and SGMTS Originals.
+
 ## Route choices and live map
 
 - Open **☰ Journey options** for settings and route choices. **Skip next station** selects the through lane for an express stop. Choose before the station approach.

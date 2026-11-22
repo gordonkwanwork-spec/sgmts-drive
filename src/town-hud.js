@@ -4,12 +4,15 @@
 const PX=.8,PAD=80,COL={ground:'#1f2b24',foot:'#56635a',road:'#a4adb0',corridor:'#6f8a86',ring:'#2f5a35'};
 
 // roads: [{pts:[[x,z]…], cw (carriageway m), fp (footway m)}]; corridor: [[x,z,halfWidth]…] along the SGMTS road.
-export function createTownHud({mount,roads,corridor,onMenu,onWalk,onDrive}){
+export function createTownHud({mount,roads,corridor,onMenu,onWalk,onDrive,onRecover,onLights,vehicleOptions,onVehicle}){
  const bar=document.createElement('div');bar.id='town-bar';
- bar.innerHTML='<button data-act="menu">← Menu</button><button data-act="walk">Walk / 步行</button><button data-act="drive">Drive / 駕駛</button>';
- const box=document.createElement('div');box.id='town-radar';box.innerHTML='<canvas width="380" height="380"></canvas><b>N</b><i></i>';
+ bar.innerHTML='<button data-act="menu">← Menu</button><button data-act="walk">Walk / 步行</button><button data-act="drive">Drive / 駕駛</button>'+
+  '<select id="town-vehicle" aria-label="Driving vehicle">'+vehicleOptions+'</select><button data-act="lights" aria-pressed="false">Lights</button><button data-act="recover">Recover</button><output aria-label="Vehicle speed"></output>';
+ const picker=bar.querySelector('select'),speedometer=bar.querySelector('output'),lightSwitch=bar.querySelector('[data-act=lights]');
+ picker.onchange=()=>{onVehicle(picker.value);picker.blur();};
+ const box=document.createElement('div');box.id='town-radar';box.setAttribute('role','img');box.setAttribute('aria-label','City minimap');box.innerHTML='<canvas width="380" height="380"></canvas><b>N</b><i></i>';
  mount.append(bar,box);
- bar.addEventListener('click',e=>{const a=e.target.closest('button')?.dataset.act;e.target.blur?.();if(a==='menu')onMenu();if(a==='walk')onWalk();if(a==='drive')onDrive();});
+ bar.addEventListener('click',e=>{const a=e.target.closest('button')?.dataset.act;if(!a)return;e.target.blur?.();if(a==='recover')onRecover();if(a==='lights')onLights();if(a==='menu')onMenu();if(a==='walk')onWalk();if(a==='drive')onDrive();});
  // base map
  const all=[...roads.flatMap(r=>r.pts),...corridor.map(p=>[p[0],p[1]])],x0=Math.min(...all.map(p=>p[0]))-PAD,z0=Math.min(...all.map(p=>p[1]))-PAD,
   x1=Math.max(...all.map(p=>p[0]))+PAD,z1=Math.max(...all.map(p=>p[1]))+PAD,base=document.createElement('canvas');
@@ -19,13 +22,18 @@ export function createTownHud({mount,roads,corridor,onMenu,onWalk,onDrive}){
  for(const r of roads)line(r.pts,r.cw+2*r.fp,COL.foot);
  const cw=corridor.length?Math.max(...corridor.map(p=>p[2]))*2:0;line(corridor,cw+6,COL.foot);line(corridor,cw,COL.corridor);
  for(const r of roads)line(r.pts,r.cw,COL.road);
- const view=box.querySelector('canvas'),v=view.getContext('2d'),north=box.querySelector('b');let zoom=1;
+ const view=box.querySelector('canvas'),v=view.getContext('2d'),north=box.querySelector('b'),arrow=box.querySelector('i');let zoom=1;
  return {
   // pose: {x, z (world m), fx, fz (camera forward on the ground), speed (m/s), avatar}
-  update({x,z,fx,fz,speed,avatar}){
+  setVehicle(id){picker.value=id;},
+  update({x,z,yaw,fx,fz,speed,reverse,lights,avatar}){
+   const reading=(reverse?'R · ':'')+Math.round(speed*3.6)+' km/h';
+   if(speedometer.value!==reading)speedometer.value=reading;
+   lightSwitch.setAttribute('aria-pressed',String(!!lights));
    const ang=Math.atan2(fx,-fz),want=1/(1+Math.min(1.6,speed/14));zoom+=(want-zoom)*.08;// metres shown grow with speed
    const S=view.width,scale=S/(2*140)*zoom/PX;v.setTransform(1,0,0,1,0,0);v.fillStyle=COL.ground;v.fillRect(0,0,S,S);
    v.setTransform(scale,0,0,scale,S/2,S/2);v.rotate(-ang);const [bx,by]=px([x,z]);v.drawImage(base,-bx,-by);
+   arrow.style.transform=avatar==='car'?`rotate(${-yaw-ang}rad)`:'';
    const r=S/2-14;north.style.left=(50+50*(r/(S/2))*Math.sin(-ang))+'%';north.style.top=(50-50*(r/(S/2))*Math.cos(-ang))+'%';
    for(const b of bar.querySelectorAll('button'))b.classList.toggle('active',b.dataset.act===(avatar==='car'?'drive':avatar==='foot'?'walk':''));}};
 }

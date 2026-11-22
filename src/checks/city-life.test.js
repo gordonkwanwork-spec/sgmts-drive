@@ -13,6 +13,74 @@ const g=cityGraph(network),lanes=g.pieces.filter(p=>p.kind==='lane');
 
 // Graph: both directions of every street (the roundabout one way), no dead ends, every lane reachable.
 for(const r of network.roads){const mine=lanes.filter(p=>p.road.r.id===r.id);assert.ok(mine.some(p=>p.dir>0),`${r.id} has no forward lane`);assert.ok(r.loop?!mine.some(p=>p.dir<0):mine.some(p=>p.dir<0),`${r.id} lanes are wrong for ${r.loop?'a roundabout':'a two-way street'}`);}
+// Each of the two circulating traffic streams stays on its own side of the painted divider, through the mouths too.
+const ringLanes=lanes.filter(p=>p.road.r.loop);
+assert.deepEqual([...new Set(ringLanes.map(p=>p.k))].sort(),[0,1]);
+for(const p of ringLanes){
+ const {ox,oz,R}=p.road.ring,radius=R+(p.k===0?-2:2);
+ const onward=p.next.find(q=>q.next[0].road===p.road);
+ assert.equal(onward.next[0].k,p.k);
+ for(const pt of [...p.pts,...onward.pts])assert.ok(Math.abs(Math.hypot(pt.x-ox,pt.z-oz)-radius)<.3);
+}
+// A pair of cars at the Give Way line can take the same gap. Traffic leaving the
+// roundabout or continuing in a separate lane must not hold the whole approach.
+for(const node of g.nodes.filter(n=>n.kind==='ring')){
+ const entries=node.turns.filter(t=>t.rule==='minor');
+ const through=k=>node.turns.find(t=>t.from.road.r.loop&&t.from.k===k&&t.next[0].road.r.loop);
+ const [inner,outer]=[0,1].map(k=>entries.find(t=>t.from.k===k));
+ function place(car,piece,s,next,v=0){
+  const b=piece.pts.find(pt=>pt.s>s)||piece.pts.at(-1),a=piece.pts[piece.pts.indexOf(b)-1];
+  const length=b.s-a.s,u=(s-a.s)/length,tx=(b.x-a.x)/length,tz=(b.z-a.z)/length;
+  Object.assign(car,{piece,s,next,v,wait:0,x:a.x+(b.x-a.x)*u,z:a.z+(b.z-a.z)*u,tx,tz});
+ }
+ const start=(car,entry)=>place(car,entry.from,entry.from.len-car.length/2-.6,entry);
+ const traffic=createTraffic(g,{count:3}),[a,b,other]=traffic.cars;
+ start(a,inner);start(b,outer);
+ const leaving=node.turns.find(t=>t.rule==='major'&&t.from.k===1&&!t.next[0].road.r.loop);
+ place(other,leaving,leaving.len/2,leaving.next[0],5);
+ for(let tick=0;tick<50;tick++)traffic.step(.05);
+ assert.ok(a.piece===inner&&b.piece===outer,'both entry lanes take the same gap while a vehicle exits');
+ // The inner entry crosses the outer circulating stream. A vehicle arriving there
+ // simultaneously has priority, even when its eventual destination lane differs.
+ const sim=createTraffic(g,{count:2}),[waiting,circulating]=sim.cars,ring=through(1);
+ start(waiting,inner);place(circulating,ring.from,ring.from.len-4,ring,7);
+ sim.step(.05);assert.ok(waiting.held,'inner entry yields across the occupied outer lane');
+ for(let tick=0;tick<180;tick++)sim.step(.05);
+ assert.ok(waiting.piece!==inner.from,'entry proceeds as soon as the conflict clears');
+ start(waiting,outer);
+ const separate=through(0);
+ place(circulating,separate,separate.len/2,separate.next[0],6);
+ sim.step(.05);assert.ok(!waiting.held&&waiting.v>0,'free outer lane accepts traffic beside the occupied inner lane');
+}
+const {stepCar,CAR}=await import('../city/drive.js'),{networkMask}=await import('../street/network.js');
+const driveMask=networkMask(network),carWorld={drivable:(x,z)=>driveMask.onRoad(x,z,-.25),blocked:()=>false};
+for(const lane of lanes.filter(p=>p.to.kind==='head')){
+ const {r,F}=lane.road,f=F.at(-1),turn=lane.next[0];
+ assert.equal(turn.kind,'uturn');
+ const exit=turn.next[0];
+ assert.equal(exit.road.r.id,r.id);
+ assert.equal(exit.k,lane.k);
+ assert.equal(exit.dir,-lane.dir);
+ for(let i=2;i<turn.pts.length-1;i++){
+  const a=turn.pts[i-1],b=turn.pts[i];
+  assert.ok((a.x-f.x)*(b.z-f.z)-(a.z-f.z)*(b.x-f.x)>0,r.id+' clockwise circulation');
+  assert.ok(Math.hypot(b.x-f.x,b.z-f.z)>r.turningRadius*.32+1.4,r.id+' clears central island');
+ }
+ // A point can follow an abrupt turn through the mouth where a steering car clips the exit kerb.
+ const path=[...lane.pts.slice(-6),...turn.pts.slice(1),...exit.pts.slice(1,6)];
+ const [p,q]=path,car={x:p.x,z:p.z,yaw:Math.atan2(p.x-q.x,p.z-q.z),length:4.6,width:1.95,steer:0,v:1.6};
+ let target=1;
+ for(let tick=0;tick<6000&&target<path.length;tick++){
+  // Pure pursuit measures its look-ahead from the bicycle model’s rear axle.
+  const rearX=car.x+CAR.wheelbase/2*Math.sin(car.yaw),rearZ=car.z+CAR.wheelbase/2*Math.cos(car.yaw);
+  const dx=path[target].x-rearX,dz=path[target].z-rearZ,dist=Math.hypot(dx,dz);
+  if(dist<2.75){target++;continue;}
+  const angle=Math.atan2(-dx,-dz)-car.yaw;
+  const steer=Math.atan(2*CAR.wheelbase*Math.sin(angle)/dist)/CAR.maxSteer;
+  stepCar(car,{throttle:car.v<1.7?.35:0,steer:Math.max(-1,Math.min(1,steer))},1/60,carWorld);
+ }
+ assert.equal(target,path.length,r.id+' player car must exit lane '+lane.k);
+}
 for(const p of g.pieces)assert.ok(p.next.length||p.exit,`${p.kind} piece ${p.id} on ${p.road?.r.id} leads nowhere`);
 assert.ok(g.sources.length>=6,'traffic enters at the map edges');
 // (cars keep their lane, so the kerb lanes of the dual roads are fed from the map-edge entries)

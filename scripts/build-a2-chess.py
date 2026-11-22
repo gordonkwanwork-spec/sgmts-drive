@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 """Crop the chess table, two chairs and their paved square out of Gordon's KIRI 3DGS capture and bake them into game space.
-Usage: build-a2-chess.py <capture.ply> <capture-mesh.obj> <out.ply> <out-hull.json>
+Usage: build-a2-chess.py <capture.ply> <capture-mesh.obj|-> <out.gsplat> <out-hull.json>   ('-' keeps the existing hull)
 Output: metres, Y up, the square's floor centre at the origin, square sides on X / Z, chairs on +-Z; SH0 colour only.
 The capture is COLMAP-like (y down); KIRI's mesh of the same capture is the splat frame turned 180 deg about X, same scale.
-Square (light-yellow border) measured in the turned frame: centre (0.196, 0.428), 4.30 units a side, sides at -24.2 deg.
+Source: Gordon's re-oriented SuperSplat export '3DGS/Chess table.ply' (443k splats, square already on the axes). Square (light-yellow
+border) 4.30 units a side; centre (-0.545, 1.197) in the turned frame, registered to the first build so the hull and slab still fit.
 Scale: table top 1.60 units above the floor = 0.75 m (seats then 0.42 m), so 0.47 m per unit."""
 import sys,json,numpy as np
-MAX_SPLATS=120000         # one copy per pergola (four in all): keep the CPU sort and file small
+sys.path.insert(0,__import__('os').path.dirname(__file__));from gsplat_pack import pack
 S=0.47                    # metres per capture unit
-CENTRE=np.array([0.196,0.428]);HALF=2.15;ANG=np.radians(-24.2);FLOOR=-2.135;MESH_FLOOR=-2.199
+CENTRE=np.array([-0.545,1.197]);HALF=2.15;ANG=0.;FLOOR=-0.131;MESH_FLOOR=None   # re-measure with the KIRI mesh if the hull is ever rebuilt
 src,obj,out,hull=sys.argv[1:5]
 
 def quat_mul(a,b):
  w1,x1,y1,z1=a.T;w2,x2,y2,z2=b.T
  return np.stack([w1*w2-x1*x2-y1*y2-z1*z2,w1*x2+x1*w2+y1*z2-z1*y2,w1*y2-x1*z2+y1*w2+z1*x2,w1*z2+x1*y2-y1*x2+z1*w2],1)
 # Level the floor: its normal in the turned frame, rotated onto +Y (about 1 deg).
-n=np.array([.0143,.9998,-.0147]);n/=np.linalg.norm(n);ax=np.cross(n,[0,1,0]);sa=np.linalg.norm(ax);t=np.arcsin(sa);ax=ax/sa
+n=np.array([.0094,1,.0007]);n/=np.linalg.norm(n);ax=np.cross(n,[0,1,0]);sa=np.linalg.norm(ax);t=np.arcsin(sa);ax=ax/sa
 qL=np.array([np.cos(t/2),*(ax*np.sin(t/2))])
 qY=np.array([np.cos(ANG/2),0,np.sin(ANG/2),0])   # three's Y rotation by ANG takes (u,v) of the square onto (x,z)
 qX=np.array([0,1,0,0])                            # 180 deg about X: capture (y down) -> y up
@@ -39,19 +40,17 @@ keep=(X[:,1]<.04)|(cnt[inv.ravel()]>=4);a=a[keep];X=X[keep]   # floaters above t
 print('cropped',len(a))
 fl=X[:,1]<.03;a[fl,ix['opacity']]=np.maximum(a[fl,ix['opacity']],3.)   # the floor reads solid (opacity >= 0.95): no plaza brick through it
 C0=0.28209479;floor_rgb=np.clip(.5+C0*a[fl][:,[ix['f_dc_0'],ix['f_dc_1'],ix['f_dc_2']]],0,1).mean(0)   # backing slab colour under the splat
-imp=(1/(1+np.exp(-a[:,ix['opacity']])))*np.exp(a[:,[ix['scale_0'],ix['scale_1'],ix['scale_2']]]).mean(1)
-imp[X[:,1]<.03]*=4   # keep floor coverage ahead of small specks when capping
-sel=np.sort(np.argsort(-imp)[:MAX_SPLATS]);a=a[sel];X=X[sel]
+# No splat cap: the small splats carry the gravel, tactile dots and timber grain (a 120k cap made the game look soft). The packed file is
+# written most-important-first and the renderer draws a leading fraction at distance (LOD), so the full set only costs close up.
 q=a[:,[ix['rot_0'],ix['rot_1'],ix['rot_2'],ix['rot_3']]];q=q/np.linalg.norm(q,axis=1,keepdims=True)
 qT=quat_mul(np.tile(qY,(len(q),1)),quat_mul(np.tile(qL,(len(q),1)),np.tile(qX,(len(q),1))))
 q2=quat_mul(qT,q)
 sc=a[:,[ix['scale_0'],ix['scale_1'],ix['scale_2']]]+np.log(S)
 cols=['x','y','z','f_dc_0','f_dc_1','f_dc_2','opacity','scale_0','scale_1','scale_2','rot_0','rot_1','rot_2','rot_3']
-D=np.concatenate([X,a[:,[ix['f_dc_0'],ix['f_dc_1'],ix['f_dc_2'],ix['opacity']]],sc,q2],1).astype('<f4')
-hd='ply\nformat binary_little_endian 1.0\nelement vertex %d\n'%len(D)+''.join('property float %s\n'%c for c in cols)+'end_header\n'
-open(out,'wb').write(hd.encode()+D.tobytes())
-print('splats',len(D),'bounds',X.min(0).round(3),X.max(0).round(3),'MB',round(len(D)*56/1e6,1))
+nbytes=pack(out,X,a[:,[ix['f_dc_0'],ix['f_dc_1'],ix['f_dc_2']]],a[:,ix['opacity']],sc,q2)
+print('splats',len(X),'bounds',X.min(0).round(3),X.max(0).round(3),'MB',round(nbytes/1e6,1))
 
+if obj=='-':sys.exit()
 # Collision from the capture mesh: convex hulls of the table and each chair (extreme points in 96 directions).
 V=[]
 with open(obj) as fo:

@@ -3,17 +3,17 @@ import assert from 'node:assert/strict';
 import * as T from 'three';
 import {cycleRibbon} from '../environment.js';
 import {cycleSample,cycleBridgeHeight,cycleCrossing,LENGTH} from '../alignment.js';
-import {buildCycleAids,cycleMarkGeometry,cycleSignPose,CYCLE_PEDESTRIAN,CYCLE_DOWNHILL,CYCLE_ENDS} from '../street/cycle-aids.js';
+import {buildCycleAids,cycleMarkGeometry,cycleSignPose,CYCLE_PEDESTRIAN,BRIDGE_TRACK_ENDS,CYCLE_ENDS} from '../street/cycle-aids.js';
 const noop=new Proxy(function(){},{get:()=>noop,apply:()=>noop,set:()=>true});
 globalThis.document={createElement:()=>({getContext:()=>noop})};
 // UV top follows the rider, both sides of bends and sloping bridge approaches. Paint never floats horizontally.
-for(const s of [1200,...CYCLE_DOWNHILL.map(d=>d.s+d.dir*40).filter(s=>s>5&&s<LENGTH-5)])for(const dir of [-1,1]){
+for(const s of [1200,...BRIDGE_TRACK_ENDS.map(d=>d.s-d.dir*25).filter(s=>s>5&&s<LENGTH-5)])for(const dir of [-1,1]){
  const g=cycleMarkGeometry(cycleRibbon,s,dir*.94,1.25,3.4,dir),p=g.attributes.position,uv=g.attributes.uv;
  assert(g.index.count>0);const a=new T.Vector3().fromBufferAttribute(p,0),b=new T.Vector3().fromBufferAttribute(p,p.count-2),f=cycleSample(s);
  assert((b.x-a.x)*f.tx+(b.z-a.z)*f.tz>0,'Mark geometry follows track tangent');
  assert((uv.getY(p.count-2)-uv.getY(0))*dir>.99,'Arrow points in rider travel direction');
  assert((uv.getX(0)-uv.getX(1))*dir>.99,'Bicycle/text is not mirrored');
- assert(Math.abs(a.y-cycleSample(s-1.7).groundY-cycleBridgeHeight(s-1.7)-.028)<.0002,'Mark touches ramp surface');
+ assert(Math.abs(a.y-cycleSample(s-1.7).groundY-cycleBridgeHeight(s-1.7)-.028)<.0002,'Mark touches track surface');
  const sign=cycleSignPose(s,dir),front=new T.Vector3(0,0,1).applyAxisAngle(new T.Vector3(0,1,0),sign.yaw);
  assert(front.x*f.tx*dir+front.z*f.tz*dir<-.999,'Sign faces approaching rider');
 }
@@ -22,9 +22,9 @@ assert(group.children.length<25,'Markings and signs are merged, not thousands of
 for(const m of group.children)assert([...m.geometry.attributes.position.array].every(Number.isFinite),m.name+' has finite geometry');
 assert.equal(group.getObjectByName('Cycle pedestrian crossing').geometry.index.count,CYCLE_PEDESTRIAN.length*12,'All pedestrian crossing surfaces present');
 assert.equal(group.getObjectByName('Cycle sign keep-left').geometry.index.count,CYCLE_PEDESTRIAN.length*2*6);
-assert(group.getObjectByName('Cycle sign slope'));assert(group.getObjectByName('Cycle marking end'));
+assert.equal(BRIDGE_TRACK_ENDS.length,10);assert.equal(group.getObjectByName('Cycle sign track-end').geometry.index.count,72);assert(group.getObjectByName('Yellow cycle terminal bollards'));assert(group.getObjectByName('Cycle marking end'));
 for(const e of CYCLE_ENDS)assert(!cycleCrossing(e.s-e.dir*5),'End markings precede carriageway');
-console.log(`Cycle aids: ${CYCLE_PEDESTRIAN.length} pedestrian crossings, ${CYCLE_DOWNHILL.length} downhill approaches, ${CYCLE_ENDS.length} ends; paint alignment and sign orientation passed`);
+console.log(`Cycle aids: ${CYCLE_PEDESTRIAN.length} pedestrian crossings, ${BRIDGE_TRACK_ENDS.length} bridge entrances, ${CYCLE_ENDS.length} ends; paint alignment and sign orientation passed`);
 
 // Every printed face must be in front of its supporting pole, including plates sharing one post.
 const posts=group.getObjectByName('Cycle sign posts');group.updateMatrixWorld(true);

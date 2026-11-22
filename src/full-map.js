@@ -12,7 +12,7 @@ const LEGEND=[['#f2c14e','住宅 Residential'],['#ef6f6c','商業 Commercial'],[
 
 export function createFullMap({live,depot}){
  const root=document.createElement('section');root.className='panel-sheet map-sheet';
- root.innerHTML=`<canvas aria-label="Route map"></canvas><div class="map-legend"><div class="map-key"><i class="you"></i>你 You<i class="art"></i>其他車輛 Other ART<i class="stn"></i>車站 Station</div><div class="map-key"><i class="sig" style="--c:${PHASE.go}"></i>行 Go<i class="sig" style="--c:${PHASE.amber}"></i>等 Wait<i class="sig" style="--c:${PHASE.stop}"></i>停 Stop</div>${LEGEND.map(([c,t])=>`<div class="map-key"><i class="zone" style="--c:${c}"></i>${t}</div>`).join('')}</div><div class="map-hint"><kbd>↑↓←→</kbd>移動 Pan<kbd>Enter</kbd><span id="map-zoom-hint">放大 Zoom in</span><kbd>Esc</kbd>返回 Back</div>`;
+ root.innerHTML=`<canvas aria-label="Route map"></canvas><div class="map-legend"><a class="map-comparison-link" href="${BASE}comparison.html" target="_blank" rel="noopener">OZP 建築比較 · Building comparison ↗</a><div class="map-key"><i class="you"></i>你 You<i class="art"></i>其他車輛 Other ART<i class="stn"></i>車站 Station</div><div class="map-key"><i class="sig" style="--c:${PHASE.go}"></i>行 Go<i class="sig" style="--c:${PHASE.amber}"></i>等 Wait<i class="sig" style="--c:${PHASE.stop}"></i>停 Stop</div>${LEGEND.map(([c,t])=>`<div class="map-key"><i class="zone" style="--c:${c}"></i>${t}</div>`).join('')}</div><div class="map-hint"><kbd>↑↓←→</kbd>移動 Pan<kbd>Enter</kbd><span id="map-zoom-hint">放大 Zoom in</span><kbd>Esc</kbd>返回 Back</div>`;
  const cv=root.querySelector('canvas'),ctx=cv.getContext('2d'),view={cx:0,cz:0,k:.2,near:false};
  let lots=[],plan=null,cal=null,loaded=false;
  const dpr=()=>Math.min(2,devicePixelRatio||1);

@@ -49,9 +49,14 @@ for(const j of JUNCTIONS){const g=crossingGeometry(j),r=sample(j.s),items=data.i
    else{assert(Math.sign(f.e)===σ&&Math.abs(f.e)>j.halfWidth,`${it.id}: on the driver's left kerb`);assert(primary?f.d*σ>Math.abs(g.crossD[σ])+1.5:f.d*σ<0&&Math.abs(f.d)<Math.abs(g.crossD[-σ])-1.5,`${it.id}: ${primary?'past the stop line':'beyond the junction'}`);}}}
  const peds=[...items.filter(i=>i.params.axis==='pedestrian').map(i=>[i,0]),...items.filter(i=>Number.isFinite(i.params.pedYaw)).map(i=>[i,i.params.pedYaw*Math.PI/180])];
  for(const [it,turn] of peds){const f=frame(it,turn);
+  if(it.id.includes('-refuge-')){
+   const pen=g.staggers[Math.sign(f.d)],side=Math.sign(f.e);
+   assert(pen&&Math.abs(pen.centre(side)-f.d)<2&&Math.abs(f.fn)>.99&&Math.sign(f.fn)===side,it.id+' faces its offset crossing from inside the refuge');
+   ends.add('refuge'+Math.sign(f.d)+side);continue;
+  }
   if(it.params.crossing==='side'){assert(Math.sign(f.fn)===-Math.sign(f.e)&&Math.abs(f.fn)>.99,`${it.id}: pedestrian faces across the side crossing`);ends.add('side'+Math.sign(f.d)+Math.sign(f.e));}
   else{assert(Math.sign(f.fl)===-Math.sign(f.lat)&&Math.abs(f.fl)>.99,`${it.id}: pedestrian faces across the corridor crossing`);ends.add('corr'+Math.sign(f.ds)+Math.sign(f.lat));}}
- assert.equal(ends.size,8,`${j.c}: every crossing end has its pedestrian head`);
+ assert.equal(ends.size,8+2*Object.keys(g.staggers).length,`${j.c}: every crossing end has its pedestrian head`);
 }
 console.log('Primary/secondary vehicle heads on the left and inside pedestrian heads at every crossing end passed');
 // The pedestrian attachment must contain no second full-height pole.
@@ -87,12 +92,12 @@ console.log('Smart lamp round columns, E-only housing, retained banners and lant
  const [a,b]=out.lampPositions,P=pose(item),side=l=>(l.x-P.x)*Math.sin(P.yaw)+(l.z-P.z)*Math.cos(P.yaw);assert(side(a)*side(b)<0,'Leaves on opposite sides');}
 console.log('Cycle-track leaf pole passed');
 
-{const {CYCLE_BRIDGES,cycleCanopyAt}=await import('../alignment.js');
+{const {CYCLE_BRIDGES,cycleCanopyAt,cycleCrossing}=await import('../alignment.js');
  for(const j of CYCLE_BRIDGES){const g=crossingGeometry(j),parts=[],item={id:'covered-cycle-check',type:'lamp_cycle',road:'cycleway',ch:ROAD.cycleway.toCh(g.cycleS),side:'L',off:2.15};
   const out=placeFurniture({items:[item]},{batch:(...p)=>parts.push(p),kitParts:()=>[]});
   assert.equal(parts.length,0,'No poles or leaf heads beneath cycle canopies');assert.equal(out.lampPositions.length,0,'No phantom pole light');
-  assert(!cycleCanopyAt(g.cycleS+g.cycleHalf+12),'Uncovered ramps retain their lighting');}// canopies follow the skewed road's crossing of the cycle line
- assert(!data.items.some(i=>i.type==='lamp_cycle'&&i.road==='cycleway'&&cycleCanopyAt(pose(i).s)),'Saved bridge poles removed');}
+  assert(!cycleCanopyAt(g.cycleS+g.cycleHalf+30),'Ground-level track ends lie beyond the span canopy');}// canopies follow the skewed road's crossing of the cycle line
+ assert(!data.items.some(i=>i.type==='lamp_cycle'&&i.road==='cycleway'&&cycleCrossing(pose(i).s)),'Saved cycle lamps clear all pedestrian forecourts');}
 console.log('Covered cycle bridges exclude pole furniture and pole light sources');
 
 // A1 terminus: no lamp columns on the loop; feeder pillars stand on the island pads; cabins clear of the cycle track and loop walk.

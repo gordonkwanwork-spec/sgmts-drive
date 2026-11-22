@@ -1,3 +1,4 @@
+import {restrictionSign} from './city/signs.js';
 // SGMTS Map Editor (dev server: /editor.html; "Edit Lots.command" / "Edit Street.command"). One page, three layers:
 //  Streets: draw roads, footpaths and paved/planted areas (SimCity style) and place lamps, bins, signs, signals, railings, paving
 //           and your own .glb models by road + chainage + side + offset + rotation → public/street/furniture.json
@@ -64,7 +65,9 @@ let queued=false,lastBuild=0,modelToken=0;
 function rebuild(){queued=false;lastBuild=performance.now();
  furnLayer.traverse(n=>{if(n.isInstancedMesh)n.dispose();});furnLayer.clear();
  // drawn streets first: they join the road registry the furniture is placed on
- setNetwork(data.network,renderedGround);frameCache.clear();netLayer.traverse(n=>n.geometry?.dispose());netLayer.clear();netLayer.add(buildNetwork(data.network,{mats:environment?.materials,ground:renderedGround}));fillRoadSelects();
+ setNetwork(data.network,renderedGround);frameCache.clear();netLayer.traverse(n=>n.geometry?.dispose());netLayer.clear();const streets=buildNetwork(data.network,{mats:environment?.materials,ground:renderedGround});
+ const plates=instancer();for(const z of streets.userData.kerbZones||[])for(const sign of z.signs)restrictionSign(plates.batch,sign,0);
+ plates.finish(streets);netLayer.add(streets);fillRoadSelects();
  if(kit){const inst=instancer(),out=placeFurniture(data,{batch:inst.batch,kitParts:kitLibrary(kit)});inst.finish(furnLayer);out.signals.filter(s=>!s.sharedPole).forEach(s=>furnLayer.add(s.group));errors=out.errors;}
  const token=++modelToken;loadFurnitureModels(data,{loader:cachedLoader,url:src=>BASE+'street/models/'+src}).then(g=>{if(token!==modelToken)return;modelLayer.clear();if(g.children.length)modelLayer.add(...g.children);requestRender();});
  buildHills();drawOverlay();renderList();status();requestRender();}

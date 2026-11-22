@@ -18,6 +18,18 @@ export function rigVehicle(root,spec){if(root.userData.wheelRig)return root;root
  for(const [i,seed] of seeds.entries()){const near=clusters.length===seeds.length?clusters[i]:points.filter(p=>Math.abs(p.z-seed*spec.length)<spec.length*(spec.id==='bus'?.04:.15)),z=near.length?(Math.min(...near.map(p=>p.z))+Math.max(...near.map(p=>p.z)))/2:seed*spec.length;
  const faces=all.filter(p=>Math.abs(p.z-z)<r*.45&&p.y>r*.3&&p.y<r*1.6);
   for(const side of bike?[0]:[-1,1]){const contact=(faces.length?faces:near).filter(p=>side===0||p.x*side>0),xs=contact.map(p=>p.x),x=side===0?0:xs.length?(side<0?Math.min(...xs)-.012:Math.max(...xs)+.012):side*spec.width*.4;const half=bike?(xs.length?Math.max(...xs.map(Math.abs))+.012:.11):0;
-   const pivot=new T.Group();pivot.name=`road-wheel-${i}-${side}`;pivot.position.set(x,r,z);pivot.userData.roadWheel={radius:r,front:i===0};const [tyre,rim]=wheelFaces(r,bike?[-half,half]:[side*.003]);pivot.add(new T.Mesh(tyre,rubber),new T.Mesh(rim,metal));root.add(pivot);count++;}}
+   const pivot=new T.Group();pivot.name=`road-wheel-${i}-${side}`;pivot.position.set(x,r,z);pivot.userData.roadWheel={radius:r,front:i===0,steerable:i===0};const [tyre,rim]=wheelFaces(r,bike?[-half,half]:[side*.003]);pivot.add(new T.Mesh(tyre,rubber),new T.Mesh(rim,metal));root.add(pivot);count++;}}
  root.userData.wheelRig={originalTriangles:original,wheels:count};return root;}
-export function animateRoadWheels(root,distance,steer=0){root._roadWheels??=(()=>{const list=[];root.traverse(n=>{if(n.userData.roadWheel)list.push(n);});return list;})();for(const w of root._roadWheels)w.rotation.x=(w.rotation.x-distance/w.userData.roadWheel.radius)%(Math.PI*2);}
+export function animateRoadWheels(root,distance,steer=0){
+ if(!root._roadWheels){
+  const wheels=[];let sw=null;
+  root.traverse(n=>{if(n.userData.roadWheel)wheels.push(n);if(n.userData.minibusSteeringWheel)sw=n;});
+  root._roadWheels=wheels;root._steeringWheel=sw;
+ }
+ for(const w of root._roadWheels){
+  const rw=w.userData.roadWheel;
+  w.rotation.x=(w.rotation.x-distance/rw.radius)%(Math.PI*2);
+  if(rw.steerable&&rw.front){w.rotation.order='YXZ';const max=rw.maxSteer??0.50;w.rotation.y=Math.max(-max,Math.min(max,steer));}
+ }
+ if(root._steeringWheel)root._steeringWheel.rotation.z=steer*2.5;
+}
