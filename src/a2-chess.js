@@ -25,7 +25,7 @@ export function chessSet(url=(import.meta.env?.BASE_URL??'/')+'assets/a2-chess.g
   const dist=camera.position.distanceTo(root.getWorldPosition(here));
   if(!requested&&dist<LOAD_VIEW){
    requested=true;
-   (data??=loadSplat(url)).then(d=>{splat=createSplatMesh(d,{radius:1.6,center:new T.Vector3(0,.4,0),lod:[[14,1],[32,.45],[75,.2],[1e9,.1]]});splat.name='A2 chess splat';splat.position.y=.03;root.add(splat);},e=>console.warn('A2 chess splat failed to load',e));
+   (data??=loadSplat(url)).then(d=>{splat=createSplatMesh(d,{radius:1.6,center:new T.Vector3(0,.4,0),lod:[[14,1],[32,.45],[75,.2],[1e9,.1]]});splat.name='A2 chess splat';splat.position.y=.03;root.add(splat);splat.updateMatrix();splat.matrixAutoUpdate=false;splat.updateMatrixWorld(true);},e=>console.warn('A2 chess splat failed to load',e));
   }
   if(!splat)return;
   if(!sun)scene.traverse(o=>{if(o.isDirectionalLight&&!sun)sun=o;if(o.isHemisphereLight&&!ambient)ambient=o;});

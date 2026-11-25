@@ -1,3 +1,5 @@
+import {riversideSquareFloor} from './a2-square-extension.js';
+import {promenadeFloor} from './a2-river.js';
 import {footbridgeFloor} from './pedestrian-footbridges.js';
 import {bridgeWalkY,liftApronY} from './a2-footbridge.js';
 import {siteCoordinates,squareFloor,galleryY} from './a2-site.js';
@@ -19,11 +21,13 @@ const accessMeshes=STOPS.flatMap(st=>st.platforms.flatMap(p=>[-1,1].filter(dir=>
  const {a,b}=stationAccess(st,p,dir),geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute([...a,b[1],b[0]].flatMap(v=>[v.x,v.y,v.z]),3));geo.setIndex([0,1,2,0,2,3]);return {geometry:geo};
 })));
 const apronHeight=surfaceSampler(cycleAprons.map(geometry=>({geometry})));
-const accessHeight=surfaceSampler(accessMeshes);
+const accessHeight=surfaceSampler(accessMeshes),ALL_CROSSINGS=[...JUNCTIONS,...UNDERPASSES];
 // Walkable surface from the route cross-section: carriageway/deck, platform tops, footpath, then terrain.
 // ponytail: analytic cross-section, no mesh raycast; station stairs/canopy columns are not modelled.
 export function groundAt(x,z,sGuess,fromY){
  const s=clamp(projectFrame(x,z,sGuess),0,LENGTH),r=sample(s),lat=(x-r.x)*r.lx+(z-r.z)*r.lz,e=roadSection(s);
+ const river=promenadeFloor(x,z,fromY,renderedGround);
+ if(river?.below)return {s,lat,y:river.y};
  // An upper-level walker crosses the roadway and cycle track on a separate deck.
  if(Math.abs(s-STOPS[1].s)<155){
   const local=siteCoordinates(x,z),y=bridgeWalkY(local.x,local.z,fromY);if(y!==null)return {s,lat,y};
@@ -37,7 +41,7 @@ export function groundAt(x,z,sGuess,fromY){
  const apron=apronHeight(x,z);if(apron!==null)return {s,lat,y:apron};
  // Rebuilt junctions and under-viaduct roads (src/city/crossings.js): kerb-return rings, arm footways and medians are raised;
  // the side carriageway and the fill between kerb returns sit at road level; land inside a kerb-return circle falls through to terrain.
- for(const j of [...JUNCTIONS,...UNDERPASSES]){const g=crossingGeometry(j),dx=x-g.C.x,dz=z-g.C.z,d=dx*g.u.x+dz*g.u.z,ee=dx*g.n.x+dz*g.n.z,h=j.halfWidth;
+ for(const j of ALL_CROSSINGS){if(Math.abs(s-j.s)>j.extent+45)continue;const g=crossingGeometry(j),dx=x-g.C.x,dz=z-g.C.z,d=dx*g.u.x+dz*g.u.z,ee=dx*g.n.x+dz*g.n.z,h=j.halfWidth;
   if(Math.abs(d)>j.extent||Math.abs(ee)>h+(j.underpass?j.footway:(j.R||8)))continue;const base=crossingY(j,x,z);
   if(j.underpass){if(Math.abs(ee)<=h+j.footway)return {s,lat,y:base+(Math.abs(ee)>h||Math.abs(ee)<j.median/2?.18:.03)};continue;}
   const pave=junctionPavement(j,x,z);if(pave!==null)return {s,lat,y:base+pave};
@@ -54,6 +58,8 @@ export function groundAt(x,z,sGuess,fromY){
  if(Math.abs(lat)<Math.max(Math.abs(e.left),e.right)+3.75)return {s,lat,y:r.groundY+depotKerbHeight(s,Math.sign(lat))};
  if(Math.abs(s-STOPS[1].s)<160){const local=siteCoordinates(x,z),y=squareFloor(local.x,local.z,fromY);if(y!==null)return {s,lat,y};}
  const street=streetHeight(x,z);if(street!==null)return {s,lat,y:street};
+ if(river)return {s,lat,y:river.y};
+ const forecourt=riversideSquareFloor(x,z);if(forecourt!==null)return {s,lat,y:forecourt};
  const plot=lotHeight(x,z);if(plot!==null)return {s,lat,y:plot};// paved plot plinths and forecourts (src/city/blocks.js)
  return {s,lat,y:Math.hypot(x-r.x,z-r.z)>100?renderedGround(x,z):terrainLevel(x,z,s)-.24-channelDepth(x,z)};
 }
@@ -83,7 +89,11 @@ export function walkStep(p,dx,dz,circles,fences=[]){
   if(bridgeWalkY(local.x,local.z,p.y)!==null){circles=[];fences=[];}
  }
  if(footbridgeFloor(p.x,p.z,p.y)!==null&&p.y>sample(p.s).groundY+2){circles=[];fences=[];}
+ const riverside=promenadeFloor(p.x,p.z,p.y,renderedGround);
+ if(riverside?.below){circles=[];fences=[];}
  const pushed=pushOut(p.x+dx,p.z+dz,.35,circles),moved=pushOutFences(pushed.x,pushed.z,.35,fences,p.jumpY||0),g=groundAt(moved.x,moved.z,p.s,p.y);
+ const next=promenadeFloor(moved.x,moved.z,p.y,renderedGround);
+ if(next?.water&&Math.abs(g.y-next.y)<.25)return {...p,blocked:true};
  if(!Number.isFinite(g.y)||g.y-p.y>STEP_UP+(p.jumpY||0))return {...p,blocked:true};
  return {x:moved.x,z:moved.z,y:g.y,s:g.s,blocked:false};
 }

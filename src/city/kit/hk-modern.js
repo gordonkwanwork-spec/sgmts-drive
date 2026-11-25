@@ -131,7 +131,7 @@ function shellGeometry(shells){let nv=0;const tris=[];for(const s of shells){nv+
 // ---------------------------------------------------------------- render
 // plots: [{id, poly:[{x,z}], edges?, yaw?, modern|type, seed?}] (planner lots, or any outline).
 export function renderModernBuildings(plots,{near=320,staticCity=false}={}){const root=new T.Group();root.name='Modern Hong Kong buildings';
- root.userData.lod={near,hysteresis:40};root.userData.count=plots.length;
+ root.userData.lod={near,hysteresis:20};root.userData.count=plots.length;
  const make=kit=>{if(root.userData.disposed)return;
   const sink=staticCity?planCity(kit.json,plots):concat(plots.map(p=>lift(sitePlan(kit.json,{id:p.id,poly:p.poly,edges:p.edges,yaw:p.yaw},p.modern??p.type,p.seed),p.y??0)));
   if(sink.missing.size)console.warn('hk-modern: kit lacks',[...sink.missing].join(' '));
@@ -199,8 +199,8 @@ function build(root,kit,sink){const buckets=new Map(),bridges=connectMallBridges
  const update=(camera,force=false)=>{const p=camera.getWorldPosition(_camP),q=camera.getWorldQuaternion(_camQ);
   if(!force&&p.distanceTo(last.p)<6&&Math.abs(q.dot(last.q))>.9995&&camera.fov===last.fov)return;last.p.copy(p);last.q.copy(q);last.fov=camera.fov;
   camera.updateMatrixWorld();PM.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);F.setFromProjectionMatrix(PM);
-  const {near:N,hysteresis:H}=root.userData.lod,rw=root.matrixWorld;if(N<1e4)FADE.value.set(N-70,N);
-  for(const r of recs){S.center.set(r.x,r.y,r.z).applyMatrix4(rw);S.radius=r.r;const d=S.center.distanceTo(p)-r.r,want=d<(r.near?N+H:N)&&(S.radius+=r.near?60:40,F.intersectsSphere(S));/* margin: no detail toggling at the screen edge from a stale frustum */if(want!==r.near){r.near=want;for(const b of r.buckets)dirty.add(b);}}
+  const {near:N,hysteresis:H}=root.userData.lod,rw=root.matrixWorld;if(N<1e4)FADE.value.set(Math.max(0,N-35),N);
+  for(const r of recs){S.center.set(r.x,r.y,r.z).applyMatrix4(rw);S.radius=r.r;const d=S.center.distanceTo(p)-r.r,want=d<(r.near?N+H:N)&&(S.radius+=r.near?25:15,F.intersectsSphere(S));/* margin: no detail toggling at the screen edge from a stale frustum */if(want!==r.near){r.near=want;for(const b of r.buckets)dirty.add(b);}}
   for(const bi of dirty){const mesh=meshes[bi],{master,ranges}=mesh.userData,A=mesh.instanceMatrix,Ti=mesh.geometry.attributes.iTint;let c=0;
    for(const [r,start,count] of ranges){if(!recs[r]?.near)continue;A.array.set(master.mat.subarray(start*16,(start+count)*16),c*16);Ti.array.set(master.tint.subarray(start*4,(start+count)*4),c*4);c+=count;}
    mesh.count=c;mesh.visible=c>0;A.clearUpdateRanges();A.addUpdateRange(0,c*16);A.needsUpdate=true;Ti.clearUpdateRanges();Ti.addUpdateRange(0,c*4);Ti.needsUpdate=true;}

@@ -38,7 +38,7 @@ export function galleryY(x,z){
 // Sample the edge of the actual cycle track. Interpolate by station Z so the square
 // can meet the curved track at one edge and the straight concourse at the other.
 const edge = [];
-for (let d=150; d>=-150; d-=1) {
+for (let d=395; d>=-335; d-=1) {
  const r=cycleSample(stop.s+d);
  edge.push({...siteCoordinates(r.x-2.01*r.lx,r.z-2.01*r.lz), y:r.groundY});
 }

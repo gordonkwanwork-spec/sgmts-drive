@@ -8,7 +8,7 @@ import {pedestrianBridges,pedestrianLiftAt,setCityFootbridges,cityPedestrianBrid
 import {groundAt} from '../onfoot.js';
 import {railPosition} from '../railway.js';
 // Include the full off-map train enclosure: checking only the main rail deck missed the second crossing.
-for(let u=RAILWAY.stationU;u<RAILWAY.length+225;u+=2){const p=railPosition(u),r=sample(project(p.x,p.z));assert((p.x-r.x)*r.lx+(p.z-r.z)*r.lz < -20,'Rail and tunnel stay on the station side');}
+for(let u=RAILWAY.stationU;u<RAILWAY.length+225;u+=2){const p=railPosition(u),r=sample(project(p.x,p.z));assert((p.x-r.x)*r.lx+(p.z-r.z)*r.lz < -20,'Rail alignment and off-map train path stay on the station side');}
 for(let c=3200;c<3650;c+=3){const p=cycleSample(fromChainage(c));assert(cycleClearance(p.x,p.z)<.12);assert(!sceneryClear(p.x,p.z,18),'Buildings cannot occupy the detoured cycleway');}
 // Walk from each track end up to the bridge and back down, then follow the step-free paths.
 assert.equal(pedestrianBridges.length,5);

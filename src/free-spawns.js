@@ -9,6 +9,7 @@ export const FREE_SPAWNS=[
  ...STOPS.map(st=>({id:st.id,name:st.name,zh:st.zh,s:st.s,lat:st.platformLateral+st.width+3})),
  {id:'a2-square',name:'A2 interchange square',zh:'洪水橋交匯廣場',s:project(overlook.x,overlook.z),position:[overlook.x,datum+37,overlook.z],heading:rail.heading-.12,pitch:-.34},
  {id:'a2-lift-walk',name:'A2 footbridge lifts · on foot',zh:'洪水橋天橋升降機 · 步行',s:project(plazaLift.street.x,plazaLift.street.z),position:[plazaLift.street.x,plazaLift.base,plazaLift.street.z],heading:Math.atan2(plazaLift.street.x-plazaLift.car.x,plazaLift.street.z-plazaLift.car.z),pitch:0,walk:true},
+ {id:'a2-riverside-walk',name:'A2 riverside promenade · on foot',zh:'洪水橋河畔長廊 · 步行',s:project(122.64,-1035.73),position:[122.64,-1.49,-1035.73],heading:-1.32,pitch:0,walk:true},
  {id:'hsk-d7-walk',name:'HSK D7 street walk',zh:'洪水橋 D7 街道步行',s:project(-266,-721),position:[-266,2,-721],heading:-1.37,pitch:0,walk:true},
  // City rebuild 2: start at the wheel of a car on a city street (explore mode; Enter gets out to walk).
  {id:'city-drive-d7',name:'City drive · Road D7',zh:'市區駕駛 · D7號路',s:project(-300,-733),position:[-300,2,-733],heading:-1.37,pitch:0,walk:true,car:true},

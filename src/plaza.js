@@ -1,6 +1,7 @@
 import {parkLamp} from './street/park-lamp.js';
 import * as T from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
+import {mergeByMaterial} from './batching.js';
 import {worldCoordinates, pavingY, rail, benches} from './a2-site.js';
 import {STOPS,sample,project,JUNCTIONS,CROSSINGS} from './alignment.js';
 import {chessSet} from './a2-chess.js';
@@ -74,6 +75,8 @@ export function createPlazaAssets(){
   part(cycle,'Cycle parking hoop',new T.TorusGeometry(.48,.045,6,16,Math.PI),metal,x,.55,0);
   for(const side of [-1,1])box(cycle,'Cycle stand leg',metal,x+side*.48,.275,0,.09,.55,.09);
  }
+ mergeByMaterial(root,{stop:/^A2 chess table set$/});
+ for(const m of root.children)if(m.isMesh&&m.material===lens)m.name='Pergola lamp';
  // Banners attach to actual fence panels, so existing crossing/access gaps remain open.
  const bannerGroups=new Map();let count=0;
  const bannerSites=selectBannerSites(fences);

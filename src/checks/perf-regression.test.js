@@ -7,6 +7,7 @@ import {cityPlots,dataDigest} from '../city/plots-headless.js';
 import {junctions} from '../street/network.js';
 import {fieldLevel,renderedGround} from '../environment.js';
 import {LENGTH,sample} from '../alignment.js';
+import {freezeStatic,skipWhenHidden} from '../scene-freeze.js';
 
 // 1. hk-modern: spatial 320 m shell chunking, shadow/feed/cube camera guards, and per-frame dedup.
 {
@@ -189,4 +190,78 @@ import {LENGTH,sample} from '../alignment.js';
  assert.ok(maxErr<0.02,`fieldLevel max error ${maxErr.toFixed(4)} m exceeds 0.02 m`);
 }
 
-console.log('Perf regression checks passed: hk-modern chunks/guards/dedup, splat textures/sync sort/feed toggle, cityPlots cache (<100 ms), junctions memoization, fieldLevel grid (<0.02 m).');
+// 6. freezeStatic & skipWhenHidden: O(1) static skip, async child rebake, forced updates, hidden actor skip & resume.
+{
+ const scene=new T.Scene();
+ scene.matrixAutoUpdate=false; // matches experience.js where scene root does not recompute identity each frame
+ const root=new T.Group();root.position.set(10,0,0);
+ const child=new T.Group();child.position.set(1,2,3);
+ const leaf=new T.Group();leaf.position.set(4,5,6);
+ child.add(leaf);root.add(child);scene.add(root);
+ freezeStatic(root);
+ assert.equal(root.matrixAutoUpdate,false);
+ assert.equal(child.matrixAutoUpdate,false);
+ assert.equal(leaf.matrixAutoUpdate,false);
+ const pos=new T.Vector3();
+ assert.deepEqual(pos.setFromMatrixPosition(leaf.matrixWorld).toArray(),[15,7,9]);
+
+ let leafCalls=0;
+ const baseLeafMW=leaf.updateMatrixWorld;
+ leaf.updateMatrixWorld=function(f){leafCalls++;return baseLeafMW.call(this,f);};
+ scene.updateMatrixWorld();
+ assert.equal(leafCalls,0,'frozen subtree must skip child traversal on normal frame');
+
+ scene.position.set(5,0,0);
+ scene.updateMatrix();
+ scene.updateMatrixWorld(true);
+ assert.equal(leafCalls,1,'forced update must propagate into frozen subtree');
+ assert.deepEqual(pos.setFromMatrixPosition(leaf.matrixWorld).toArray(),[20,7,9]);
+ scene.position.set(0,0,0);
+ scene.updateMatrix();
+ scene.updateMatrixWorld(true);
+
+ const lateChild=new T.Group();lateChild.position.set(2,3,4);
+ const lateLeaf=new T.Group();lateLeaf.position.set(1,1,1);
+ lateChild.add(lateLeaf);
+ let lateCalls=0;
+ const baseLateMW=lateChild.updateMatrixWorld;
+ lateChild.updateMatrixWorld=function(f){lateCalls++;return baseLateMW.call(this,f);};
+ root.add(lateChild);
+ scene.updateMatrixWorld();
+ assert.equal(lateCalls,1,'async child added via root.add must bake on next updateMatrixWorld');
+ assert.equal(lateChild.matrixAutoUpdate,false);
+ assert.equal(lateLeaf.matrixAutoUpdate,false);
+ assert.deepEqual(pos.setFromMatrixPosition(lateLeaf.matrixWorld).toArray(),[13,4,5]);
+ scene.updateMatrixWorld();
+ assert.equal(lateCalls,1,'frozen root must skip again after async child bake');
+
+ // Explicit child update inside frozen group (lift floor/door pattern).
+ child.position.set(2,2,3);
+ child.updateMatrix();
+ child.updateMatrixWorld(true);
+ assert.deepEqual(pos.setFromMatrixPosition(leaf.matrixWorld).toArray(),[16,7,9]);
+
+ // skipWhenHidden keeps matrixAutoUpdate = true, skips when hidden, updates on show or force = true.
+ const actor=new T.Group(),bone=new T.Group();
+ bone.position.set(0,2,0);actor.add(bone);scene.add(actor);
+ skipWhenHidden(actor);
+ assert.equal(actor.matrixAutoUpdate,true,'collision.js expects moving actors to keep matrixAutoUpdate=true');
+ let boneCalls=0;
+ const baseBoneMW=bone.updateMatrixWorld;
+ bone.updateMatrixWorld=function(f){boneCalls++;return baseBoneMW.call(this,f);};
+ actor.visible=false;
+ actor.position.set(50,0,0);
+ scene.updateMatrixWorld();
+ assert.equal(boneCalls,0,'hidden dynamic subtree must skip child traversal');
+ actor.position.set(60,0,0);
+ scene.updateMatrixWorld(true);
+ assert.equal(boneCalls,1,'forced update must still update hidden dynamic subtree');
+ assert.deepEqual(pos.setFromMatrixPosition(bone.matrixWorld).toArray(),[60,2,0]);
+ actor.visible=true;
+ actor.position.set(75,0,0);
+ scene.updateMatrixWorld();
+ assert.equal(boneCalls,2,'showing dynamic subtree must resume matrixWorld updates immediately');
+ assert.deepEqual(pos.setFromMatrixPosition(bone.matrixWorld).toArray(),[75,2,0]);
+}
+
+console.log('Perf regression checks passed: hk-modern chunks/guards/dedup, splat textures/sync sort/feed toggle, cityPlots cache (<100 ms), junctions memoization, fieldLevel grid (<0.02 m), scene-freeze.');

@@ -25,7 +25,13 @@ for(const {r,F,P} of graph.roads){
 for(const j of graph.joins){for(let d=0;d<8;d+=.5){const x=j.at.x+j.a[0]*d,z=j.at.z+j.a[1]*d,y=streetHeight(x,z);assert(y!==null,'local junction is connected');assert(Math.abs(y-j.at.y-.03)<.12,`${j.A.r.id}: pavement blocks carriageway at ${d}`);}}
 // Sandbox railing silhouette, orientation, no surface-mounted baseplate.
 const steel=new T.MeshStandardMaterial();for(const name of ['railing_type2','railing_type2_end','railing_crossing','railing_crossing_end']){const parts=panelParts(name,steel);for(const {geometry} of parts){geometry.computeBoundingBox();const b=geometry.boundingBox;assert(Math.abs(b.max.x-b.min.x-.04)<1e-5);assert(Math.abs(b.max.y-1)<1e-5);if(name.endsWith('_end'))assert(b.max.z<0,'end panel extends away along local -Z');}}
+const panelTris=panelParts('railing_type2',steel).reduce((s,{geometry:g})=>s+(g.index?g.index.count:g.attributes.position.count)/3,0);
+assert(panelTris<=260,`railing panel geometry stays low-poly (${panelTris} tris)`);
 const post=type2PostParts(steel);assert.equal(post.filter(p=>p.role==='rounded dome stiffener').length,6);assert(!post.some(p=>/plate/i.test(p.role)));post[0].geometry.computeBoundingBox();assert(Math.abs(post[0].geometry.boundingBox.max.y-.96)<1e-5);
+const postTris=post.reduce((s,{geometry:g})=>s+(g.index?g.index.count:g.attributes.position.count)/3,0);
+assert(postTris<=200,`railing post geometry stays low-poly (${postTris} tris)`);
+assert.equal(new Set(post.map(p=>p.material)).size,1,'railing post merges into a single galvanised batch');
+assert.equal(type2PostParts(steel,[[1,.2],[-1,.2]]).filter(p=>p.role==='rounded dome stiffener').length,4,'omit skips fixings without adjacent stile');
 // Taller / transition units preserve the K1 arris, continuous top and embedded bottom.
 const [kerb]=sweptKerbs(12,t=>({x:t,z:0,nx:0,nz:1,y:.15+.15*t/12,base:0}));assert([...kerb.attributes.position.array].every(Number.isFinite));kerb.computeBoundingBox();assert(Math.abs(kerb.boundingBox.min.y+.1)<1e-5);assert(kerb.boundingBox.max.y>.299);
 assert(Math.abs(footpathHeight(STOPS[3].s)-.3)<1e-5);let ordinary=0;for(let s=0;s<4200;s+=10)if(Math.abs(footpathHeight(s)-.15)<1e-8)ordinary++;assert(ordinary>150);

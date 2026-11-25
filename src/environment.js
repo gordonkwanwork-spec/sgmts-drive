@@ -1,5 +1,8 @@
+import {buildSquareExtension,inSquareExtension,extensionGrade} from './a2-square-extension.js';
+import {buildA2River,riverReserve,riverExcavation} from './a2-river.js';
 
 import {depotWall,wallGround} from './depot-retaining-wall.js';
+import {buildParkingLotEntrance} from './parking-lot.js';
 import {buildPedestrianBridges,footbridgeTerrain,cityForecourtGround,setCityFootbridges,nearCityFootbridge} from './pedestrian-footbridges.js';
 import {buildIconicBridge} from './a2-footbridge.js';
 import {signalCrossingMarkings} from './street/sandbox/street-rules.js';
@@ -16,8 +19,10 @@ import {windMaterial,PLANT_NIGHT} from './street-models.js';
 import {segmentBlocks,nearestSegment} from './polyline-search.js';
 import {TessellateModifier} from 'three/addons/modifiers/TessellateModifier.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
+import {mergeByMaterial} from './batching.js';
 import {terminalCurve,depotCurve,depotExitCurve,depotInner} from './routes.js';
 import {SITE as DEPOT_SITE,paved as depotPaved,corridorClear,BUILDINGS as DEPOT_BUILDINGS,BAYS as DEPOT_BAYS,CV_STALLS,CV_FENCE,CV_PARK,CV_ROAD,CV_ROAD_WIDTH,nearServiceRoad,nearDepotBounds,MASTS,MAST_HEIGHT} from './depot.js';
+import {buildSewagePlants} from './sewage-plant.js';
 import {pointInPolygon} from './lots/wand.js';
 import {lotMaterials} from './lots/massing.js';
 import * as T from 'three';
@@ -129,7 +134,7 @@ export function cycleClearance(x,z){return Math.sqrt(nearestSegment(cycleLine,cy
 // Scenery keeps out of the depot site (lot 41B) and a radius around its boundary.
 function nearDepotSite(x,z,radius){if(!nearDepotBounds(x,z,radius+CV_ROAD_WIDTH/2+16))return false;if(pointInPolygon([x,z],DEPOT_SITE)||nearServiceRoad(x,z,radius+CV_ROAD_WIDTH/2+14)!=null)return true;for(let i=0;i<DEPOT_SITE.length;i++){const [ax,az]=DEPOT_SITE[i],[bx,bz]=DEPOT_SITE[(i+1)%DEPOT_SITE.length],dx=bx-ax,dz=bz-az,t=Math.max(0,Math.min(1,((x-ax)*dx+(z-az)*dz)/(dx*dx+dz*dz)));if(Math.hypot(x-ax-t*dx,z-az-t*dz)<radius+2)return true;}return false;}
 export function sceneryClear(x,z,radius,low=false,sHint){
- if(nearCityFootbridge(x,z,radius))return false;
+ if(inSquareExtension(x,z,radius)||riverReserve(x,z,radius)||nearCityFootbridge(x,z,radius))return false;
  const ps=sHint!==undefined?sHint:project(x,z),r=sample(ps),lat=(x-r.x)*r.lx+(z-r.z)*r.lz;if((r.c>680&&r.c<980&&lat< -12+radius&&lat> -145-radius)||nearDepotSite(x,z,radius)||channelDepth(x,z)>0)return false;
  if(Math.hypot(x-r.x,z-r.z)<roadSection(ps).right+3.75+radius)return false;
  const rb=RAILWAY.bounds,rm=9+radius;if(x>=rb.minX-rm&&x<=rb.maxX+rm&&z>=rb.minZ-rm&&z<=rb.maxZ+rm&&RAILWAY.distance(x,z)<rm)return false;
@@ -253,6 +258,8 @@ export function terrainPatch(start,end,grade=(x,z,y)=>y,cache=new Map()){
    }
    y=wallGround(wx,wz,y);
    y=cityForecourtGround(wx,wz,y,step*Math.SQRT2);
+   y=riverExcavation(wx,wz,y);
+   if(inSquareExtension(wx,wz,9))y=Math.min(y,extensionGrade(wx,wz,renderedGround)-.48);
    v={s,y,inside:dist<=CITY_TERRAIN_RADIUS};cache.set(key,v);
   }
   let ground=v.y;
@@ -301,7 +308,7 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
   });
  }
  mats.walkGrey=new T.MeshStandardMaterial({map:greyPaver,roughness:.97});mats.walkBuff=new T.MeshStandardMaterial({map:buffPaver,roughness:.96});const PAVING={red:mats.walk,grey:mats.walkGrey,buff:mats.walkBuff};
- const citySignals=[],groups=[],instances={},plots=[],fences=[],trees=[],lampPositions=[],plantings=[],windTime={value:0},plantMeshes=[];
+ const citySignals=[],groups=[],instances={},plots=[],fences=[],trees=[],lampPositions=[],plantings=[],windTime={value:0},plantMeshes=[],detailMeshes=[];
  const geo={box:new T.BoxGeometry(1,1,1),cone:new T.ConeGeometry(1,1,8)};
  // Each tree kind gets its own wind/night-light material (Material.clone() would drop the shader hook).
  const foliage=new T.MeshStandardMaterial({map:paintTexture('leaf'),alphaTest:.38,side:T.DoubleSide,roughness:1,color:0xe2e5b5});
@@ -311,9 +318,38 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
  const plazaAssets=createPlazaAssets();
  const craneBeacon=new T.MeshStandardMaterial({color:0xff3020,emissive:0xff3020,emissiveIntensity:0});
  const windowMats=[];
+ const KEEP_BATCH_KEY=/^(?:trunk|foliage|tree[-_]|vegetation|street-(?:trunk|foliage|leaf)|garden-(?:trunk|foliage|shrub))|(?:^|-)oc-roof$/;
+ const SOFT_BATCH_KEY=/vegetation|foliage|leaf|grass|meadow|fern|shrub|flower|illumination|spill|LED|guidance|marking|zebra|contact shadow|ramp trucks|hk-modern-detail/i;
+ const NO_SHADOW_KEY=/^(?:railing_|city-(?:tree-pit|hydrant|hedge|sign|light-head)|gully_grating|kerb_weir|furn-cycle-leaf|wayfinding_sign|cycle_sign|litter_bin|pillar_box|manhole|keep-left|traffic_cone|bollard|cv-stall-line|depot-(?:bay-line|stop-bar|downpipe|floodlight)|door-track|underbridge-LED|terminal-light-head)/i;
+ const DETAIL_CULL_KEY=/^(?:gully_grating|kerb_weir|city-(?:hydrant|tree-pit)|litter_bin|pillar_box|manhole|keep-left|bollard|traffic_cone|wayfinding_sign|cycle_sign|railing_(?:type2|post|crossing))/i;
+ const normBoxCache=new WeakMap();
+ const normGeo=g=>{if(normBoxCache.has(g))return normBoxCache.get(g);let out=g;if(g?.type==='BoxGeometry'&&g.parameters?.width===1&&g.parameters?.height===1&&g.parameters?.depth===1&&g.attributes.position?.count===24&&g.index?.count===36&&!g.attributes.color){if(!g.boundingBox)g.computeBoundingBox();const b=g.boundingBox,e=1e-5;if(Math.abs(b.min.x+.5)<e&&Math.abs(b.max.x-.5)<e&&Math.abs(b.min.y+.5)<e&&Math.abs(b.max.y-.5)<e&&Math.abs(b.min.z+.5)<e&&Math.abs(b.max.z-.5)<e)out=geo.box;}normBoxCache.set(g,out);return out;};
  function batch(key,geometry,material,pos,scale,rot=new T.Euler(),chunk=0){
-  const k=key+'-'+chunk;if(!instances[k])instances[k]={geometry,material,matrices:[],chunk};
-  Q.setFromEuler(rot);M.compose(pos,Q,scale);instances[k].matrices.push(M.clone());
+  geometry=normGeo(geometry);const ch=Math.max(0,chunk|0);
+  Q.setFromEuler(rot);M.compose(pos,Q,scale);
+  if(KEEP_BATCH_KEY.test(key)){
+   const k=key+'-'+ch;if(!instances[k])instances[k]={geometry,material,matrices:[],chunk:ch,keyed:true};
+   instances[k].matrices.push(M.clone());return;
+  }
+  const soft=SOFT_BATCH_KEY.test(key),noShadow=NO_SHADOW_KEY.test(key),k='B|'+geometry.uuid+'|'+material.uuid+'|'+(soft?1:0)+'|'+(noShadow?1:0)+'|'+ch;
+  const b=instances[k]||(instances[k]={geometry,material,matrices:[],chunk:ch,soft,noShadow,detail:true,firstKey:key,multi:false});
+  if(!DETAIL_CULL_KEY.test(key))b.detail=false;
+  if(b.firstKey!==key)b.multi=true;
+  b.matrices.push(M.clone());
+ }
+ const signalLensBuckets=new Map(),sigColor=new T.Color();
+ function signalLens(key,geometry,material,pos,rot,chunk=0){
+  const id=geometry.uuid+'|'+material.uuid;
+  let b=signalLensBuckets.get(id);if(!b)signalLensBuckets.set(id,b={geometry,material,matrices:[],slots:[],mesh:null});
+  Q.setFromEuler(rot);M.compose(pos,Q,ONE);const idx=b.matrices.length;b.matrices.push(M.clone());
+  const slot={lastHex:0x293731,material:{color:{setHex(hex){if(hex===slot.lastHex)return;slot.lastHex=hex;if(!b.mesh)return;sigColor.setHex(hex);b.mesh.setColorAt(idx,sigColor);b.mesh.instanceColor.needsUpdate=true;}}}};
+  b.slots.push(slot);return slot;
+ }
+ const signalBodyBuckets=new Map();
+ function signalBody(geometry,material,pos,rot,chunk=0){
+  const ch=Math.max(0,Math.min(groups.length-1,chunk|0)),id=material.uuid+'|'+ch;
+  let b=signalBodyBuckets.get(id);if(!b)signalBodyBuckets.set(id,b={material,chunk:ch,items:[]});
+  Q.setFromEuler(rot);M.compose(pos,Q,ONE);b.items.push({geometry,matrix:M.clone()});
  }
  function box(key,mat,x,y,z,w,h,d,heading=0,chunk=0){batch(key,geo.box,mat,new T.Vector3(x,y,z),new T.Vector3(w,h,d),new T.Euler(0,heading,0),chunk);}
  function at(s,lat){const r=sample(s);return new T.Vector3(r.x+r.lx*lat,r.groundY,r.z+r.lz*lat);}
@@ -374,8 +410,8 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
      appendStructure(jointPos,jointIdx,cut,endU,kerbSections[side].joint,sample);}
    }
   }
-  if(kerbIdx.length){const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(kerbPos,3));g.setAttribute('color',new T.Float32BufferAttribute(kerbCol,3));g.setIndex(kerbIdx);g.computeVertexNormals();const m=new T.Mesh(g,mats.kerb);m.name='continuous-kerb';m.castShadow=m.receiveShadow=true;group.add(m);}
-  if(jointIdx.length){const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(jointPos,3));g.setIndex(jointIdx);g.computeVertexNormals();const m=new T.Mesh(g,mats.kerbJoint);m.name='K1 recessed metre joints';m.castShadow=m.receiveShadow=true;group.add(m);}
+  if(kerbIdx.length){const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(kerbPos,3));g.setAttribute('color',new T.Float32BufferAttribute(kerbCol,3));g.setIndex(kerbIdx);g.computeVertexNormals();const m=new T.Mesh(g,mats.kerb);m.name='continuous-kerb';m.castShadow=false;m.receiveShadow=true;group.add(m);}
+  if(jointIdx.length){const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(jointPos,3));g.setIndex(jointIdx);g.computeVertexNormals();const m=new T.Mesh(g,mats.kerbJoint);m.name='K1 recessed metre joints';m.castShadow=false;m.receiveShadow=true;group.add(m);}
   for(const name of ['parapet','parapet-rail','retained-ramp']){const list=group.children.filter(m=>m.name===name);if(list.length){const mesh=new T.Mesh(mergeGeometries(list.map(m=>m.geometry)),list[0].material);mesh.name=name;mesh.castShadow=true;mesh.receiveShadow=true;for(const m of list){group.remove(m);m.geometry.dispose();}group.add(mesh);}}
   for(let s=start+5;s<end;s+=11){const r=sample(s);if(nearCrossing(s,12)||crossingGap(s-10,s+10))continue;for(let side of [-1,1]){
    const stationNearby=STOPS.some(st=>Math.abs(st.s-s)<60);
@@ -390,6 +426,7 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
    // Young trees (under 6.5 m) keep their bamboo tripod; some older ones stand in a green steel guard (site photos). Hash, not rnd(): the scenery sequence stays put.
    {const u=kerbTone(s*3.1+side);if(h<6.5)kit('tree_stakes',p,u*6.28,new T.Vector3(tr/.22,1,tr/.22),ch);else if(u<.2){trees.at(-1).guard=true;kit('tree_guard',p,u*31,new T.Vector3((tr+.18)/.4,1,(tr+.18)/.4),ch);}}
   }}
+  const billboards=new T.Group();billboards.name='Building billboards';
   for(let s=start+15;s<end;s+=52){if(nearCrossing(s,25))continue;for(let side of [-1,1]){
     const r=sample(s),lat=side*(48+rnd()*40),p=at(s,lat),zone=r.c<650?'residential':r.c<1250?'logistics':r.c<1900?'tech':r.c<2550?'village':r.c<3200?'boulevard':'construction',h=zone==='village'?6+rnd()*4:zone==='logistics'?8+rnd()*5:zone==='tech'?16+rnd()*18:18+rnd()*66,w=15+rnd()*15,d=16+rnd()*16,k=Math.floor(rnd()*4),radius=Math.hypot(w,d)/2+2;
     if(occupied.study?.(p.x,p.z,radius)||occupied(p.x,p.z,radius)||net.buildingBlocked(p.x,p.z,radius)||!sceneryClear(p.x,p.z,radius)||plots.some(q=>Math.hypot(q.x-p.x,q.z-p.z)<q.radius+radius+3))continue;plots.push({x:p.x,z:p.z,radius,zone,w,d,angle:r.heading});
@@ -409,25 +446,28 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
     });
     if(zone!=='village'){
      const width=Math.min(24,d*.86,h*1.5),height=width/3,face=p.clone().add(new T.Vector3(-r.lx*side*(w/2+.16),Math.min(h-height/2-.4,Math.max(height/2+2,h*.5)),-r.lz*side*(w/2+.16)));
-     const board=plazaAssets.board(group,k%3,width,height,face,Math.atan2(-r.lx*side,-r.lz*side),'Building billboard');plazaAssets.lamps(board,width,height);
+     const board=plazaAssets.board(billboards,k%3,width,height,face,Math.atan2(-r.lx*side,-r.lz*side),'Building billboard');plazaAssets.lamps(board,width,height);
     }
    }}
+  if(billboards.children.length){mergeByMaterial(billboards);group.add(billboards);}
  }
  // Station lamps sit under the canopy (LEDs at 3.2 m), never in or above the roof.
  for(const st of STOPS)for(const ds of [-30,0,30])for(const lat of [-9,9]){const p=at(st.s+ds,lat);lampPositions.push({s:st.s+ds,x:p.x,y:sample(st.s+ds).y+3+PLATFORM_RISE,z:p.z});}
  const cycle=new T.Mesh(cycleGeometry(),new T.MeshStandardMaterial({color:0x286e58,roughness:.92,side:T.DoubleSide}));cycle.name='continuous-green-cycleway';cycle.receiveShadow=true;scene.add(cycle);
  for(const geometry of cycleAprons){const apron=new T.Mesh(geometry,mats.walk);apron.name="Cycle terminal footway";apron.receiveShadow=true;scene.add(apron);}
  scene.add(buildCycleAids(cycleRibbon,mats.white,mats.metal));
+ const smoothFootGeos=[];
  for(const st of STOPS)for(const platform of st.platforms)for(const dir of [-1,1]){
   if(st.id==='A1'&&dir===-1)continue;
   const {a,b}=stationAccess(st,platform,dir),g=new T.BufferGeometry(),ai=a[0].clone().lerp(a[1],.125/st.width),bi=b[0].clone().lerp(b[1],.125/3.75);
   g.setAttribute('position',new T.Float32BufferAttribute([...ai.toArray(),...a[1].toArray(),...bi.toArray(),...b[1].toArray()],3));
   g.setAttribute('uv',new T.Float32BufferAttribute([0,0,st.width/5,0,0,2,.75,2],2));
   g.setIndex(platform.side*dir===1?[0,2,1,1,2,3]:[0,1,2,1,3,2]);g.computeVertexNormals();
-  const mesh=new T.Mesh(g,mats.walk);mesh.name='Smooth station footpath connection';scene.add(mesh);
+  smoothFootGeos.push(g);
   const length=a[0].distanceTo(b[0]),point=t=>{const u=t/length,p=a[0].clone().lerp(b[0],u),outer=a[1].clone().lerp(b[1],u).sub(p).setY(0).normalize();return {x:p.x,z:p.z,y:p.y,nx:outer.x,nz:outer.z,base:p.y-.3};};
   sweptKerbs(length,point).forEach((geo,i)=>{const m=new T.Mesh(geo,i?mats.kerbJoint:mats.concrete);m.name='Station transition K1 kerb';scene.add(m);});
  }
+ if(smoothFootGeos.length){const smoothMesh=new T.Mesh(mergeGeometries(smoothFootGeos),mats.walk);smoothFootGeos.forEach(g=>g.dispose());smoothMesh.name='Smooth station footpath connection';smoothMesh.receiveShadow=true;scene.add(smoothMesh);}
 
  // Visible game boundary: stopping bay and barrier, not an invented extra station.
  const terminal=sample(LENGTH-3),endGroup=new T.Group();endGroup.name='northern-route-end';endGroup.position.set(terminal.x,terminal.y,terminal.z);endGroup.rotation.y=terminal.heading;scene.add(endGroup);
@@ -440,24 +480,28 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
  // read from the kerb it faces; dropped kerb with existing footpath paving and yellow blister tactile. HK kit (18 Nov 2026,
  // src/city/unlit-crossing.js): red anti-skid surfacing, kerbed refuges with tactile cut-throughs and approach-facing bollards.
  const crossingPlates=[];
- for(const crossing of CROSSINGS){const s=crossing.s,r=sample(s),edge=roadSection(s),g=new T.Group();g.name='unsignalised-crossing-'+crossing.station+'-'+Math.round(s);scene.add(g);
-  crossingPlates.push({g,plates:unlitCrossing(g,crossing,CROSSING_HALF,{sample,roadSection,ribbon,batch,mats,lookMarking})});
+ for(const crossing of CROSSINGS){const s=crossing.s,r=sample(s),edge=roadSection(s),ch=Math.max(0,Math.min(groups.length-1,Math.floor(s/240))),g=new T.Group();g.name='unsignalised-crossing-'+crossing.station+'-'+Math.round(s);scene.add(g);
+  crossingPlates.push({ch,plates:unlitCrossing(g,crossing,CROSSING_HALF,{sample,roadSection,ribbon,batch,mats,lookMarking})});
   for(const kerb of [-1,1]){const w=kerb>0?edge.right:-edge.left,lat=kerb*(w-1.05),right=[kerb*r.lz,-kerb*r.lx],from=[-kerb*r.tx,-kerb*r.tz];
    g.add(lookMarking(s,lat,kerb,from[0]*right[0]+from[1]*right[1]>0));}
   for(const side of [-1,1]){const w=side>0?edge.right:-edge.left,band=(a,b,mat)=>{const m=new T.Mesh(ribbon(s-CROSSING_HALF,s+CROSSING_HALF,side>0?w+a:-w-b,side>0?w+b:-w-a,footpathHeight(s)+.012,true),mat);m.receiveShadow=true;g.add(m);};
    band(.3,1.2,mats.tactile);}
+  mergeByMaterial(g);
  }
  // BW-3301/3302: box-girder silhouette and flared 2.5 x 2.0 m pier shafts.
+ const pierCapGeos=[],bridgePipeGeo=new T.CylinderGeometry(.15,.15,1,8);
  for(const b of BRIDGES){const ds=fromChainage(b.deckStart),de=fromChainage(b.deckEnd),w=4.76,d=b.depth,soffit=s=>-d-(b.depth>2?.75*Math.max(0,1-Math.min(...b.piers.map(c=>Math.abs(fromChainage(c)-s)))/9):0);
   const deck=new T.Mesh(structureGeometry(ds,de,[[-w,-.08],[w,-.08],[w,-.38],[2.65,-.55],[1.8,soffit],[-1.8,soffit],[-2.65,-.55],[-w,-.38]]),mats.concrete);deck.name=b.id+'-box-girder';deck.castShadow=true;deck.receiveShadow=true;scene.add(deck);
   for(const c of b.piers){const s=fromChainage(c),r=sample(s),h=r.y-r.groundY+soffit(s)-.2,ch=Math.floor(s/240);if(h<=0)continue;
    box(b.id+'-pier',mats.concrete,r.x,r.groundY+h/2,r.z,2.5,h,2,r.heading,ch);
-   const geo=new T.BufferGeometry(),v=[];for(const [y,width,depth] of [[r.groundY+Math.max(0,h-2.7),2.5,2],[r.groundY+h,4,2.8]])for(const [x,z] of [[-1,-1],[1,-1],[1,1],[-1,1]])v.push(x*width/2,y,z*depth/2);geo.setAttribute('position',new T.Float32BufferAttribute(v,3));geo.setIndex([0,1,5,0,5,4,1,2,6,1,6,5,2,3,7,2,7,6,3,0,4,3,4,7,4,5,6,4,6,7]);geo.computeVertexNormals();const cap=new T.Mesh(geo,mats.concrete);cap.position.set(r.x,0,r.z);cap.rotation.y=r.heading;cap.castShadow=true;cap.name=b.id+'-pier-cap-'+c;scene.add(cap);
+   const geo=new T.BufferGeometry(),v=[];for(const [y,width,depth] of [[r.groundY+Math.max(0,h-2.7),2.5,2],[r.groundY+h,4,2.8]])for(const [x,z] of [[-1,-1],[1,-1],[1,1],[-1,1]])v.push(x*width/2,y,z*depth/2);geo.setAttribute('position',new T.Float32BufferAttribute(v,3));geo.setIndex([0,1,5,0,5,4,1,2,6,1,6,5,2,3,7,2,7,6,3,0,4,3,4,7,4,5,6,4,6,7]);geo.computeVertexNormals();geo.rotateY(r.heading).translate(r.x,0,r.z);pierCapGeos.push(geo);
    box('bearing',mats.metal,r.x,r.y+soffit(s)-.1,r.z,3.4,.2,2.4,r.heading,ch);
-   const pipe=new T.Mesh(new T.CylinderGeometry(.15,.15,h,8),mats.metal);pipe.position.set(r.x+r.lx*1.4,r.groundY+h/2,r.z+r.lz*1.4);scene.add(pipe);
+   batch('viaduct-drain-pipe',bridgePipeGeo,mats.metal,new T.Vector3(r.x+r.lx*1.4,r.groundY+h/2,r.z+r.lz*1.4),new T.Vector3(1,h,1),new T.Euler(),ch);
   }
   for(const c of [b.deckStart,...(b.id==='VB3'?[]:[b.deckEnd])]){const s=fromChainage(c),r=sample(s),h=r.y-r.groundY,ch=Math.floor(s/240);box(b.id+'-abutment',mats.concrete,r.x,r.groundY+h/2,r.z,9.52,h,1.3,r.heading,ch);box('expansion-joint',mats.metal,r.x,r.y+.015,r.z,9.1,.035,.18,r.heading,ch);}
  }
+ if(pierCapGeos.length){const caps=new T.Mesh(mergeGeometries(pierCapGeos),mats.concrete);pierCapGeos.forEach(g=>g.dispose());caps.castShadow=true;caps.receiveShadow=true;caps.name='viaduct-pier-caps';scene.add(caps);}
+ buildA2River(scene,{ground:renderedGround,mats,time:windTime,network:furniture.network});
  // Water channels are excavated in terrain; the road and cycleway pass over concrete culverts.
  for(const c of CHANNELS){const r=sample(c.s),g=new T.Group();g.name=c.name;g.position.set(r.x,r.y,r.z);g.rotation.y=r.heading;scene.add(g);
   const part=(w,h,d,x,y,z,mat)=>{const m=new T.Mesh(new T.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);m.receiveShadow=true;g.add(m);return m;};
@@ -475,6 +519,8 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
  const a2=STOPS[1],square=new T.Group();square.name='A2 interchange square';
  square.position.set(stationAxis.x,datum,stationAxis.z);square.rotation.y=stationAxis.heading;scene.add(square);
  buildSquarePaving(square);
+ const plazaMat=square.getObjectByName('Hung Shui Kiu regional plaza').material.clone();plazaMat.vertexColors=false;
+ buildSquareExtension(scene,renderedGround,net,plazaMat,junctions(furniture.network,renderedGround).roads);
  function landmarkBoard(text,p,heading,width=12){const c=document.createElement('canvas');c.width=1024;c.height=160;const x=c.getContext('2d');x.fillStyle='#173d35';x.fillRect(0,0,1024,160);x.fillStyle='#fff3d0';x.textAlign='center';x.font='bold 56px sans-serif';x.fillText(text,512,101);const m=new T.Mesh(new T.PlaneGeometry(width,width/6.4),new T.MeshBasicMaterial({map:new T.CanvasTexture(c),side:T.DoubleSide}));m.position.copy(p);m.rotation.y=heading;scene.add(m);return m;}
  // Tuen Ma Line viaduct: continuous box-girder deck, parapets and rails swept every 2 m along the smooth rail curve.
  const railRings=Array.from({length:Math.ceil(RAILWAY.length/2)+1},(_,i)=>RAILWAY.at(i*2)),bar=(c,w,y0,y1)=>[[c+w/2,y1],[c-w/2,y1],[c-w/2,y0],[c+w/2,y0]];
@@ -487,7 +533,7 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
  railSweep('MTR-rail',mats.metal,[-2.85,-1.42,1.42,2.85].map(c=>bar(c,.075,0,.15)));
  // Piers clear the channels, the corridor carriageway/footpath/cycle track and Road D8; far piers reach the backdrop.
  const d8=sample(UNDERPASSES[0].s);for(let u=12;u<RAILWAY.length;u+=32){const p=RAILWAY.at(u),q=project(p.x,p.z),r=sample(q),lat=(p.x-r.x)*r.lx+(p.z-r.z)*r.lz,ch=Math.floor(q/240),base=Math.hypot(p.x-r.x,p.z-r.z)>99?-5:r.groundY-.3,h=p.y-1.3-base;
-  if(channelDepth(p.x,p.z)>0||lat>cycleOffset(q)-4&&lat<roadSection(q).right+6||net.onRoad(p.x,p.z,1.6)||Math.abs((p.x-d8.x)*d8.tx+(p.z-d8.z)*d8.tz)<UNDERPASSES[0].halfWidth+7)continue;box('MTR-pier',mats.concrete,p.x,base+h/2,p.z,2.4,h,2.4,p.heading,ch);box('MTR-pier-head',mats.concrete,p.x,p.y-1.6,p.z,4.6,.6,3,p.heading,ch);}
+  if(riverReserve(p.x,p.z,1.8)||channelDepth(p.x,p.z)>0||lat>cycleOffset(q)-4&&lat<roadSection(q).right+6||net.onStreet(p.x,p.z,1.8)||Math.abs((p.x-d8.x)*d8.tx+(p.z-d8.z)*d8.tz)<UNDERPASSES[0].halfWidth+7)continue;box('MTR-pier',mats.concrete,p.x,base+h/2,p.z,2.4,h,2.4,p.heading,ch);box('MTR-pier-head',mats.concrete,p.x,p.y-1.6,p.z,4.6,.6,3,p.heading,ch);}
  // Night lighting for the railway station and its entrances: merged fixtures, night-only LED lines and additive light spill.
  const nightParts={fixture:[],led:[],glow:[],post:[]},litBox=(list,object,w,h,d,x,y,z,tilt=0)=>{object.updateMatrixWorld();list.push(new T.BoxGeometry(w,h,d).applyMatrix4(new T.Matrix4().makeRotationX(tilt).setPosition(x,y,z)).applyMatrix4(object.matrixWorld));},glowAt=(object,w,d,x,y,z,upright=false)=>{object.updateMatrixWorld();const g=new T.PlaneGeometry(w,d);if(!upright)g.rotateX(-Math.PI/2);nightParts.glow.push(g.translate(x,y,z).applyMatrix4(object.matrixWorld));},lampAt=(object,x,y,z)=>{object.updateMatrixWorld();const p=object.localToWorld(new T.Vector3(x,y,z));lampPositions.push({s:project(p.x,p.z),x:p.x,y:p.y,z:p.z});};
  const glass=new T.MeshStandardMaterial({color:0x689195,metalness:.16,roughness:.32,transparent:true,opacity:.45,depthWrite:false});
@@ -558,33 +604,96 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
  {const b=DEPOT_BUILDINGS.find(b=>b.kind==='office');landmarkBoard('SGMTS 車廠  DEPOT',new T.Vector3(b.x0-.3,dy+b.h-2.4,(b.z0+b.z1)/2),-Math.PI/2,26);}
  // Commercial vehicle park: open-air asphalt stalls, its own segregated lot, fenced from the depot.
  for(const c of CV_STALLS){for(const off of [-c.w/2,c.w/2])box('cv-stall-line',mats.white,c.x+off,dy+.09,c.z,.12,.02,c.d,0,dch);}
- {// Chain-link: diamond wire mesh (alpha-tested, see-through) at a real-world mesh pitch, galvanised posts with
-  // caps every 3 m and a top rail — coarser texture tiling than before so it reads clean at distance, not moiré.
-  const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d');x.strokeStyle='#c3cacd';x.lineWidth=5;x.beginPath();x.moveTo(0,32);x.lineTo(32,0);x.lineTo(64,32);x.lineTo(32,64);x.closePath();x.stroke();
-  const tex=new T.CanvasTexture(c);tex.wrapS=tex.wrapT=T.RepeatWrapping;tex.colorSpace=T.SRGBColorSpace;tex.anisotropy=8;const wire=new T.MeshStandardMaterial({map:tex,alphaTest:.5,side:T.DoubleSide,metalness:.5,roughness:.6});
+ {// Chain-link: crisp double-tone diamond wire mesh on a low concrete plinth with bottom/mid/top rails and posts.
+  const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');
+  x.strokeStyle='#8e989e';x.lineWidth=8;x.beginPath();x.moveTo(0,64);x.lineTo(64,0);x.lineTo(128,64);x.lineTo(64,128);x.closePath();x.stroke();
+  x.strokeStyle='#d6dde0';x.lineWidth=4;x.beginPath();x.moveTo(0,64);x.lineTo(64,0);x.lineTo(128,64);x.lineTo(64,128);x.closePath();x.stroke();
+  const tex=new T.CanvasTexture(c);tex.wrapS=tex.wrapT=T.RepeatWrapping;tex.colorSpace=T.SRGBColorSpace;tex.anisotropy=8;
+  const wire=new T.MeshStandardMaterial({map:tex,alphaTest:.28,side:T.DoubleSide,metalness:.45,roughness:.55});
   const panels=[];for(const run of CV_FENCE)for(let i=1;i<run.length;i++){const [ax,az]=run[i-1],[bx,bz]=run[i],len=Math.hypot(bx-ax,bz-az),heading=Math.atan2(-(bz-az),bx-ax),mx=(ax+bx)/2,mz=(az+bz)/2;
-   const g=new T.PlaneGeometry(len,2.4);const uv=g.attributes.uv;for(let k=0;k<uv.count;k++)uv.setXY(k,uv.getX(k)*len/.28,uv.getY(k)*2.4/.28);g.rotateY(heading).translate(mx,dy+1.2,mz);panels.push(g);
-   for(let t=0;t<=len;t+=3){const px=ax+(bx-ax)*t/len,pz=az+(bz-az)*t/len;box('chainlink-post',mats.galvanised,px,dy+1.25,pz,.08,2.5,.08,0,dch);box('chainlink-post-cap',mats.galvanised,px,dy+2.52,pz,.12,.06,.12,0,dch);}
-   box('chainlink-rail',mats.galvanised,mx,dy+2.42,mz,len,.05,.05,heading,dch);}
+   const g=new T.PlaneGeometry(len,2.22);const uv=g.attributes.uv;for(let k=0;k<uv.count;k++)uv.setXY(k,uv.getX(k)*len/.36,uv.getY(k)*2.22/.36);g.rotateY(heading).translate(mx,dy+1.31,mz);panels.push(g);
+   box('chainlink-plinth',mats.concrete,mx,dy+.10,mz,len+.12,.20,.22,heading,dch);
+   for(let t=0;t<=len;t+=3){const px=ax+(bx-ax)*t/len,pz=az+(bz-az)*t/len;box('chainlink-post',mats.galvanised,px,dy+1.26,pz,.08,2.52,.08,0,dch);box('chainlink-post-cap',mats.galvanised,px,dy+2.54,pz,.12,.06,.12,0,dch);}
+   for(const [ex,ez] of [[ax,az],[bx,bz]])box('chainlink-corner-post',mats.galvanised,ex,dy+1.28,ez,.13,2.56,.13,0,dch);
+   for(const ry of [.24,1.30,2.42])box('chainlink-rail',mats.galvanised,mx,dy+ry,mz,len,.05,.05,heading,dch);}
   const fence=new T.Mesh(mergeGeometries(panels),wire);fence.name='Vehicle park chain-link fence';parkGroup.add(fence);}
- // Parked delivery vehicles use the same Tripo template as moving and ramp traffic.
- {let k=7;const r=()=>(k=(k*16807)%2147483647)/2147483647,template=streetKit.getObjectByName('truck');
-  for(const c of CV_STALLS){if(r()<.35)continue;const g=template.clone(true);g.position.set(c.x,dy+.05,c.z);g.rotation.y=r()<.5?0:Math.PI;g.name='parked goods vehicle';parkGroup.add(g);}}
+ const parkingEntrance=buildParkingLotEntrance(parkGroup,{mats,lampPositions});
  // Graded embankments: the platform and the service road fall 1:1.5 to the surrounding ground (the plan's "Slope").
  const bank=mats.grass.clone();bank.side=T.DoubleSide;
- const skirt=(edge,outward,top)=>{const pos=[],idx=[];edge.forEach((p,i)=>{const y=top(p),run=(y+5)*1.5;pos.push(p.x,y-.02,p.z,p.x+outward[i].x*run,-5,p.z+outward[i].z*run);if(i){const k=i*2;idx.push(k-2,k,k-1,k-1,k,k+1);}});
+ const skirt=(edge,outward,top)=>{const pos=[],idx=[];edge.forEach((p,i)=>{const y=top(p),run=(y+5)*1.5,s=project(p.x,p.z),r=sample(s),dist=Math.hypot(p.x-r.x,p.z-r.z);
+  const topY=!r.elevated&&dist<roadSection(s).right+3.75+1.5?Math.min(y-.02,r.y-.30):y-.02;
+  pos.push(p.x,topY,p.z,p.x+outward[i].x*run,-5,p.z+outward[i].z*run);if(i){const k=i*2;idx.push(k-2,k,k-1,k-1,k,k+1);}});
   const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setAttribute('uv',new T.Float32BufferAttribute(pos.filter((_,j)=>j%3!==1).map(v=>v/5),2));g.setIndex(idx);g.computeVertexNormals();
   const m=new T.Mesh(g,bank);m.name='Depot embankment';m.receiveShadow=true;depotGroup.add(m);};
  depotWall(depotGroup,{box,mats,fences,chunk:dch,addSlope(ring,normals){
   skirt(ring,normals,()=>dy);
  }});
- {// Service road: 2 m stations, carriageway + edge/centre lines, embankments both sides (lamps: street furniture data).
-  const frame=CV_FRAME;
-  const strip=(o0,o1,yo,mat,name,dash=0)=>{const pos=[],uv=[],idx=[];let run=0;frame.forEach((f,i)=>{if(i)run+=Math.hypot(f.x-frame[i-1].x,f.z-frame[i-1].z);for(const o of [o0,o1])pos.push(f.x+f.lx*o,f.y+yo,f.z+f.lz*o),uv.push(o/4,run/4);
-    if(i&&(!dash||Math.floor(run/dash)%2===0)){const k=i*2;idx.push(k-2,k,k-1,k-1,k,k+1);}});const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();const m=new T.Mesh(g,mat);m.name=name;m.receiveShadow=true;depotGroup.add(m);};
-  const w=CV_ROAD_WIDTH/2;strip(-w,w,.04,mats.road,'Depot service road');for(const o of [-w+.3,w-.3])strip(o-.07,o+.07,.07,mats.white,'Service road edge line');strip(-.07,.07,.07,mats.white,'Service road centre line',3);
-  for(const side of [-1,1])skirt(frame.map(f=>({x:f.x+f.lx*side*w,z:f.z+f.lz*side*w})),frame.map(f=>({x:f.lx*side,z:f.lz*side})),p=>nearServiceRoad(p.x,p.z,w+.5)??dy);
-}
+ {// Service road: full city-road standard with flared D5 junction mouth, raised kerbs on both sides,
+  // a 2.5 m red-brick pedestrian footpath on the east/inner side leading to the Ticket Office & lot, street lamps, and clean embankments.
+  const frame=CV_FRAME,w=CV_ROAD_WIDTH/2,footW=2.5,kerbW=.20;
+  const strip=(o0,o1,yo,mat,name,dash=0,i0=0,i1=frame.length-1,flareStart=0)=>{
+   const pos=[],uv=[],idx=[];let run=0;
+   for(let i=i0;i<=i1;i++){
+    const f=frame[i];if(i>i0)run+=Math.hypot(f.x-frame[i-1].x,f.z-frame[i-1].z);
+    const fl=flareStart&&i<6?flareStart*(1-i/6)**2:0;
+    const a=typeof o0==='function'?o0(i):o0-fl,b=typeof o1==='function'?o1(i):o1+fl;
+    for(const o of [a,b])pos.push(f.x+f.lx*o,f.y+yo,f.z+f.lz*o),uv.push(o/4,run/4);
+    if(i>i0&&(!dash||Math.floor(run/dash)%2===0)){const k=(i-i0)*2;idx.push(k-2,k,k-1,k-1,k,k+1);}
+   }
+   const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();
+   const m=new T.Mesh(g,mat);m.name=name;m.receiveShadow=true;depotGroup.add(m);
+  };
+  const kerbFace=(o,y0,y1,name,i0=2,i1=frame.length-5)=>{
+   const pos=[],idx=[];
+   for(let i=i0;i<=i1;i++){
+    const f=frame[i];
+    pos.push(f.x+f.lx*o,f.y+y0,f.z+f.lz*o,f.x+f.lx*o,f.y+y1,f.z+f.lz*o);
+    if(i>i0){const k=(i-i0)*2;idx.push(k-2,k,k-1,k-1,k,k+1);}
+   }
+   const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setIndex(idx);g.computeVertexNormals();
+   const m=new T.Mesh(g,mats.kerb);m.name=name;m.receiveShadow=true;depotGroup.add(m);
+  };
+  // Carriageway + flared bellmouth meeting Road D5 cleanly
+  strip(-w,w,.045,mats.road,'Depot service road',0,0,frame.length-1,2.6);
+  // Flush apron bridging the 1.2 m back into D5's kerb edge so there is zero gap
+  {const f0=frame[0],pos=[],uv=[],idx=[0,2,1,1,2,3];
+   for(const along of [-1.4,0.4])for(const o of [-(w+2.8),w+2.8]){
+    pos.push(f0.x+f0.tx*along+f0.lx*o,f0.y+(along<0?-.11:.042),f0.z+f0.tz*along+f0.lz*o);uv.push(o/4,along/4);
+   }
+   const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();
+   const m=new T.Mesh(g,mats.road);m.name='Service road D5 apron';m.receiveShadow=true;depotGroup.add(m);
+  }
+  // White edge lines, dashed centreline, and Give Way bars at D5 mouth
+  for(const o of [-w+.28,w-.28])strip(o-.065,o+.065,.072,mats.white,'Service road edge line',0,3,frame.length-5);
+  strip(-.065,.065,.072,mats.white,'Service road centre line',3,4,frame.length-6);
+  // Give-way double broken line on the outbound (east/-lx) lane approaching D5
+  {const f=frame[2],yaw=Math.atan2(-f.tz,f.tx);
+   for(const off of [0,.45])for(const lat of [-w+.8,-w+1.9,-w+3.0]){
+    box('service-giveway',mats.white,f.x+f.tx*off+f.lx*lat,f.y+.075,f.z+f.tz*off+f.lz*lat,.22,.02,.72,yaw,dch);
+   }}
+  // Raised concrete kerbs on both sides of the carriageway
+  strip(w,w+kerbW,.17,mats.kerb,'Service road west kerb',0,3,frame.length-5);
+  kerbFace(w,.04,.17,'Service road west kerb face',3,frame.length-5);
+  strip(-w-kerbW,-w,.17,mats.kerb,'Service road east kerb',0,2,frame.length-5);
+  kerbFace(-w,.04,.17,'Service road east kerb face',2,frame.length-5);
+  // 2.5 m red-brick pedestrian footpath on the east/inner side leading continuously from D5 to the Ticket Office & parking lot
+  const walkMat=mats.walkRed??mats.walk;
+  strip(-w-kerbW-footW,-w-kerbW,.175,walkMat,'Service road footpath',0,1,frame.length-5);
+  kerbFace(-w-kerbW-footW,-.25,.175,'Service road footpath backing kerb',1,frame.length-5);
+  // Street lamps along the footpath outer edge
+  for(let i=12;i<frame.length-10;i+=16){
+   const f=frame[i],lat=-w-kerbW-footW+.35,lx=f.x+f.lx*lat,lz=f.z+f.lz*lat,yaw=Math.atan2(f.lx,f.lz);
+   box('service-lamp-post',mats.galvanised,lx,f.y+4.15,lz,.12,8.0,.12,0,dch);
+   box('service-lamp-arm',mats.galvanised,lx+f.lx*.75,f.y+8.05,lz+f.lz*.75,.10,.10,1.5,yaw,dch);
+   box('service-lamp-head',mats.lamp,lx+f.lx*1.35,f.y+7.98,lz+f.lz*1.35,.32,.10,.75,yaw,dch);
+   lampPositions.push({s:DEPOT.s,x:lx+f.lx*1.35,y:f.y+7.9,z:lz+f.lz*1.35,kind:'city',axis:{tx:f.tx,tz:f.tz,lx:f.lx,lz:f.lz}});
+  }
+  // Clean embankments starting strictly outside the kerb/footpath edge so no grass clips the curve
+  const outerFrames=frame.slice(4,-5);
+  skirt(outerFrames.map(f=>({x:f.x+f.lx*(w+kerbW+.05),z:f.z+f.lz*(w+kerbW+.05)})),outerFrames.map(f=>({x:f.lx,z:f.lz})),p=>(nearServiceRoad(p.x,p.z,w+2)??dy)-.04);
+  const innerFrames=frame.slice(4,-8);
+  skirt(innerFrames.map(f=>({x:f.x-f.lx*(w+kerbW+footW+.08),z:f.z-f.lz*(w+kerbW+footW+.08)})),innerFrames.map(f=>({x:-f.lx,z:-f.lz})),p=>(nearServiceRoad(p.x,p.z,w+footW+2)??dy)-.04);
+ }
  // Painted stabling bays (no rails: ART runs on tyres). Stop bar at each bay's front end.
  for(const b of DEPOT_BAYS){const cx=(b.front.x+b.back.x)/2,len=b.length,w=3.2;for(const off of [-w/2,w/2])box('depot-bay-line',mats.white,cx,dy+.09,b.front.z+off,len,.02,.12,0,dch);
   box('depot-bay-line',mats.white,b.back.x,dy+.09,b.front.z,.12,.02,w,0,dch);box('depot-stop-bar',mats.yellow,b.front.x-b.dir.x*.3,dy+.09,b.front.z,.45,.02,w,0,dch);}
@@ -604,6 +713,7 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
    box('depot-fence',mats.galvanised,x,dy+1.2,z,3,2.4,.06,heading,dch);box('depot-fence-post',mats.galvanised,x-(bx-ax)/len*1.5,dy+1.25,z-(bz-az)/len*1.5,.12,2.5,.12,0,dch);}}
  // Emergency vehicular access: a 13 m clear ring inside the boundary fence, unmarked (it's just the yard's own
  // asphalt) — the buildings and the fence line all sit well clear of it, so it needs no geometry.
+ buildSewagePlants(scene,{ground:renderedGround,mats,nightMaterials:windowMats,net});
  const pedestrianLiftPoses=buildPedestrianBridges(scene,mats,lampAt);
 
  // Plaza fountain: granite basin, 16-jet ring and central plume, GPU-animated water (src/fountain.js).
@@ -633,7 +743,13 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
   for(let i=0;i<3;i++)batch('garden-shrub-'+pick,spray,shrubMats[pick],
    p.clone().add(new T.Vector3(0,.49+.16*u,0)),new T.Vector3(2+u,1.3+.45*u,1),new T.Euler(0,i*Math.PI/3+u*6,0),ch);
  };
- buildGardens(square,{tree:gardenTree,kit,shrub,chunk:squareChunk});
+ streetKit.updateMatrixWorld(true);
+ const plants=['grass','meadow','fern','shrub','flowering'].map(kind=>{const parts=[];streetKit.getObjectByName('vegetation_'+kind).traverse(n=>{if(n.isMesh)parts.push({geometry:n.geometry.clone().applyMatrix4(n.matrixWorld),material:windMaterial(n.material,windTime),low:streetKit.getObjectByName(n.name+'_lod')?.geometry.clone().applyMatrix4(n.matrixWorld)});});for(const part of parts)part.geometry.userData.low=part.low;return {kind,parts};});
+ const gardenKit=(name,pos,rot,scale,ch)=>{
+  if(name==='vegetation_flowering'){plants[4].parts.forEach((part,i)=>batch('vegetation_flowering-'+i,part.geometry,part.material,pos,scale||ONE,rot instanceof T.Euler?rot:new T.Euler(0,rot,0),ch));return;}
+  kit(name,pos,rot,scale,ch);
+ };
+ buildGardens(square,{tree:gardenTree,kit:gardenKit,shrub,chunk:squareChunk});
  buildArcade(square,gardenTree,squareChunk);
  const poseLift=buildIconicBridge(square,lampAt);
  let terminalDirection;
@@ -657,15 +773,16 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
   for(const island of streets.userData.turningIslands)dressTurningIsland(island,{batch,chunkAt});
   refugeRails.push(...streets.userData.refugeRails);
   for(const b of streets.userData.refugeBollards)keepLeftBollard(batch,b.x,b.y,b.z,b.yaw,chunkAt(b.x,b.z));
-  cityDetails(streets,{batch,kitParts,fences,lampPositions,mats,districtAt,plantTree});
+  cityDetails(streets,{batch,kitParts,fences,lampPositions,mats,districtAt,plantTree,treeAllowed:(x,z)=>!riverReserve(x,z,2)});
   // City crossroads signals: the corridor's signal kit on world poses (network.js controls); experience.js lights them by stage.
   const items=[];streets.userData.controls.forEach((c,i)=>{if(c.kind!=='signal')return;const at={x:c.x,y:c.y,z:c.z,yaw:c.yaw};
    items.push({id:'city-signal-'+i,type:'traffic_signal',at,params:{axis:c.pedOnly?'pedestrian':'side',...(c.ped&&!c.pedOnly?{pedYaw:(c.ped.yaw-c.yaw)*180/Math.PI}:{})},c,back:false});
    if(c.back)items.push({id:'city-signal-'+i+'-back',type:'traffic_signal',at:{...at,yaw:c.yaw+Math.PI},params:{axis:'side',hand:-1},c,back:true});});
-  for(const s of placeFurniture({items},{batch,kitParts}).signals){const it=items.find(i=>s.id===i.id||s.id===i.id+'-pedestrian'),ped=s.axis==='pedestrian';
+  for(const s of placeFurniture({items},{batch,kitParts,signalLens,signalBody,chunkAt}).signals){const it=items.find(i=>s.id===i.id||s.id===i.id+'-pedestrian'),ped=s.axis==='pedestrian';
    citySignals.push({group:s.group,bulbs:s.bulbs,sharedPole:!!s.sharedPole,ped,midblock:it.c.midblock,node:it.c.node,stage:ped?it.c.ped.stage:it.back?it.c.back:it.c.stage});}}
- const furnished=placeFurniture(furniture,{batch:drawFurniture?batch:()=>{},kitParts,railAllowed:(run,a,b)=>run.road!=='corridor'||fenceAllowed(Math.min(a.s,b.s)-.12,Math.max(a.s,b.s)+.12,a.lat>0?1:-1)});lampPositions.push(...furnished.lampPositions);fences.push(...furnished.fences);const bins=furnished.bins;
- for(const {g,plates} of crossingPlates)mountRailingPlates(g,plates,fences);
+ const furnished=placeFurniture(furniture,{batch:drawFurniture?batch:()=>{},kitParts,...(drawFurniture?{signalLens,signalBody,chunkAt}:{}),railAllowed:(run,a,b)=>run.road!=='corridor'||fenceAllowed(Math.min(a.s,b.s)-.12,Math.max(a.s,b.s)+.12,a.lat>0?1:-1)});lampPositions.push(...furnished.lampPositions);fences.push(...furnished.fences);const bins=furnished.bins;
+ const platesByChunk=new Map();for(const {ch,plates} of crossingPlates){if(!platesByChunk.has(ch))platesByChunk.set(ch,[]);platesByChunk.get(ch).push(...plates);}
+ for(const [ch,plates] of platesByChunk)mountRailingPlates(groups[ch],plates,fences);
  // Station ramp railings follow the station access geometry and stay generated here (HyD Type 2, 1.5 m bays).
  const RAIL=1.5,{railRun}=railingBuilder({batch,kitParts,fences});
  for(const points of refugeRails)railRun(points,()=>Math.floor(project(points[0].x,points[0].z)/240),[false,false]);
@@ -687,18 +804,19 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
    lampPositions.push({s:j.s,x,y,z,kind:'underbridge',axis:{tx:u.x,tz:u.z,lx:n.x,lz:n.z}});
   }
  }
- // Open verge drainage channels behind the footpath, 10 m on an 18 m rhythm.
+ // Open verge drainage channels behind the footpath, 10 m on an 18 m rhythm (merged per 240 m chunk).
+ const drainWalls=new Map(),drainInverts=new Map();
  for(let q=35;q<LENGTH-25;q+=18)for(const side of [-1,1]){
   if(groundCrossing(q-5)||groundCrossing(q)||groundCrossing(q+5)||crossingGap(q-5,q+5)||STOPS.some(st=>Math.abs(st.s-q)<st.footprintLength/2+12)||side===1&&inDepot(q))continue;
   const r=sample(q),edge=roadSection(q).right,ch=Math.floor(q/240);
-  if(!r.elevated){const a=q-5,b=q+5,outer=side*(edge+3.95);for(const dx of [-.21,.21]){const m=new T.Mesh(ribbon(a,b,outer+dx-.055,outer+dx+.055,.06,true),mats.concrete);m.name='Open verge drainage channel';groups[ch].add(m);}const m=new T.Mesh(ribbon(a,b,outer-.15,outer+.15,-.06,true),FM.iron);m.name='Drainage channel invert';groups[ch].add(m);}
+  if(!r.elevated){const a=q-5,b=q+5,outer=side*(edge+3.95);if(!drainWalls.has(ch))drainWalls.set(ch,[]);if(!drainInverts.has(ch))drainInverts.set(ch,[]);for(const dx of [-.21,.21])drainWalls.get(ch).push(ribbon(a,b,outer+dx-.055,outer+dx+.055,.06,true));drainInverts.get(ch).push(ribbon(a,b,outer-.15,outer+.15,-.06,true));}
  }
+ for(const [ch,geos] of drainWalls){const m=new T.Mesh(mergeGeometries(geos),mats.concrete);geos.forEach(g=>g.dispose());m.name='Open verge drainage channel';groups[ch].add(m);}
+ for(const [ch,geos] of drainInverts){const m=new T.Mesh(mergeGeometries(geos),FM.iron);geos.forEach(g=>g.dispose());m.name='Drainage channel invert';groups[ch].add(m);}
  // Gully gratings sit in the channel against the kerb face (+X of the template points into the carriageway).
  for(const g of GULLIES){const r=sample(g.s),p=at(g.s,g.side*(roadSection(g.s).right-.075));p.y=r.y+.012;const h=r.heading+(g.side===-1?Math.PI:0),ch=Math.floor(g.s/240);kit('gully_grating',p,h,null,ch);
   if(WEIRS.includes(g)){const k=at(g.s,g.side*roadSection(g.s).right);k.y=r.y;kit('kerb_weir',k,h,null,ch);}}
  // Blender templates share geometry and material in spatially culled instanced beds.
- streetKit.updateMatrixWorld(true);
- const plants=['grass','meadow','fern','shrub','flowering'].map(kind=>{const parts=[];streetKit.getObjectByName('vegetation_'+kind).traverse(n=>{if(n.isMesh)parts.push({geometry:n.geometry.clone().applyMatrix4(n.matrixWorld),material:windMaterial(n.material,windTime),low:streetKit.getObjectByName(n.name+'_lod')?.geometry.clone().applyMatrix4(n.matrixWorld)});});for(const part of parts)part.geometry.userData.low=part.low;return {kind,parts};});
  for(const tree of trees){if(tree.guard||plots.some(p=>Math.hypot(p.x-tree.x,p.z-tree.z)<p.radius+3))continue;const plant=plants[3];for(let i=0;i<6;i++){const angle=i*Math.PI/3,p=new T.Vector3(tree.x+Math.cos(angle)*1.05,tree.y-.15,tree.z+Math.sin(angle)*1.05);for(const part of plant.parts)batch('tree-shrub-'+part.material.name+'-cell'+Math.floor(tree.s/120),part.geometry,part.material,p,new T.Vector3(.85,.9,.85),new T.Euler(0,angle,0),Math.floor(tree.s/240));}}
  for(let s=8;s<LENGTH-8;s+=1.7)for(const side of [-1,1])for(let row=0;row<3;row++){
   if(nearCrossing(s,35,UNDERPASSES)||crossingGap(s-9,s+9)||channelDepth(at(s,0).x,at(s,0).z)>0)continue;
@@ -747,11 +865,15 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
  };
  // Nothing grows on a drawn street or paved area (trunks keep 0.6 m off).
  for(const list of [trees,plantings])list.splice(0,list.length,...list.filter(t=>!approachClearance(t.x,t.z)&&(t.street||!net.blocked(t.x,t.z,t.radius?.6:0))));
- for(const [key,b] of Object.entries(instances)){if(/^(trunk|foliage|tree[-_]|vegetation|street-(trunk|foliage|leaf))/.test(key))
+ let batchSeq=0;
+ for(const [key,b] of Object.entries(instances)){if(b.keyed&&/^(trunk|foliage|tree[-_]|vegetation|street-(trunk|foliage|leaf))/.test(key))
    b.matrices=b.matrices.filter(m=>!approachClearance(m.elements[12],m.elements[14]));
-  if(/^(trunk|foliage|tree-shrub|tree_stakes|tree_guard|vegetation)-/.test(key)){const r=/^(trunk|foliage|tree_)/.test(key)?.6:0;b.matrices=b.matrices.filter(m=>!net.blocked(m.elements[12],m.elements[14],r));}if(/^(trunk|foliage|tree-shrub)-/.test(key))b.matrices=b.matrices.filter(m=>plots.every(p=>Math.hypot(m.elements[12]-p.x,m.elements[14]-p.z)>p.radius+2));if(/^(trunk|foliage|tree-shrub|vegetation)-/.test(key)){const crown=/^(trunk|foliage)-/.test(key)?3:0;b.matrices=b.matrices.filter(m=>!cleared(m.elements[12],m.elements[14],crown));}if(!b.matrices.length)continue;const mesh=new T.InstancedMesh(b.geometry,b.material,b.matrices.length);b.matrices.forEach((m,i)=>mesh.setMatrixAt(i,m));mesh.name=key;mesh.receiveShadow=true;mesh.castShadow=!/^(foliage-leaf|vegetation|tree-shrub)-/.test(key);if(/^(?:(trunk|foliage|vegetation|tree-shrub|street-trunk|street-foliage|street-leaf|garden-trunk)-|garden-trunk$)/.test(key)){const tree=/^(?:(trunk|foliage|street-trunk|street-foliage|street-leaf|garden-trunk)-|garden-trunk$)/.test(key),streetTree=/^(street-|garden-trunk)/.test(key),v=new T.Vector3(),glow=new Float32Array(b.matrices.length);b.matrices.forEach((m,i)=>{v.setFromMatrixPosition(m);
+  if(b.keyed&&/^(trunk|foliage|tree-shrub|tree_stakes|tree_guard|vegetation)-/.test(key)){const r=/^(trunk|foliage|tree_)/.test(key)?.6:0;b.matrices=b.matrices.filter(m=>!net.blocked(m.elements[12],m.elements[14],r));}if(b.keyed&&/^(trunk|foliage|tree-shrub)-/.test(key))b.matrices=b.matrices.filter(m=>plots.every(p=>Math.hypot(m.elements[12]-p.x,m.elements[14]-p.z)>p.radius+2));if(b.keyed&&/^(trunk|foliage|tree-shrub|vegetation)-/.test(key)){const crown=/^(trunk|foliage)-/.test(key)?3:0;b.matrices=b.matrices.filter(m=>!cleared(m.elements[12],m.elements[14],crown));}if(!b.matrices.length)continue;const mesh=new T.InstancedMesh(b.geometry,b.material,b.matrices.length);b.matrices.forEach((m,i)=>mesh.setMatrixAt(i,m));mesh.name=b.keyed?key:(b.multi?(b.soft?'env-soft-LED-':'env-batch-')+b.chunk+'-'+(batchSeq++):b.firstKey+'-'+b.chunk);mesh.receiveShadow=true;mesh.castShadow=b.keyed?!/^(?:foliage-leaf|street-leaf|garden-(?:foliage|shrub)|vegetation[-_]|tree[-_](?:shrub|stakes|guard))/.test(key):(!b.soft&&!b.noShadow);if(b.keyed&&/^(?:(trunk|foliage|vegetation(?:_flowering)?|tree-shrub|street-trunk|street-foliage|street-leaf|garden-trunk)-|garden-trunk$)/.test(key)){const tree=/^(?:(trunk|foliage|street-trunk|street-foliage|street-leaf|garden-trunk)-|garden-trunk$)/.test(key),streetTree=/^(street-|garden-trunk)/.test(key),v=new T.Vector3(),glow=new Float32Array(b.matrices.length);b.matrices.forEach((m,i)=>{v.setFromMatrixPosition(m);
    // ponytail: trees are lit from their base height (canopy sits 4–13 m up, often above the lamp heads).
-   const near=lampCells.get(cellOf(v.x,v.z))||[];if(tree){v.y=streetTree?v.y-Math.hypot(m.elements[4],m.elements[5],m.elements[6])*.5+1:Math.min(v.y,terrainLevel(v.x,v.z,project(v.x,v.z))+1);glow[i]=Math.max(treeLight(v,near),pavementLight(v,near));}else glow[i]=pavementLight(v,near);});const attr=new T.InstancedBufferAttribute(glow,1),low=b.geometry.userData.low?.clone();low?.setAttribute('nightGlow',attr);b.geometry=b.geometry.clone();b.geometry.setAttribute('nightGlow',attr);b.geometry.userData={low};mesh.geometry=b.geometry;}if(b.geometry.userData.low){mesh.userData.full=b.geometry;mesh.userData.low=b.geometry.userData.low;mesh.userData.s=key.match(/cell(\d+)/)?Number(key.match(/cell(\d+)/)[1])*120+60:b.chunk*240+120;plantMeshes.push(mesh);}groups[b.chunk]?.add(mesh);}
+   const near=lampCells.get(cellOf(v.x,v.z))||[];if(tree){v.y=streetTree?v.y-Math.hypot(m.elements[4],m.elements[5],m.elements[6])*.5+1:Math.min(v.y,terrainLevel(v.x,v.z,project(v.x,v.z))+1);glow[i]=Math.max(treeLight(v,near),pavementLight(v,near));}else glow[i]=pavementLight(v,near);});const attr=new T.InstancedBufferAttribute(glow,1),low=b.geometry.userData.low?.clone();low?.setAttribute('nightGlow',attr);b.geometry=b.geometry.clone();b.geometry.setAttribute('nightGlow',attr);b.geometry.userData={low};mesh.geometry=b.geometry;}if(b.keyed&&b.geometry.userData.low){mesh.userData.full=b.geometry;mesh.userData.low=b.geometry.userData.low;mesh.userData.s=key.match(/cell(\d+)/)?Number(key.match(/cell(\d+)/)[1])*120+60:b.chunk*240+120;plantMeshes.push(mesh);}else if(b.detail||(b.keyed&&DETAIL_CULL_KEY.test(key))){mesh.userData.s=b.chunk*240+120;detailMeshes.push(mesh);}mesh.computeBoundingSphere();groups[Math.min(b.chunk,groups.length-1)]?.add(mesh);}
+ const sigLensesGroup=new T.Group();sigLensesGroup.name='Signal lenses';scene.add(sigLensesGroup);let lensIdx=0;
+ for(const b of signalLensBuckets.values()){if(!b.matrices.length)continue;const mesh=new T.InstancedMesh(b.geometry,b.material,b.matrices.length);b.matrices.forEach((m,i)=>{mesh.setMatrixAt(i,m);sigColor.setHex(b.slots[i].lastHex);mesh.setColorAt(i,sigColor);});mesh.instanceMatrix.needsUpdate=true;mesh.instanceColor.needsUpdate=true;mesh.castShadow=false;mesh.receiveShadow=false;mesh.name='signal-lenses-'+(lensIdx++);mesh.computeBoundingSphere();b.mesh=mesh;sigLensesGroup.add(mesh);}
+ for(const b of signalBodyBuckets.values()){if(!b.items.length)continue;const geos=b.items.map(({geometry,matrix})=>{let g=geometry.clone().applyMatrix4(matrix);if(g.index)g=g.toNonIndexed();if(!g.attributes.normal)g.computeVertexNormals();for(const k of Object.keys(g.attributes))if(!['position','normal','uv'].includes(k))g.deleteAttribute(k);return g;});if(!geos.every(g=>g.attributes.uv))geos.forEach(g=>g.deleteAttribute('uv'));const mesh=new T.Mesh(mergeGeometries(geos),b.material);geos.forEach(g=>g.dispose());mesh.name='signal-bodies-'+b.chunk;mesh.castShadow=false;mesh.receiveShadow=true;groups[b.chunk]?.add(mesh);}
  // The source-dimensioned A1 annular driving area is rendered as well as simulated.
  const ringGeo=new T.RingGeometry(LOOP.innerRadius,LOOP.outerRadius,96);ringGeo.rotateX(-Math.PI/2);const ring=new T.Mesh(ringGeo,mats.road);ring.position.set(LOOP.center.x,LOOP.y+.02,LOOP.center.z);ring.receiveShadow=true;scene.add(ring);
  const island=new T.Mesh(new T.CylinderGeometry(LOOP.innerRadius-.2,LOOP.innerRadius-.2,.35,64),mats.grass);island.position.set(LOOP.center.x,LOOP.y+.15,LOOP.center.z);island.receiveShadow=true;scene.add(island);
@@ -776,7 +898,7 @@ export function buildEnvironment(scene,streetKit,{occupied=()=>false,furniture=N
  // Default set; a set saved in the map editor (furniture.hills) replaces it. The rnd() draws are unchanged, so later scenery stays put.
  const defaultHills=[];for(let i=0;i<26;i++){const r=sample(LENGTH*i/25),hill={x:r.x-450-rnd()*280,y:r.groundY-25,z:r.z,rx:210+rnd()*160,ry:80+rnd()*130,rz:260,turn:0};for(let k=0;k<12&&onBuilt(hill);k++)hill.x-=40;
   if(!onBuilt(hill)&&sceneryClear(hill.x,hill.z,Math.max(hill.rx,hill.rz)+20))defaultHills.push({id:'hill-'+String(defaultHills.length+1).padStart(3,'0'),...Object.fromEntries(Object.entries(hill).map(([k,v])=>[k,Math.round(v*10)/10]))});}
- const hills=Array.isArray(furniture.hills)?furniture.hills:defaultHills;if(drawFurniture)for(const h of hills)scene.add(hillMesh(h,hillMat));
+ const hills=Array.isArray(furniture.hills)?furniture.hills:defaultHills;if(drawFurniture&&hills.length){const sampleHill=hillMesh(hills[0],hillMat),hm=new T.InstancedMesh(sampleHill.geometry,hillMat,hills.length);hm.name='Backdrop hills';hm.receiveShadow=true;hills.forEach((h,i)=>{Q.setFromEuler(new T.Euler(0,(h.turn||0)*Math.PI/180,0));M.compose(new T.Vector3(h.x,h.y,h.z),Q,new T.Vector3(h.rx,h.ry,h.rz));hm.setMatrixAt(i,M);});hm.instanceMatrix.needsUpdate=true;hm.computeBoundingSphere();scene.add(hm);}
  const ringCurve=new T.CatmullRomCurve3(Array.from({length:97},(_,i)=>{const p=LOOP.sample(LOOP.length*i/96);return new T.Vector3(p.x,p.y,p.z);}),false,'centripetal');
 // Paired guidance dashes along the branches; one merged mesh per curve (hundreds of dashes, one draw call).
 for(const curve of [terminalCurve,depotCurve,depotExitCurve(depotCurve.getPointAt(1),1),depotExitCurve(depotCurve.getPointAt(1),-1)]){const dashes=[];for(let d=0;d<curve.getLength();d+=1.5)for(const offset of [-.24,.24])dashes.push(curveRibbon(curve,offset-.085,offset+.085,.105,d,Math.min(d+.55,curve.getLength())));const m=new T.Mesh(mergeGeometries(dashes),mats.white);dashes.forEach(g=>g.dispose());m.name='ART branch guidance';scene.add(m);}
@@ -816,7 +938,7 @@ for(const curve of [terminalCurve,depotCurve,depotExitCurve(depotCurve.getPointA
  scene.traverse(n=>{if(n.isMesh&&!n.isSkinnedMesh){n.updateMatrix();n.matrixAutoUpdate=false;}});
  // Rain: darker, glossier road and paving so sky reflections read as wet surfaces.
  const wetSet=[mats.road,mats.walk,mats.walkGrey,mats.walkBuff].filter(Boolean).map(m=>({m,rough:m.roughness,color:m.color.clone()}));
- return {poseLift(lift,...args){const pose=pedestrianLiftPoses.get(lift);if(pose)pose(...args);else poseLift(lift,...args);},hills,plazaDecor,groups,plots,fences,trees,lampPositions,plantings,windTime,bins,drivePosts:furnished.drivePosts,network:furniture.network,signals:furnished.signals,citySignals,furnitureErrors:furnished.errors,gullies:GULLIES,weirs:WEIRS,weather(rain){for(const {m,rough,color} of wetSet){m.roughness=rain?rough*.38:rough;m.color.copy(color).multiplyScalar(rain?.72:1);}},setNight(on){if(on)ensureNightOverlays();setCanopyTreesNight(on);fountain.userData.setNight(on);poseLift?.setNight?.(on);setHungShuiKiuNight(on);setA2GardensNight(on);setParkLampNight(on);setKitNight(on);plazaAssets.setNight(on);craneBeacon.emissiveIntensity=on?2.5:0;PLANT_NIGHT.value=on?1:0;nightSurfaces.forEach(m=>{if(m.userData.nightOverlay)m.userData.nightOverlay.visible=on;});nightMeshes.forEach(m=>{if(m.userData.nightOnly)m.visible=on;});glass.emissive.set(on?0xffc27a:0);glass.emissiveIntensity=on?.5:0;mats.concrete.emissive.setHex(on?0xb9c9de:0);mats.concrete.emissiveIntensity=on?.14:0;mats.kerb.emissive.setHex(on?0xc8c2b4:0);mats.kerb.emissiveIntensity=on?.16:0;mats.channel.emissive.setHex(on?0x9aa4b2:0);mats.channel.emissiveIntensity=on?.14:0;mats.galvanised.emissive.setHex(on?0xb8cbe0:0);mats.galvanised.emissiveIntensity=on?.18:0;mats.metal.emissive.setHex(on?0x7e92a8:0);mats.metal.emissiveIntensity=on?.18:0;mats.teal.emissive.setHex(on?0x5c8f83:0);mats.teal.emissiveIntensity=on?.18:0;mats.yellow.emissive.set(on?0xffcf22:0);mats.yellow.emissiveIntensity=on?.26:0;mats.tactile.emissive.set(on?0xd9b12a:0);mats.tactile.emissiveMap=mats.tactile.map;mats.tactile.emissiveIntensity=on?.22:0;for(const m of [mats.lookRight,mats.lookLeft]){m.emissive.set(on?0xffffff:0);m.emissiveMap=m.map;m.emissiveIntensity=on?.22:0;}},nightMaterials:[mats.lamp,...windowMats],markingMaterial:mats.white,materials:mats,update(s,time=0){plazaDecor.root.visible=Math.abs(STOPS[1].s-s)<850;for(const g of plazaDecor.bannerGroups)g.visible=Math.abs(g.userData.s-s)<850;windTime.value=time;for(const mesh of plantMeshes){const d=Math.abs(mesh.userData.s-s);mesh.visible=d<(PHONE?350:550)*sceneryScale;const geometry=d<(PHONE?50:85)*sceneryScale?mesh.userData.full:mesh.userData.low;if(mesh.geometry!==geometry){mesh.geometry=geometry;mesh.boundingSphere=null;}}for(const g of groups)g.visible=Math.abs(g.userData.s-s)<(PHONE?650:850)*sceneryScale;},weather(wet){mats.road.roughness=wet?.32:.91;mats.road.color.set(wet?0x9da8ac:0xffffff);}};
+ return {poseLift(lift,...args){const pose=pedestrianLiftPoses.get(lift);if(pose)pose(...args);else poseLift(lift,...args);},parkingEntrance,hills,plazaDecor,groups,plots,fences,trees,lampPositions,plantings,windTime,bins,drivePosts:furnished.drivePosts,network:furniture.network,signals:furnished.signals,citySignals,furnitureErrors:furnished.errors,gullies:GULLIES,weirs:WEIRS,weather(rain){for(const {m,rough,color} of wetSet){m.roughness=rain?rough*.38:rough;m.color.copy(color).multiplyScalar(rain?.72:1);}},setNight(on){if(on)ensureNightOverlays();parkingEntrance.setNight(on);setCanopyTreesNight(on);fountain.userData.setNight(on);poseLift?.setNight?.(on);setHungShuiKiuNight(on);setA2GardensNight(on);setParkLampNight(on);setKitNight(on);plazaAssets.setNight(on);craneBeacon.emissiveIntensity=on?2.5:0;PLANT_NIGHT.value=on?1:0;nightSurfaces.forEach(m=>{if(m.userData.nightOverlay)m.userData.nightOverlay.visible=on;});nightMeshes.forEach(m=>{if(m.userData.nightOnly)m.visible=on;});glass.emissive.set(on?0xffc27a:0);glass.emissiveIntensity=on?.5:0;mats.concrete.emissive.setHex(on?0xb9c9de:0);mats.concrete.emissiveIntensity=on?.14:0;mats.kerb.emissive.setHex(on?0xc8c2b4:0);mats.kerb.emissiveIntensity=on?.16:0;mats.channel.emissive.setHex(on?0x9aa4b2:0);mats.channel.emissiveIntensity=on?.14:0;mats.galvanised.emissive.setHex(on?0xb8cbe0:0);mats.galvanised.emissiveIntensity=on?.18:0;mats.metal.emissive.setHex(on?0x7e92a8:0);mats.metal.emissiveIntensity=on?.18:0;mats.teal.emissive.setHex(on?0x5c8f83:0);mats.teal.emissiveIntensity=on?.18:0;mats.yellow.emissive.set(on?0xffcf22:0);mats.yellow.emissiveIntensity=on?.26:0;mats.tactile.emissive.set(on?0xd9b12a:0);mats.tactile.emissiveMap=mats.tactile.map;mats.tactile.emissiveIntensity=on?.22:0;for(const m of [mats.lookRight,mats.lookLeft]){m.emissive.set(on?0xffffff:0);m.emissiveMap=m.map;m.emissiveIntensity=on?.22:0;}},nightMaterials:[mats.lamp,...windowMats],markingMaterial:mats.white,materials:mats,update(s,time=0){plazaDecor.root.visible=Math.abs(STOPS[1].s-s)<650;for(const g of plazaDecor.bannerGroups)g.visible=Math.abs(g.userData.s-s)<650;windTime.value=time;for(const mesh of plantMeshes){const d=Math.abs(mesh.userData.s-s);mesh.visible=d<(PHONE?260:340)*sceneryScale;const geometry=d<(PHONE?40:55)*sceneryScale?mesh.userData.full:mesh.userData.low;if(mesh.geometry!==geometry){mesh.geometry=geometry;mesh.boundingSphere=null;}}for(const mesh of detailMeshes)mesh.visible=Math.abs(mesh.userData.s-s)<(PHONE?190:300)*sceneryScale;for(const g of groups)g.visible=Math.abs(g.userData.s-s)<(PHONE?500:600)*sceneryScale;},weather(wet){mats.road.roughness=wet?.32:.91;mats.road.color.set(wet?0x9da8ac:0xffffff);}};
 }
 
 export function curveRibbon(curve,left,right,y=0,start=0,end=curve.getLength()){const p=[],uv=[],idx=[],n=Math.max(1,Math.ceil((end-start)/.6)),length=curve.getLength();for(let i=0;i<=n;i++){const d=start+(end-start)*i/n,u=d/length,v=curve.getPointAt(u),t=curve.getTangentAt(u);for(const lat of [left,right]){p.push(v.x+t.z*lat,v.y+y,v.z-t.x*lat);uv.push(lat/5,d/5);}if(i<n){const a=i*2;idx.push(a,a+2,a+1,a+1,a+2,a+3);}}const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(p,3));g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();return g;}

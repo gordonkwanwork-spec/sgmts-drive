@@ -396,7 +396,7 @@ function treeMeshes(trees){
  const emit=(geo,mat,items)=>{
   const mesh=new T.InstancedMesh(geo,mat,items.length);
   items.forEach((it,i)=>{mesh.setMatrixAt(i,it.mat4);mesh.setColorAt(i,it.tint);});
-  mesh.name='lot vegetation';mesh.castShadow=true;mesh.receiveShadow=true;
+  mesh.name='lot vegetation';mesh.castShadow=false;mesh.receiveShadow=true;
   mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;
   mesh.computeBoundingSphere();out.push(mesh);
  };
@@ -435,8 +435,8 @@ export async function buildLots(lots,ctx){const g=new T.Group();g.name='OZP lots
    if(!cells.has(k))cells.set(k,[]);cells.get(k).push(...r.parts);trees.push(...r.trees);ramps.push(...r.ramps);}
   else if(lot.model?.type==='glb'&&lot.model.src)g.add(await buildLot(lot,ctx));}
  for(const parts of cells.values())addAll(g,mergeByMaterial(parts));
- // one instanced bed per cell: a single map-wide bed has a map-wide bounding sphere and is never culled
- const beds=new Map();for(const t of trees){const k=Math.floor(t.x/400)+':'+Math.floor(t.z/400);if(!beds.has(k))beds.set(k,[]);beds.get(k).push(t);}
+ // one instanced bed per 700 m cell: preserves locality while halving lot vegetation draw calls
+ const beds=new Map();for(const t of trees){const k=Math.floor(t.x/700)+':'+Math.floor(t.z/700);if(!beds.has(k))beds.set(k,[]);beds.get(k).push(t);}
  for(const bed of beds.values())addAll(g,treeMeshes(bed));
  if(ramps.length)await (ctx.kit?Promise.resolve(ctx.kit):loadModel(ctx.truckUrl||(import.meta.env?.BASE_URL??'/')+'assets/street-kit.glb?v=street-kit-20260928'))// the game passes the kit it already parsed; the editor loads its own
   .then(kit=>g.add(...rampTraffic(ramps,kit.getObjectByName('truck')))).catch(e=>console.warn('Ramp trucks unavailable',e));
@@ -457,7 +457,7 @@ function rampTraffic(ramps,truck){
  truck.traverse(n=>{if(!n.isMesh)return;let wheel=n.parent;while(wheel!==truck&&!wheel.userData.roadWheel)wheel=wheel.parent;const centre=wheel.userData.roadWheel?wheel.position:null,key=(centre?wheel.name:'body')+':'+n.material.uuid;let geo=n.geometry.clone().applyMatrix4(inv.clone().multiply(n.matrixWorld));if(centre)geo.translate(-centre.x,-centre.y,-centre.z);for(const k of Object.keys(geo.attributes))if(!['position','normal','uv'].includes(k))geo.deleteAttribute(k);if(geo.index)geo=geo.toNonIndexed();if(!by.has(key))by.set(key,{geos:[],material:n.material,centre:centre?.clone(),radius:wheel.userData.roadWheel?.radius});by.get(key).geos.push(geo);});
  const parts=[...by.values()].map(p=>{const geometry=mergeGeometries(p.geos);p.geos.forEach(g=>g.dispose());return {...p,geometry};}),m=new T.Matrix4(),turn=new T.Matrix4(),spin=new T.Matrix4();
  return ramps.flatMap(ramp=>{const trucks=[0,1].flatMap(lane=>Array.from({length:TRUCKS_PER_LANE},(_,k)=>({ramp,lane,phase:(k+lane*.5)/TRUCKS_PER_LANE}))),reach=Math.max(...ramp.lanes)+12;
-  return parts.map(p=>{const mesh=new T.InstancedMesh(p.geometry,p.material,trucks.length);mesh.name=p.centre?'ramp wheels':'ramp trucks';mesh.castShadow=mesh.receiveShadow=true;mesh.boundingSphere=new T.Sphere(new T.Vector3(ramp.cx,ramp.y0+ramp.rise/2,ramp.cz),Math.hypot(reach,ramp.rise/2));
+  return parts.map(p=>{const mesh=new T.InstancedMesh(p.geometry,p.material,trucks.length);mesh.name=p.centre?'ramp wheels':'ramp trucks';mesh.castShadow=!p.centre;mesh.receiveShadow=true;mesh.boundingSphere=new T.Sphere(new T.Vector3(ramp.cx,ramp.y0+ramp.rise/2,ramp.cz),Math.hypot(reach,ramp.rise/2));
    const pose=time=>{trucks.forEach((t,i)=>{rampPose(t.ramp,t.lane,t.phase,time,m);if(p.centre){turn.makeTranslation(p.centre.x,p.centre.y,p.centre.z).multiply(spin.makeRotationX(-time*RAMP_SPEED/p.radius));m.multiply(turn);}mesh.setMatrixAt(i,m);});mesh.instanceMatrix.needsUpdate=true;};pose(0);mesh.onBeforeRender=renderer=>{const f=renderer.info.render.frame;if(mesh.userData.frame===f)return;mesh.userData.frame=f;pose(performance.now()/1000);};return mesh;});});}
 
 // Lit-window materials for the game's night switch.

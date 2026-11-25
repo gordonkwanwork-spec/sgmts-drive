@@ -236,7 +236,7 @@ export function installDirectionSigns(scene,env,modern,lotGroup){
  for(const lot of lotGroup.userData.cityPlan)for(const poly of lot.footprints)buildings.push({poly,minY:-Infinity,maxY:Infinity});
  const index=sceneIndex(scene,requests,env.materials,buildings),placed=[],batches=new Map();
  function batch(key,geo,mat,p,scale,rot,ch){
-  const id=key+'@'+ch;if(!batches.has(id))batches.set(id,{key,geo,mat,ch,list:[]});
+  const id=geo.uuid+'|'+mat.uuid+'@'+ch;if(!batches.has(id))batches.set(id,{key,geo,mat,ch,list:[]});
   batches.get(id).list.push(new T.Matrix4().compose(p,new T.Quaternion().setFromEuler(rot),scale));
  }
  for(const request of requests){
@@ -250,7 +250,7 @@ export function installDirectionSigns(scene,env,modern,lotGroup){
   }
  }
  for(const {key,geo,mat,ch,list} of batches.values()){
-  const mesh=new T.InstancedMesh(geo,mat,list.length);list.forEach((m,i)=>mesh.setMatrixAt(i,m));mesh.name=key;mesh.receiveShadow=true;
+  const mesh=new T.InstancedMesh(geo,mat,list.length);list.forEach((m,i)=>mesh.setMatrixAt(i,m));mesh.name=key;mesh.receiveShadow=true;mesh.computeBoundingSphere();
   env.groups[ch].add(mesh);
  }
  g.directionSigns=placed;g.directionSignSites=requests.length;

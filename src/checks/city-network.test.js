@@ -45,7 +45,11 @@ assert.equal(ties.size,6,'all six corridor crossings carry a city street');
 const rail=[];for(let s=RAILWAY.start;s<=RAILWAY.end;s+=10){const p=railSample(s);rail.push(p);}
 for(const {r,F} of roads){let P=centreline(r.pts);if(r.tie)P=P.slice(2);if(r.endTie)P=P.slice(0,-2);
  assert.equal(reserveClash(P,{width:halfWidth(r)}),null,`${r.id} enters the corridor reserve`);
- if(!/d8-(west|east)$/.test(r.id))for(const f of F)assert.ok(!rail.some(p=>Math.hypot(p.x-f.x,p.z-f.z)<halfWidth(r)+6),`${r.id} runs under the railway at ${f.x.toFixed(0)},${f.z.toFixed(0)}`);}
+ if(!/d8-(west|east)$/.test(r.id))for(const f of F){
+  const overhead=rail.find(p=>Math.hypot(p.x-f.x,p.z-f.z)<halfWidth(r)+6);
+  if(!overhead)continue;
+  assert.ok(['city-crossing-east','city-tin-ha'].includes(r.id)&&overhead.y-1.3-f.y>=5.1,`${r.id} lacks a clear grade-separated railway crossing at ${f.x},${f.z}`);
+ }}
 
 // 6. The roundabout is a circle (its host line is not straightened at the arms) with four arms meeting it radially.
 const ring=byId.get('city-roundabout'),cx=ring.F.slice(0,-1).reduce((s,f)=>s+f.x,0)/(ring.F.length-1),cz=ring.F.slice(0,-1).reduce((s,f)=>s+f.z,0)/(ring.F.length-1);

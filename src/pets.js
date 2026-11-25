@@ -1,6 +1,7 @@
 import * as T from 'three';
 import {clone as cloneSkinned} from 'three/addons/utils/SkeletonUtils.js';
 import {contactShadow,rig as personRig} from './street-models.js';
+import {makeFocusSampler,poseOn} from './city/life.js';
 
 const BONE_NAMES=['pet_root','pet_body','pet_head','pet_tail','pet_leg_FL','pet_leg_FR','pet_leg_BL','pet_leg_BR'];
 const LEASH_SEGS=10,LEASH_HALF=.0075;
@@ -118,8 +119,8 @@ export function petRig(group){
 }
 
 /** Animate diagonal quadruped walk, body bob, head curiosity and tail wag/sway. */
-export function posePet(group,distance,dt=1/60){
- const pool=group.userData.pool??={d:0,t:0};pool.d+=distance;pool.t+=dt;if(pool.t<1/240)return;
+export function posePet(group,distance,dt=1/60,minStep=1/240){
+ const pool=group.userData.pool??={d:0,t:0};pool.d+=distance;pool.t+=dt;if(pool.t<minStep)return;
  distance=pool.d;dt=pool.t;pool.d=pool.t=0;
  if(group.userData.petClips){
   const u=group.userData;
@@ -176,7 +177,7 @@ function updateLeashMesh(leash,start,end){
 }
 
 /** Keep a leashed dog walking alongside/behind its master and update the 3D leash between hand and collar. */
-export function updateDogFollower(dog,masterGroup,dt,groundY=null){
+export function updateDogFollower(dog,masterGroup,dt,groundY=null,minStep=1/240){
  if(!masterGroup?.visible){dog.group.visible=false;dog.leash.visible=false;dog.init=false;return;}
  const myaw=masterGroup.rotation.y,fx=-Math.sin(myaw),fz=-Math.cos(myaw),rx=Math.cos(myaw),rz=-Math.sin(myaw);
  const mx=masterGroup.position.x,mz=masterGroup.position.z,side=dog.side??1;
@@ -194,15 +195,18 @@ export function updateDogFollower(dog,masterGroup,dt,groundY=null){
  const wantYaw=moved>.002?Math.atan2(-(dog.x-px),-(dog.z-pz)):myaw;
  const dy=Math.atan2(Math.sin(wantYaw-dog.yaw),Math.cos(wantYaw-dog.yaw));
  dog.yaw+=dy*Math.min(1,dt*8);
- const y=groundY?groundY(dog.x,dog.z):masterGroup.position.y;
+ let y;
+ if(groundY){
+  if(snap||dog._gy===undefined||Math.hypot(dog.x-dog._gx,dog.z-dog._gz)>.35){dog._gy=groundY(dog.x,dog.z);dog._gx=dog.x;dog._gz=dog.z;}
+  y=dog._gy;
+ }else y=masterGroup.position.y;
  dog.group.position.set(dog.x,y+.01,dog.z);dog.group.rotation.y=dog.yaw;dog.group.visible=true;
- posePet(dog.group,moved,dt);
- dog.group.updateMatrixWorld(true);masterGroup.updateMatrixWorld(true);
+ posePet(dog.group,moved,dt,minStep);
  const handBone=personRig(masterGroup)?.bones[side<0?'hand_L':'hand_R']?.bone;
- if(handBone)handBone.getWorldPosition(_hand);
+ if(handBone){handBone.updateWorldMatrix(true,false);handBone.getWorldPosition(_hand);}
  else _hand.set(mx+rx*side*.26-fx*.05,masterGroup.position.y+.88,mz+rz*side*.26-fz*.05);
- const collar=dog.group.getObjectByName('pet_collar');
- if(collar)collar.getWorldPosition(_collar);
+ if(dog._collar===undefined)dog._collar=dog.group.getObjectByName('pet_collar')||null;
+ if(dog._collar){dog._collar.updateWorldMatrix(true,false);dog._collar.getWorldPosition(_collar);}
  else _collar.set(dog.x,y+(dog.group.userData.height||.45)*.68,dog.z);
  updateLeashMesh(dog.leash,_hand,_collar);dog.leash.visible=true;
 }
@@ -210,9 +214,9 @@ export function updateDogFollower(dog,masterGroup,dt,groundY=null){
 /** Independent cats strolling city footways, pausing to look around and recycling near the camera. */
 export function createCats(paths,{count=15,seed=29}={}){
  let rs=seed>>>0;const rnd=()=>{rs=Math.imul(rs^rs>>>15,2246822507)+0x9e3779b9>>>0;return (rs>>>8)/16777216;};
- const total=paths.reduce((s,p)=>s+p.len,0),cats=Array.from({length:count},(_,id)=>({id,path:null,speed:.65+rnd()*.65,pauseIn:3+rnd()*6}));
- const pose=(p,s)=>{const P=p.pts;let i=1;while(i<P.length-1&&P[i].s<s)i++;const a=P[i-1],b=P[i],u=Math.max(0,Math.min(1,(s-a.s)/((b.s-a.s)||1))),dx=b.x-a.x,dz=b.z-a.z,l=Math.hypot(dx,dz)||1;return {x:a.x+dx*u,y:a.y+(b.y-a.y)*u,z:a.z+dz*u,tx:dx/l,tz:dz/l};};
- function spawn(c,env){if(!total)return false;for(let tries=0;tries<30;tries++){let t=rnd()*total,p=paths[0];for(const q of paths){if((t-=q.len)<0){p=q;break;}}const s=1+rnd()*(p.len-2),q=pose(p,s);
+ const nearPaths=makeFocusSampler(paths,135),cats=Array.from({length:count},(_,id)=>({id,path:null,speed:.65+rnd()*.65,pauseIn:3+rnd()*6}));
+ const pose=(p,s)=>poseOn(p.pts,s);
+ function spawn(c,env){const {pool,total}=nearPaths(env);if(!total)return false;for(let tries=0;tries<30;tries++){let t=rnd()*total,p=pool[0];for(const q of pool){if((t-=q.len)<0){p=q;break;}}const s=1+rnd()*(p.len-2),q=pose(p,s);
    if(env?.focus){const d=Math.hypot(q.x-env.focus.x,q.z-env.focus.z);if(d<(env.near??20)||d>(env.far??135))continue;
     if(env.view&&d<85){const dx=q.x-env.view.x,dz=q.z-env.view.z;if((dx*env.view.fx+dz*env.view.fz)/(d||1)>.6)continue;}}
    if(cats.some(o=>o.path&&Math.hypot(o.x-q.x,o.z-q.z)<2.5))continue;Object.assign(c,{path:p,s,dir:rnd()<.5?1:-1,wait:0,moved:0},q);return true;}return false;}

@@ -38,10 +38,12 @@ export function unlitCrossing(g,c,half,{sample,roadSection,ribbon,batch,mats,loo
 
 // Mount each plate on the railing panel passing within 0.6 m of its target (fences: {ax,az,bx,bz,y}), at the nearest point
 // on that panel; a plate with no railing there is skipped.
-export function mountRailingPlates(group,plates,fences){const m=materials();let mounted=0;
+export function mountRailingPlates(group,plates,fences){const m=materials(),buckets=new Map(),pos=new T.Vector3(),quat=new T.Quaternion(),scale=new T.Vector3(.44,.58,1),euler=new T.Euler();let mounted=0;
  for(const {p,out,mat} of plates){let best=null,bd=.6;
   for(const f of fences){const ex=f.bx-f.ax,ez=f.bz-f.az,L2=ex*ex+ez*ez;if(L2<.36)continue;const t=Math.min(.85,Math.max(.15,((p.x-f.ax)*ex+(p.z-f.az)*ez)/L2)),x=f.ax+ex*t,z=f.az+ez*t,dd=Math.hypot(x-p.x,z-p.z);if(dd<bd){bd=dd;best={x,z,y:f.y};}}
   if(!best)continue;mounted++;const yaw=Math.atan2(out.x,out.z);
-  for(const back of [0,1]){const plate=new T.Mesh(plane,back?m.plateBack:mat);plate.scale.set(.44,.58,1);plate.position.set(best.x,best.y+.55,best.z).addScaledVector(out,back?.035:.04);
-   plate.rotation.y=yaw+(back?Math.PI:0);plate.name=back?'railing plate back':'railing plate '+(mat===m.stop?'停步 STOP':'留意車輛');group.add(plate);}}
+  for(const back of [0,1]){const key=back?m.plateBack:mat;if(!buckets.has(key))buckets.set(key,[]);
+   pos.set(best.x,best.y+.55,best.z).addScaledVector(out,back?.035:.04);euler.set(0,yaw+(back?Math.PI:0),0);quat.setFromEuler(euler);
+   buckets.get(key).push(new T.Matrix4().compose(pos,quat,scale));}}
+ for(const [mat,matrices] of buckets){const mesh=new T.InstancedMesh(plane,mat,matrices.length);matrices.forEach((mx,i)=>mesh.setMatrixAt(i,mx));mesh.name=mat===m.plateBack?'railing plate back':'railing plate '+(mat===m.stop?'停步 STOP':'留意車輛');mesh.computeBoundingSphere();group.add(mesh);}
  return mounted;}

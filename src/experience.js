@@ -1,3 +1,5 @@
+import {promenadePose,riverFrames} from './a2-river.js';
+import {freezeStatic,skipWhenHidden} from './scene-freeze.js';
 import {pedestrianLiftAt} from './pedestrian-footbridges.js';
 import {liftAt,shelterBridgeRain} from './a2-footbridge.js';
 import {worldCoordinates,pavingY,rail as a2Rail,benches as a2Benches} from './a2-site.js';
@@ -28,6 +30,8 @@ import {junctionPavement,sideCrossing,crossingGeometry} from './alignment.js';
 import {crossingRoutes} from './city/traffic-routes.js';
 import {cityGraph,cityFootways} from './city/life-headless.js';
 import {createTraffic,createPeople,midblockStage,stageAt} from './city/life.js';
+import {createParkingLotLife} from './parking-lot.js';
+let parkingLotLife=null;
 import {stepCar,carFits,recoveryLane,updateRide} from './city/drive.js';
 import {carReflections} from './city/car-reflections.js';
 import {streetObstacles} from './city/car-obstacles.js';
@@ -172,13 +176,13 @@ sun.shadow.mapSize.setScalar(shadowSize(cinematicGraphics));Object.assign(sun.sh
 const atmosphere=createAtmosphere({renderer,scene,camera,sky,sun,ambient,quality:cinematicGraphics?'high':'low'});atmosphere.onLightning=delay=>audio.thunder(delay);
 // Smooth keeps the world and lighting, with fewer full-screen passes and a smaller shadow map.
 // Graphics: the Smooth / Cinematic preset plus the Graphics panel's overrides (src/graphics-panel.js, ⚙ button on the right).
-let gfx=null;
-function shadowMap(size){sun.castShadow=size>0&&governor.shed<3;if(size>0&&sun.shadow.mapSize.x!==size){sun.shadow.mapSize.setScalar(size);sun.shadow.map?.dispose();sun.shadow.map=null;}}
+let gfx=null,shadowTick=0,shadowForce=true,sunMovedSinceShadow=false,lastCpu=0;
+function shadowMap(size){shadowForce=true;sun.castShadow=size>0&&governor.shed<3;if(size>0&&sun.shadow.mapSize.x!==size){sun.shadow.mapSize.setScalar(size);sun.shadow.map?.dispose();sun.shadow.map=null;}}
 function setGraphics(cinematic,g=gfx?.settings){atmosphere.setCinematic(cinematic);const s=g?.shadow;shadowMap(s==null||s==='auto'?shadowSize(cinematic):s);}
 setGraphics(cinematicGraphics);renderer.info.autoReset=false;// the performance overlay counts every pass of a frame
 gfx=createGraphicsPanel({getPreset:()=>atmosphere.cinematic?'cinematic':'smooth',setPreset:p=>{setGraphics(p==='cinematic');writeSetting('sgmts-graphics',p);},
  apply:g=>{setGraphics(atmosphere.cinematic,g);atmosphere.setPasses({bloom:g.bloom,post:g.post});governor.suspend(1);renderer.setPixelRatio(g.scale==='auto'?governor.ratio:g.scale);renderer.setSize(innerWidth,innerHeight);atmosphere.setSize(innerWidth,innerHeight);}});
-const loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);let manifest,environment,streetKit,railway,colleagueModels,vehicleModels;
+const loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);let manifest,environment,streetKit,railway,kitCity,colleagueModels,vehicleModels;
 const PEDESTRIAN_COUNT=TRIPO_PEOPLE.length;
 const GORDON=COLLEAGUES.findIndex(c=>c.name==='Gordon KWAN'),stationCast=STOPS.map(()=>new Set());
 // Cyclists and the player need their own rigs immediately. Other colleagues first use a ready pedestrian rig.
@@ -258,17 +262,24 @@ function batchTramModel(root){
  const groups=[];root.traverse(n=>{if(!n.isMesh&&/^(passenger_interior_|cockpit_section_|.*_door_(left|right)_[01](_leaf_[ab])?$)/.test(n.name))groups.push(n);});
  groups.sort((a,b)=>b.name.length-a.name.length);// leaves before their door, so a door never absorbs a leaf
  for(const g of groups)mergeByMaterial(g,{skip:m=>/^(cab_display|Route_destination)|light/i.test(m.name),stop:/^(steering_wheel|wiper_pivot)|_leaf_[ab]$/});
+ for(const name of ['section_front','section_mid','section_rear']){
+  const sec=root.getObjectByName(name);if(!sec)continue;
+  const closed=new T.Group();closed.name=name+'_closed_doors';
+  sec.children.forEach(c=>{if(/_door_(left|right)_[01]$/.test(c.name))closed.add(c.clone(true));});
+  if(closed.children.length){sec.add(closed);mergeByMaterial(closed,{skip:m=>/light/i.test(m.name)});closed.traverse(m=>{if(m.isMesh&&m.parent!==closed)closed.attach(m);});for(const ch of [...closed.children])if(!ch.isMesh)closed.remove(ch);}
+ }
 }
 function setupTram(gltf,isAI=false){
  const root=gltf.scene.clone(true),sections=[];scene.add(root);
  for(const name of ['section_front','section_mid','section_rear']){let g=root.getObjectByName(name);if(!g)throw Error('Missing Blender node '+name);root.updateMatrixWorld(true);scene.attach(g);sections.push(g);}
  // ponytail: emissive AI cabins bound the light count; pool nearby lights if AI cabin shadows are needed.
  for(const section of sections){if(!isAI){const light=new T.PointLight(0xffe9cb,0,5,2);light.name='Passenger ceiling light';light.position.set(0,2.65,0);section.add(light);}for(const side of [-1,1]){const spill=new T.Mesh(new T.PlaneGeometry(3.5,9),spillMaterial);spill.name='Interior light spill';spill.rotation.x=-Math.PI/2;spill.position.set(side*2,.055,0);spill.visible=false;section.add(spill);const strip=new T.Mesh(new T.BoxGeometry(.08,.04,8.2),new T.MeshBasicMaterial({color:0xfff0da}));strip.name='Interior ceiling LED';strip.position.set(side*.6,3.02,0);strip.visible=false;section.add(strip);}section.traverse(n=>{if(n.isMesh&&n.material){n.material=n.material.clone();n.userData.vehicleMaterial=true;}});}
- scene.remove(root);const doors=[],wheels=[],lights=[],cabDisplays=[],steering=[],glazing=[],wipers=[],interiors=[];
+ scene.remove(root);const doors=[],closedDoors=[],doorNodes=[],wheels=[],lights=[],cabDisplays=[],steering=[],glazing=[],wipers=[],interiors=[];
  // ponytail: saloon, cab and door parts sit inside or flush with the body, so they skip the shadow pass (about half of a vehicle's draw calls).
- const inBody=(n,g)=>{for(let p=n.parent;p&&p!==g;p=p.parent)if(/^(passenger_interior_|cockpit_section_)|_door_(left|right)_[01]/.test(p.name))return true;return false;};
+ const inBody=(n,g)=>{for(let p=n.parent;p&&p!==g;p=p.parent)if(/^(passenger_interior_|cockpit_section_)|_door_(left|right)_[01]|_closed_doors$/.test(p.name))return true;return false;};
  sections.forEach((g,si)=>g.traverse(n=>{if(n.isMesh){n.castShadow=!inBody(n,g);n.receiveShadow=true;if(n.material){n.material.envMapIntensity=.8;}}
- if(/_door_(left|right)_[01]$/.test(n.name))doors.push({node:n,base:n.position.clone(),side:n.name.includes('_left_')?1:-1,si,leaves:[]});
+ if(n.name.endsWith('_closed_doors'))closedDoors.push(n);
+ if(n.parent===g&&/_door_(left|right)_[01]$/.test(n.name)){doors.push({node:n,base:n.position.clone(),side:n.name.includes('_left_')?1:-1,si,leaves:[]});doorNodes.push(n);}
  if(/_leaf_[ab]$/.test(n.name))doors.find(d=>d.node===n.parent)?.leaves.push({node:n,base:n.position.clone()});
  if(!n.isMesh&&/^(passenger_interior_|cockpit_section_)/.test(n.name))interiors.push({node:n,section:g});
  if(n.name.startsWith('Route_destination'))n.material.side=T.FrontSide;
@@ -282,7 +293,8 @@ function setupTram(gltf,isAI=false){
  }));
  // Destination LEDs: the model's fixed text meshes (front 泥圍, rear 產業園) become one switchable sign per end.
  const destSigns=[];for(const g of sections)g.traverse(n=>{if(n.isMesh&&/^Route_destination/.test(n.name)){n.geometry=DEST_GEOMETRY;n.material=DEST_MATERIALS['泥圍'];destSigns.push(n);}});
- return {sections,doors,wheels,lights,cabDisplays,steering,glazing,wipers,destSigns,interiors,yaws:[0,0,0],isAI,s:1000,lat:-1.9,v:7,door:0};
+ for(const n of doorNodes)n.visible=false;for(const n of closedDoors)n.visible=true;
+ return {sections,doors,closedDoors,doorNodes,_doorsOpen:false,wheels,lights,cabDisplays,steering,glazing,wipers,destSigns,interiors,yaws:[0,0,0],isAI,s:1000,lat:-1.9,v:7,door:0};
 }
 function poseTram(t,s,lat,reverse=false,door=0,loop=false){
  const spacing=10.6;let prev=null;
@@ -316,12 +328,15 @@ function poseTram(t,s,lat,reverse=false,door=0,loop=false){
   prev=g;
  });
  t.posed=true;
- for(const d of t.doors){const open=t.isAI?(d.side===(t.flipped?-1:1)?door:0):(d.side===state.doorSide?door:0),{out,slide}=doorLeafPose(open);for(const l of d.leaves){l.node.position.copy(l.base);l.node.position.x+=Math.sign(d.base.x)*out;l.node.position.z+=Math.sign(l.base.z)*slide;}}
+ const openAny=door>1e-4;
+ if(t.closedDoors&&t._doorsOpen!==openAny){t._doorsOpen=openAny;for(const n of t.closedDoors)n.visible=!openAny;for(const n of t.doorNodes)n.visible=openAny;}
+ if(openAny)for(const d of t.doors){const open=t.isAI?(d.side===(t.flipped?-1:1)?door:0):(d.side===state.doorSide?door:0),{out,slide}=doorLeafPose(open);for(const l of d.leaves){l.node.position.copy(l.base);l.node.position.x+=Math.sign(d.base.x)*out;l.node.position.z+=Math.sign(l.base.z)*slide;}}
  for(const w of t.wheels){w.rotation.x=elapsed*(t.isAI?t.v:state.v)/.46;if(!t.isAI&&w.name.startsWith('section_front'))w.rotation.y=state.steer*MAX_WHEEL_ANGLE;}
  // Leading-cab wiper sweeps up the raked windscreen in rain and parks below the glazing otherwise.
  for(const w of t.wipers){w.node.quaternion.copy(w.base);if(state.condition==='rain'&&w.section===t.sections[0])w.node.rotateY(1.5*(.5-.5*Math.cos(elapsed*2.6)));}
 }
-const junctions=JUNCTIONS;
+const junctions=JUNCTIONS,ALL_CROSSINGS=[...JUNCTIONS,...UNDERPASSES],NON_BRIDGE_JUNCTIONS=ALL_CROSSINGS.filter(j=>!CYCLE_BRIDGES.includes(j));
+const pedStep=(g,sit=false)=>{const d2=g.position.distanceToSquared(camera.position);return sit?(d2>1600?1/6:1/240):(d2>4225?1/10:1/240);};
 // Signal heads come from the street furniture data (traffic_signal items, params.junction + axis); phases stay per junction.
 function makeSignals(){
  for(const j of junctions){const r=sample(j.s);if(!j.underpass&&r.elevated)continue;signalObjects.push({...j,s:j.s-j.stop,centre:j.s,passed:false,heads:[]});}
@@ -348,7 +363,14 @@ const carRadio=createCarRadio($('#hud'),state,()=>{
  for(const id of ['game-track','journey-track'])$('#'+id).value=state.gameMusic;
  saveMusicChoices();audio.updateMusic(state);void audio.initAudio();
 });
-let cityTraffic=null,cityPeople=null,cityCats=null,cityLanes=null,cityMask=null,townHud=null;const townLook=new T.Vector3();const cityWalkers=[];
+let cityTraffic=null,cityPeople=null,cityCats=null,cityLanes=null,cityMask=null,townHud=null;const townLook=new T.Vector3(),_camDir=new T.Vector3();const cityWalkers=[];
+function setTrafficShadows(group,kind){
+ const isWheelOnlyChild=n=>{for(let p=n;p&&p!==group;p=p.parent){if(p.name==='minibus-steering-wheel')return true;if(kind!=='minibus'&&p.name?.startsWith('road-wheel-'))return true;}return false;};
+ group.traverse(m=>{
+  if(!m.isMesh)return;
+  m.castShadow=!(m.material?.transparent||isWheelOnlyChild(m)||(kind==='minibus'&&m.name==='rim'));
+ });
+}
 // City rebuild 2: the player's own car (src/city/drive.js). It exists in explore mode: a city-drive start puts the player at
 // the wheel; on foot, Enter beside it drives it, and Enter on a city street with nothing else nearby brings it to that lane.
 const playerCar={group:null,x:0,y:0,z:0,yaw:0,v:0,steer:0,length:4.6,width:1.95,active:false};
@@ -404,7 +426,7 @@ function installCar(spec,group){
  if(c.active&&!carFits(next,carWorld)){
   lane=nearestLane(c.x,c.z,Infinity,c.yaw,next);if(!lane)return false;
  }
- c.group?.removeFromParent();scene.add(group);
+ c.group?.removeFromParent();skipWhenHidden(group);scene.add(group);
  Object.assign(c,{group,id:spec.id,height:spec.height,width:spec.width,length:spec.length,wheelbase:spec.wheelbase,
   accel:spec.accel,brake:spec.brake,maxSteer:spec.maxSteer,cam:spec.cam,v:0,steer:0});
  if(lane)placeCar(lane);else poseCar();
@@ -450,7 +472,7 @@ function makeTraffic(){
  for(const route of crossingRoutes(environment.network)){const L=route.curve.getLength(),n=route.junction.underpass?2:3,j=route.junction;
   const signalHold=route.stopAt===null?null:{at:route.stopAt,get sig(){return signalObjects.find(s=>s.c===j.c);}};
   for(let k=0;k<n;k++,i++){const {id:kind,width:w,length,height}=types[i%types.length],group=streetModel(kind);
-   group.name='traffic-'+kind;group.traverse(m=>{if(m.isMesh)m.castShadow=true;});scene.add(group);
+   group.name='traffic-'+kind;setTrafficShadows(group,kind);scene.add(group);
    traffic.push({group,kind,width:w,length,height,curve:route.curve,routeDistance:L*(k+.35)/n,routeDir:1,v:0,cross:j,dir:route.dir,speed:j.underpass?13:11,signalHold,
     holds:signalHold?[{at:signalHold.at,go:()=>{const sig=signalHold.sig;return !sig||(state.mode==='control'&&sig.control?aspect(sig.control,'road'):signalAt(sig,true))==='go';}}]:[]});}}
 
@@ -467,13 +489,16 @@ function makeTraffic(){
  carModels.set('car',Promise.resolve(model));installCar(sedan,model);townHud.setVehicle('car');
  cityTraffic=createTraffic(cityLanes,{count:44,fleet:types.map(t=>({kind:t.id,length:t.length,width:t.width,height:t.height})),
   signal:X=>{const sig=signalObjects.find(s=>s.c===X.c);return !sig||signalAt(sig,true)==='go';}});
- for(const car of cityTraffic.cars){const group=streetModel(car.kind);group.name='traffic-'+car.kind;group.traverse(m=>{if(m.isMesh)m.castShadow=true;});group.visible=false;scene.add(group);
+ for(const car of cityTraffic.cars){const group=streetModel(car.kind);group.name='traffic-'+car.kind;setTrafficShadows(group,car.kind);group.visible=false;scene.add(group);
   traffic.push({group,kind:car.kind,width:car.width,length:car.length,height:car.height,v:0,life:car});}
  // …and people on the city footways (both sides of every street), recycled within 140 m of the camera.
  const footwayPaths=cityFootways(environment.network);
  cityPeople=createPeople(footwayPaths,{count:28});
  for(const h of cityPeople.people){const group=streetModel('pedestrian_'+(h.id*7+3)%PEDESTRIAN_COUNT);group.name='city-pedestrian';group.visible=false;scene.add(group);cityWalkers.push({group,h});}
  cityCats=createCats(footwayPaths,{count:20,seed:29});
+ if(environment?.parkingEntrance){
+  parkingLotLife=createParkingLotLife({scene,parkingEntrance:environment.parkingEntrance,vehicleModels,streetModel,posePedestrian,pedStep,pedestrianCount:PEDESTRIAN_COUNT});
+ }
 
  STOPS.forEach((st,i)=>{for(let j=0;j<6;j++){const g=stationPerson(st.s,j+i);if(!g)continue;
   const side=j%2?1:-1,phase=2+Math.floor(j/2)*3,origin=point(stopCentre(st,side)+(phase-6)*4,side*(8.35+(phase%2)*.45));origin.y+=.32+PLATFORM_RISE;g.position.copy(origin);g.rotation.y=sample(st.s).heading;scene.add(g);walkerObjects.push({group:g,station:i,side,origin,phase,progress:0,alight:phase<3,roaming:phase>=9});
@@ -484,7 +509,7 @@ function makeStationChild(gltf,name){
    const st=STOPS[station],side=(name==='Boy'?1:-1)*(station===0?1:-1);
    const platform=st.platforms.find(p=>p.side===side),centre=st.s+platform.centerOffset,phase=side===1?0:Math.PI;
    const group=tripoPlayer(gltf,name==='Boy'?1.25:1.05,`Station ${st.id} · ${name}`),q=centre+Math.sin(phase)*24;
-   characterLighting(group);group.traverse(n=>{if(n.isSkinnedMesh)n.castShadow=false;});litPeople.push(group);group.position.copy(point(q,side*8.35));group.position.y+=.32;group.rotation.y=sample(q).heading;scene.add(group);
+   characterLighting(group);group.traverse(n=>{if(n.isSkinnedMesh)n.castShadow=false;});litPeople.push(group);group.position.copy(point(q,side*8.35));group.position.y+=.32;group.rotation.y=sample(q).heading;skipWhenHidden(group);scene.add(group);
    walkerObjects.push({group,station,side,origin:group.position.clone(),phase,progress:0,alight:false,roaming:true,patrolCentre:centre,patrolRadius:Math.min(24,st.platformLength/2-5),patrolSpeed:1});
    peopleGlowTick=0;
  }
@@ -498,9 +523,9 @@ function scooterGroup(i){const g=new T.Group();g.name='scooter-rider';const dark
  const rider=streetModel('pedestrian_'+(i*4+1)%PEDESTRIAN_COUNT);rider.position.set(0,.17,.03);rider.userData.scooterRider=true;rider.getObjectByName('contact shadow').visible=false;g.add(rider);g.userData.rider=rider;g.userData.wheels=wheels;return g;}
 function makeScooters(){for(let i=0;i<14;i++){const g=scooterGroup(i);scene.add(g);scooters.push({group:g,s:(i+.5)/14*LENGTH,side:i%2?1:-1,dir:i%3?1:-1,v:3.6+(i%4)*.5,lean:0});}}
 function scooterOk(s){const r=sample(s);return !r.elevated&&s>40&&s<END_STOP-40&&!STOPS.some(st=>Math.abs(st.s-s)<st.footprintLength/2+48)&&!JUNCTIONS.some(j=>Math.abs(j.s-s)<j.halfWidth+14)&&Math.abs(s-DEPOT.gate)>20;}
-function updateScooters(dt){const subject=viewS();for(const c of scooters){let next=c.s+c.dir*c.v*dt;if(!scooterOk(next)){c.dir*=-1;next=c.s;if(!scooterOk(next)){c.s=(c.s+97)%LENGTH;continue;}}c.s=next;
-  const g=c.group;g.visible=Math.abs(c.s-subject)<500;if(!g.visible)continue;const r=sample(c.s),lat=c.side*(roadSection(c.s).right+1.2+(c.dir===c.side?0:.9));
-  g.position.set(r.x+r.lx*lat,r.y+footpathHeight(c.s),r.z+r.lz*lat);g.rotation.y=r.heading+(c.dir===1?0:Math.PI);for(const w of g.userData.wheels)w.rotation.x-=c.v*dt/.1;posePedestrian(g.userData.rider,0,dt);}}
+function updateScooters(dt){const subject=viewS(),vis=mobile?150:220;for(const c of scooters){let next=c.s+c.dir*c.v*dt;if(!scooterOk(next)){c.dir*=-1;next=c.s;if(!scooterOk(next)){c.s=(c.s+97)%LENGTH;continue;}}c.s=next;
+  const g=c.group;g.visible=Math.abs(c.s-subject)<vis;if(!g.visible)continue;const r=sample(c.s),lat=c.side*(roadSection(c.s).right+1.2+(c.dir===c.side?0:.9));
+  g.position.set(r.x+r.lx*lat,r.y+footpathHeight(c.s),r.z+r.lz*lat);g.rotation.y=r.heading+(c.dir===1?0:Math.PI);for(const w of g.userData.wheels)w.rotation.x-=c.v*dt/.1;posePedestrian(g.userData.rider,0,dt,pedStep(g));}}
 function makeStreetLife(){
  for(const st of STOPS){const root=stations.find(p=>p.s===st.s).root;seats.push(...stationBenchSeats(root,st,manifest.stations.find(m=>m.id===st.id).platforms));}
  for(const [x,z] of a2Benches)for(const dx of [-.8,.8]){const p=worldCoordinates(x+dx,z);seats.push({...p,y:pavingY(x,z),heading:a2Rail.heading+Math.PI,seat:.505,s:project(p.x,p.z),station:1,side:0});}
@@ -513,25 +538,30 @@ function makeStreetLife(){
   const group=stationPerson(st.s,i+4);if(!group)break;const w=worldCoordinates(x,z);
   group.name='plaza-pedestrian';scene.add(group);plazaPeople.push({group,s:project(w.x,w.z),laneX:x,laneZ:z,phase:i*1.7,hop:false});
  }
+ for(let i=0;i<6;i++){
+  const group=streetModel('pedestrian_'+[1,3,5,0,2,4][i]),along=(i+.4)*riverFrames.at(-1).d/6,side=i%2?1:-1;
+  const p=promenadePose(along,side,renderedGround);group.name='Riverside pedestrian';group.position.set(p.x,p.y,p.z);
+  scene.add(group);plazaPeople.push({group,s:project(p.x,p.z),along,side,dir:side,speed:1.05+.07*i});
+ }
  // Joggers run the corridor footpaths, turning back at structures and junctions.
  for(let i=0;i<10;i++){const group=streetModel('pedestrian_'+[0,1,2,3,5,CYCLIST][i%6]);group.name='jogger';scene.add(group);joggers.push({group,s:LENGTH*(i+.37)/10,dir:i%2?1:-1,side:i%3?1:-1,v:3.4+(i%4)*.2});}
 }
 function addPetSpecies(species,source){
  const template=petModel(source,species),st=STOPS[1];
  template.traverse(n=>{if(n.isSkinnedMesh)n.castShadow=false;});
- for(const c of cityCats.cats){const spec=c.id<15?TRIPO_CATS[c.id%TRIPO_CATS.length]:TRIPO_RATS[0];if(spec!==species)continue;const group=clonePet(template);group.name=(spec.kind==='rat'?'city-rat-':'city-cat-')+spec.id;group.visible=false;characterLighting(group);litPeople.push(group);scene.add(group);cityCatActors.push({group,c});}
+ for(const c of cityCats.cats){const spec=c.id<15?TRIPO_CATS[c.id%TRIPO_CATS.length]:TRIPO_RATS[0];if(spec!==species)continue;const group=clonePet(template);group.name=(spec.kind==='rat'?'city-rat-':'city-cat-')+spec.id;group.visible=false;characterLighting(group);litPeople.push(group);skipWhenHidden(group);scene.add(group);cityCatActors.push({group,c});}
  // Dogs follow their masters on leashes (city footways and A2 plaza).
  const dogGround=(x,z,sHint)=>groundAt(x,z,sHint).y;
  cityWalkers.filter((_,i)=>i%3===0).slice(0,9).forEach((w,k)=>{
   if(TRIPO_DOGS[k%TRIPO_DOGS.length]!==species)return;
   const group=clonePet(template),leash=createLeash();
-  group.name='city-dog-'+species.id;group.visible=false;leash.visible=false;characterLighting(group);litPeople.push(group);scene.add(group,leash);
+  group.name='city-dog-'+species.id;group.visible=false;leash.visible=false;characterLighting(group);litPeople.push(group);skipWhenHidden(group);skipWhenHidden(leash);scene.add(group,leash);
   dogs.push({group,leash,master:w,side:k%2?1:-1,seed:k*2.3,city:true,groundY:dogGround});
  });
  plazaPeople.slice(0,6).forEach((p,k)=>{
   if(TRIPO_DOGS[k%TRIPO_DOGS.length]!==species)return;
   const group=clonePet(template),leash=createLeash();
-  group.name='plaza-dog-'+species.id;group.visible=false;leash.visible=false;characterLighting(group);litPeople.push(group);scene.add(group,leash);
+  group.name='plaza-dog-'+species.id;group.visible=false;leash.visible=false;characterLighting(group);litPeople.push(group);skipWhenHidden(group);skipWhenHidden(leash);scene.add(group,leash);
   dogs.push({group,leash,master:p,side:k%2?1:-1,seed:10+k*2.3,city:false,groundY:(x,z)=>dogGround(x,z,p.s)});
  });
  // Cats and rats walk around by themselves in A2 plaza and station footpaths.
@@ -549,14 +579,14 @@ function addPetSpecies(species,source){
  corridorRoamers.forEach((cfg,k)=>{
   if(cfg.spec!==species)return;
   const spec=cfg.spec,group=clonePet(template);
-  group.name=(spec.kind==='rat'?'plaza-rat-':'plaza-cat-')+species.id;characterLighting(group);litPeople.push(group);scene.add(group);
+  group.name=(spec.kind==='rat'?'plaza-rat-':'plaza-cat-')+species.id;characterLighting(group);litPeople.push(group);skipWhenHidden(group);scene.add(group);
   plazaCats.push({group,...cfg,x:Math.sin(cfg.phase)*cfg.span,dir:k%2?1:-1,wait:0});
  });
  peopleGlowTick=0;
 }
 const birds=[];
 function makeBirds(){for(const [i,st] of STOPS.entries())for(let j=0;j<3;j++){const group=new T.Group(),body=new T.Mesh(new T.SphereGeometry(.12,6,4),new T.MeshStandardMaterial({color:j%2?0x839099:0xb7b9af}));body.scale.set(.8,.8,2);group.add(body);const wings=[];for(const side of [-1,1]){const wing=new T.Mesh(new T.ConeGeometry(.13,.55,3),body.material);wing.rotation.z=side*Math.PI/2;wing.position.x=side*.25;group.add(wing);wings.push({wing,side});}group.name='station-bird';scene.add(group);birds.push({group,wings,station:st,phase:i*4+j*7,offset:j*8});}}
-function updateBirds(dt,s){for(const b of birds){const t=(state.time+b.phase)%48,st=b.station,perch=point(st.s+b.offset-8,8.7);perch.y+=3.7;b.group.visible=Math.abs(st.s-s)<500;if(!b.group.visible)continue;const fly=t<32,u=fly?t/32:0,height=fly?Math.sin(Math.PI*u)*9:0,angle=u*Math.PI*2;b.group.position.copy(perch);if(fly){b.group.position.x+=Math.sin(angle)*20;b.group.position.z+=(Math.cos(angle)-1)*12;b.group.position.y+=height;}b.group.rotation.y=fly?-angle:sample(st.s).heading;for(const {wing,side} of b.wings)wing.rotation.z=side*(fly?Math.PI/2+Math.sin(state.time*13+b.phase)*.55:.15);}}
+function updateBirds(dt,s){const vis=mobile?160:240;for(const b of birds){const t=(state.time+b.phase)%48,st=b.station,perch=point(st.s+b.offset-8,8.7);perch.y+=3.7;b.group.visible=Math.abs(st.s-s)<vis;if(!b.group.visible)continue;const fly=t<32,u=fly?t/32:0,height=fly?Math.sin(Math.PI*u)*9:0,angle=u*Math.PI*2;b.group.position.copy(perch);if(fly){b.group.position.x+=Math.sin(angle)*20;b.group.position.z+=(Math.cos(angle)-1)*12;b.group.position.y+=height;}b.group.rotation.y=fly?-angle:sample(st.s).heading;for(const {wing,side} of b.wings)wing.rotation.z=side*(fly?Math.PI/2+Math.sin(state.time*13+b.phase)*.55:.15);}}
 const nextDispatch={1:300,'-1':300};
 function startService(a,s){a.s=s;a.v=0;a.lat=a.dir*1.9;a.dwell=0;a.door=0;a.served=[];a.posed=false;a.active=true;a.terminal=null;a.stopIndex=a.dir===1?STOPS.findIndex(st=>stopTarget(st,1)>s+20):STOPS.findLastIndex(st=>stopTarget(st,-1)<s-20);if(a.dir===1&&a.stopIndex<0)a.stopIndex=7;}
 function resetStreetLife(){
@@ -565,7 +595,7 @@ function resetStreetLife(){
  const plan=fleetPlan(state.headway);
  for(const dir of [1,-1]){const pool=ai.filter(a=>a.dir===dir),count=dir===1?Math.ceil(plan.count/2):Math.floor(plan.count/2),groups=Math.ceil(count/plan.convoy);pool.forEach((a,i)=>{a.active=i<count;if(a.active){const convoy=Math.floor(i/plan.convoy),distance=150+(convoy+.5)*(LENGTH-350)/groups-(i%plan.convoy)*44;startService(a,dir===1?distance:LENGTH-distance);a.convoy=convoy;a.pax=25+i*3;}a.sections.forEach(g=>g.visible=a.active);});nextDispatch[dir]=state.headway;}
 
- crossers.forEach((c,i)=>{const e=roadSection(c.s);c.dir=i%2?1:-1;c.lat=c.dir===1?cycleOffset(c.s)-2.6:e.right+.8;c.active=false;c.wait=5+i%7;});
+ crossers.forEach((c,i)=>{const e=roadSection(c.s);c.dir=i%2?1:-1;c.lat=c.dir===1?cycleOffset(c.s)-2.6:e.right+.8;c.active=false;c.wait=5+i%7;c._placed=false;});
  cyclists.forEach((c,i)=>{c.s=rideablePosition(LENGTH*(i+.5)/20);c.dir=i%2?1:-1;c.v=0;c.liftHeight=cycleBridgeHeight(c.s);});
 }
 // Plaza strollers pace ±7 m at a steady 1.2 m/s with 2 s pauses.
@@ -573,12 +603,15 @@ function strollStep(p,dt){
  p.x??=Math.sin(p.phase*9)*7;p.dir??=1;p.wait??=0;
  if(giveWay(p,sample(p.s+p.x),dt,1.3)){if(p.wait>0)p.wait-=dt;else{p.x+=p.dir*1.2*dt;if(Math.abs(p.x)>=7){p.x=Math.sign(p.x)*7;p.dir=-p.dir;p.wait=2;}}}
  return p.x;}
-function updateStreetLife(dt,subjectS){
+function updateStreetLife(dt,subjectS,cosmetic=true,simDt=dt){
+ const pedVis=mobile?150:220,plazaVis=mobile?180:260,petVis=mobile?75:110;
  crowd.length=0;for(const list of [walkerObjects,joggers,plazaPeople])for(const p of list)if(p.group.visible)crowd.push(p.group);if(state.avatar!=='drive'&&player.group.visible)crowd.push(player.group);
- for(const p of sitters){p.group.visible=Math.abs(p.s-subjectS)<450;if(p.group.visible)posePedestrian(p.group,0,dt);}
- for(const j of joggers){const next=j.s+j.dir*j.v*dt,blocked=q=>q<40||q>LENGTH-40||sample(q).elevated||[...JUNCTIONS,...UNDERPASSES].some(k=>Math.abs(q-k.s)<k.halfWidth+8)||STOPS.some(st=>Math.abs(st.s-q)<st.footprintLength/2+st.stagger/2+8);
-  if(blocked(next+j.dir*2))j.dir*=-1;else if(giveWay(j,sample(j.s),dt,1.6,.6))j.s=next;const r=sample(j.s),lat=j.side*(roadSection(j.s).right+2.3)+(j.dodge||0),before=j.group.position.clone();
-  j.group.position.set(r.x+r.lx*lat,r.groundY+footpathHeight(j.s)+.02,r.z+r.lz*lat);j.group.rotation.y=r.heading+(j.dir===1?0:Math.PI);j.group.visible=Math.abs(j.s-subjectS)<400;if(j.group.visible)posePedestrian(j.group,before.distanceTo(j.group.position)<1?before.distanceTo(j.group.position):0,dt);}
+ for(const p of sitters){p.group.visible=Math.abs(p.s-subjectS)<pedVis;if(cosmetic&&p.group.visible)posePedestrian(p.group,0,simDt,pedStep(p.group,true));}
+ for(const j of joggers){const next=j.s+j.dir*j.v*dt,blocked=q=>q<40||q>LENGTH-40||sample(q).elevated||ALL_CROSSINGS.some(k=>Math.abs(q-k.s)<k.halfWidth+8)||STOPS.some(st=>Math.abs(st.s-q)<st.footprintLength/2+st.stagger/2+8);
+  if(blocked(next+j.dir*2))j.dir*=-1;else if(giveWay(j,sample(j.s),dt,1.6,.6))j.s=next;const r=sample(j.s),lat=j.side*(roadSection(j.s).right+2.3)+(j.dodge||0),bx=j.group.position.x,bz=j.group.position.z;
+  j.group.position.set(r.x+r.lx*lat,r.groundY+footpathHeight(j.s)+.02,r.z+r.lz*lat);j.group.rotation.y=r.heading+(j.dir===1?0:Math.PI);j.group.visible=Math.abs(j.s-subjectS)<pedVis;
+  const stepD=Math.hypot(j.group.position.x-bx,j.group.position.z-bz);j._moved=(j._moved||0)+(stepD<1?stepD:0);
+  if(cosmetic){if(j.group.visible)posePedestrian(j.group,j._moved,simDt,pedStep(j.group));j._moved=0;}}
  for(const c of crossers){const edge=roadSection(c.s),finish=c.dir===1?edge.right+.8:cycleOffset(c.s)-2.6;
   if(!c.active){c.wait-=dt;const clearTime=(edge.right-edge.left+1.6)/1.3+3;
    const player=state.mode!=='control'&&!noCab()&&state.mode!=='turnback'&&state.s>c.s-35&&state.s<c.s+28||state.mode!=='control'&&!noCab()&&state.mode!=='turnback'&&state.v>.1&&c.s>state.s&&c.s-state.s<state.v*clearTime+12;
@@ -586,27 +619,38 @@ function updateStreetLife(dt,subjectS){
    const sig=c.signal&&signalObjects.find(s=>s.c===c.signal),phase=sig?((state.time+sig.offset)%42):0;const walk=state.mode==='control'&&sig?aspect(sig.control,'ped')==='go':!sig||phase>=28&&phase<30;if(c.wait<=0&&!player&&(state.mode==='control'&&sig||!incoming)&&walk)c.active=true;
   }
   if(c.active){c.lat+=c.dir*1.3*dt;if((finish-c.lat)*c.dir<=0){c.lat=finish;c.active=false;c.dir*=-1;c.wait=18;}}
-  c.group.position.copy(point(c.s,c.lat));c.group.position.y=groundAt(c.group.position.x,c.group.position.z,c.s).y+.035;c.group.rotation.y=sample(c.s).heading+c.dir*Math.PI/2;c.group.visible=Math.abs(c.s-subjectS)<350;
-  if(c.group.visible)posePedestrian(c.group,c.active?1.3*dt:0,dt);
+  c.group.visible=Math.abs(c.s-subjectS)<pedVis;
+  if(c.active||!c._placed){c.group.position.copy(point(c.s,c.lat));c.group.position.y=groundAt(c.group.position.x,c.group.position.z,c.s).y+.035;c.group.rotation.y=sample(c.s).heading+c.dir*Math.PI/2;c._placed=true;}
+  c._moved=(c._moved||0)+(c.active?1.3*dt:0);
+  if(cosmetic){if(c.group.visible)posePedestrian(c.group,c._moved,simDt,pedStep(c.group));c._moved=0;}
   if(c.active&&c.group.visible)contact(c.group,.5,.5,1.8,'Pedestrian');
  }
  for(const c of cyclists){const section=cyclingSection(c.s),terminal=c.dir===1?section.end:section.start;let stop=terminal;
-  for(const j of [...JUNCTIONS,...UNDERPASSES].filter(j=>!CYCLE_BRIDGES.includes(j))){const dist=(j.s-c.s)*c.dir,line=j.s-c.dir*(j.halfWidth+2);if(dist>0&&(line-c.s)*c.dir>=0&&traffic.some(t=>{if(t.cross!==j)return false;const r=sample(j.s),lat=(t.group.position.x-r.x)*r.lx+(t.group.position.z-r.z)*r.lz;return Math.abs(lat-cycleOffset(j.s))<(t.v>.2?25:t.length/2+1);}))stop=c.dir===1?Math.min(stop,line):Math.max(stop,line);}
+  for(const j of NON_BRIDGE_JUNCTIONS){const dist=(j.s-c.s)*c.dir,line=j.s-c.dir*(j.halfWidth+2);if(dist>0&&(line-c.s)*c.dir>=0&&traffic.some(t=>{if(t.cross!==j)return false;const r=sample(j.s),lat=(t.group.position.x-r.x)*r.lx+(t.group.position.z-r.z)*r.lz;return Math.abs(lat-cycleOffset(j.s))<(t.v>.2?25:t.length/2+1);}))stop=c.dir===1?Math.min(stop,line):Math.max(stop,line);}
   const move=approachStep(c.s,c.v,c.dir,4.2,stop,dt);c.s=move.position;c.v=move.speed;c.liftHeight=cycleBridgeHeight(c.s);if(Math.abs(c.s-terminal)<.05){c.dir*=-1;c.v=0;}
-  c.group.visible=Math.abs(c.s-subjectS)<400;if(c.group.visible)poseCyclist(c,dt);
+  c.group.visible=Math.abs(c.s-subjectS)<(mobile?180:260);if(cosmetic&&c.group.visible)poseCyclist(c,simDt);
   const r=cycleSample(c.s);c.group.position.set(r.x+r.lx*c.dir*.85,0,r.z+r.lz*c.dir*.85);c.group.position.y=r.groundY+(c.liftHeight??cycleBridgeHeight(c.s))+.035;c.group.rotation.y=r.heading+(c.dir===1?0:Math.PI);
  }
  // Children hop about (ballistic 0.6 s hops, 0.44 m high, landing crouch between them).
- for(const p of plazaPeople){const t=state.time*.65+p.phase,walk=p.hop?Math.sin(t*.4)*2:strollStep(p,dt),x=p.laneX+(p.dodge||0),z=p.laneZ-walk,before=p.group.position.clone(),w=worldCoordinates(x,z);
+ for(const p of plazaPeople){
+  if(p.along!==undefined){
+   const end=riverFrames.at(-1).d-4;
+   p.along+=p.dir*p.speed*dt;if(p.along<4||p.along>end){p.along=Math.max(4,Math.min(end,p.along));p.dir*=-1;}
+   const w=promenadePose(p.along,p.side,renderedGround);p.group.position.set(w.x,w.y+.01,w.z);p.group.rotation.y=w.heading+(p.dir<0?Math.PI:0);
+   p.group.visible=Math.hypot(w.x-camera.position.x,w.z-camera.position.z)<plazaVis;p._moved=(p._moved||0)+p.speed*dt;
+   if(cosmetic){if(p.group.visible)posePedestrian(p.group,p._moved,simDt,pedStep(p.group));p._moved=0;}continue;
+  }
+  const t=state.time*.65+p.phase,walk=p.hop?Math.sin(t*.4)*2:strollStep(p,dt),x=p.laneX+(p.dodge||0),z=p.laneZ-walk,bx=p.group.position.x,bz=p.group.position.z,w=worldCoordinates(x,z);
   const tau=(state.time*.9+p.phase)%1.4,air=p.hop&&tau<.6;p.group.position.set(w.x,pavingY(x,z)+(air?2.94*tau-4.905*tau*tau:0),w.z);
   p.group.rotation.y=a2Rail.heading+(p.dir<0?Math.PI:0);p.group.userData.action={air};
-  p.group.visible=Math.abs(STOPS[1].s-subjectS)<520;if(p.group.visible)posePedestrian(p.group,Math.hypot(p.group.position.x-before.x,p.group.position.z-before.z)<1?Math.hypot(p.group.position.x-before.x,p.group.position.z-before.z):0,dt);}
+  const stepD=Math.hypot(p.group.position.x-bx,p.group.position.z-bz);p._moved=(p._moved||0)+(stepD<1?stepD:0);
+  p.group.visible=Math.abs(STOPS[1].s-subjectS)<plazaVis;if(cosmetic){if(p.group.visible)posePedestrian(p.group,p._moved,simDt,pedStep(p.group));p._moved=0;}}
  for(const p of plazaCats){
   if(p.wait>0)p.wait-=dt;else{p.x+=p.dir*p.speed*dt;if(Math.abs(p.x)>=p.span){p.x=Math.sign(p.x)*p.span;p.dir=-p.dir;p.wait=1.5+((p.phase*7)%2.5);}}
-  const s=p.s+p.x,r=sample(s),pos=point(s,p.lat),before=p.group.position.clone();
-  p.group.position.set(pos.x,groundAt(pos.x,pos.z,s).y+.01,pos.z);
-  p.group.rotation.y=r.heading+(p.dir<0?Math.PI:0);p.group.visible=Math.abs(s-subjectS)<450;
-  if(p.group.visible){const d=before.distanceTo(p.group.position);posePet(p.group,d<1?d:0,dt);}
+  const s=p.s+p.x,bx=p.group.position.x,bz=p.group.position.z;p.group.visible=Math.abs(s-subjectS)<petVis;
+  if((p.group.visible&&p.wait<=0)||!p._placed){const r=sample(s),pos=point(s,p.lat);p.group.position.set(pos.x,groundAt(pos.x,pos.z,s).y+.01,pos.z);p.group.rotation.y=r.heading+(p.dir<0?Math.PI:0);p._placed=true;}
+  const stepD=Math.hypot(p.group.position.x-bx,p.group.position.z-bz);p._moved=(p._moved||0)+(stepD<1?stepD:0);
+  if(cosmetic){if(p.group.visible)posePet(p.group,p._moved,simDt,pedStep(p.group));p._moved=0;}
  }
 }
 
@@ -708,7 +752,7 @@ function makeStopMarkers(){const cjk='"PingFang HK","Noto Sans CJK TC","Microsof
 }
 
 const headlights=[-1,1].map(side=>{const light=new T.SpotLight(0xe5efff,0,65,.4,.6,1.5);light.userData.side=side;scene.add(light,light.target);return light;});
-function weather(){const rain=state.condition==='rain',night=state.condition==='night';streetLightTick=0;peopleGlowTick=0;atmosphere.setCondition(state.condition);sun.castShadow=!night&&gfx.settings.shadow!==0&&governor.shed<3;// moonlight (0.12) shadows are barely visible but re-render the whole scene into a 4096² map every frame
+function weather(){const rain=state.condition==='rain',night=state.condition==='night';streetLightTick=0;peopleGlowTick=0;atmosphere.setCondition(state.condition);shadowForce=true;sun.castShadow=!night&&gfx.settings.shadow!==0&&governor.shed<3;// moonlight (0.12) shadows are barely visible but re-render the whole scene into a 4096² map every frame
  environment.weather(rain);environment.setNight(night);scene.userData.nightLights=night?1:0;trafficLights(night);railway?.setNight(night);environment.markingMaterial.emissive.set(0xece8d3);environment.markingMaterial.emissiveIntensity=night?.22:0;for(const m of environment.nightMaterials){m.emissive.copy(m.color);m.emissiveIntensity=night?.8:0;}environment.materials.lamp.emissiveIntensity=night?2.4:0;setInteriorLighting(night);setBillboardLighting(scene,night);for(const actor of [...traffic,...cyclists,...(playerCar.group?[playerCar]:[])])actor.group.traverse(n=>{if(!n.isMesh)return;const mn=n.material?.name;if(['light','red'].includes(mn)){n.material.emissive.copy(n.material.color);n.material.emissiveIntensity=night?4:.35;}else if(mn==='minibus_cabin'||mn==='minibus_sign'){n.material.emissiveIntensity=night?1.8:.50;}});scene.traverse(n=>{if(n.isLight&&n!==sun&&n!==ambient){if(!night)n.intensity=0;n.visible=night&&n.name!=='Tuen Ma headlight beam';}});$('#night').textContent=night?'Scene: Day':'Scene: Night';}
 function setInteriorLighting(night){for(const tram of [vehicle,...ai,...depotVehicles].filter(Boolean)){const level=tram.isDepot?.18:1.35;for(const section of tram.sections)section.traverse(n=>{if(n.name==='Passenger ceiling light')n.intensity=night?16*level:0;if(n.name==='Interior ceiling LED'){n.visible=night;n.material.color.setHex(tram.isDepot?0x625f58:0xfff0da);}if(n.name==='Interior light spill')n.visible=night&&!tram.isDepot;if(!n.isMesh||!n.material?.emissive)return;const m=n.material;if(m.name==='glass'){m.transparent=true;m.opacity=night?.32:.92;m.depthWrite=false;m.emissive.set(night?0x8b9b8d:0);m.emissiveIntensity=night?.15*level:0;}else if(m.name==='cabin_led'){m.emissive.set(0xffeed5);m.emissiveIntensity=night?3*level:0;}else if(!['light','red','led_orange'].includes(m.name)&&!m.name.startsWith('btn_')&&!n.name.startsWith('cab_display')){m.emissive.copy(m.color);const saloon=n.parent?.name.startsWith('passenger_interior');m.emissiveIntensity=(night?(saloon?.48:m.name==='blue'||m.name==='yellow'?.5:.11):saloon?.14:0)*level;/* saloon lights stay on by day */}});}
  for(const station of stations)station.root.traverse(n=>{if(n.name==='Station canopy LED')n.visible=night;if(n.isMesh&&n.material?.emissive&&n.material.name!=='light'&&!n.name.startsWith('Billboard')){n.material.emissive.copy(n.material.color);n.material.emissiveIntensity=night?(n.material.name.startsWith('sign_text')?1.8:.12):(n.material.name.startsWith('sign_text')?.25:0);}});
@@ -765,7 +809,7 @@ function passengerComfort(){
  if(hazard&&!state.handrailHazard&&state.time-(state.lastHandrail??-Infinity)>=45){state.lastHandrail=state.time;audio.announce('handrail');}
  state.handrailHazard=hazard;
 }
-function action(name){if(name==='camera'&&state.avatar==='ride'){rideView();return;}if(name==='camera'&&state.mode!=='free'){state.cam=(state.cam+1)%CAMERAS.length;resetOrbit();firstCamera=true;toast(CAMERAS[state.cam]);return;}if(name==='sound'){state.muted=!state.muted;audio.setMuted(state.muted);$('#sound').textContent=state.muted?'Sound off':'Sound on';return;}if(name==='pause'){if(state.mode==='control'&&controlRoom.finished)return;ffRate=1;if(state.screen==='driving')show('paused');else if(state.screen==='paused')show('driving');audio.setDrive(0,false);return;}if(name==='ff'){if(state.screen==='driving'){ffRate=ffRate===1?2:ffRate===2?4:1;toast(ffRate>1?`Fast-forward ${ffRate}×`:'Fast-forward off · 1×');}return;}if(state.screen!=='driving'||['free','control'].includes(state.mode))return;
+function action(name){if(name==='camera'&&state.avatar==='ride'){rideView();return;}if(name==='camera'&&state.mode!=='free'){state.cam=(state.cam+1)%CAMERAS.length;resetOrbit();firstCamera=true;shadowForce=true;toast(CAMERAS[state.cam]);return;}if(name==='sound'){state.muted=!state.muted;audio.setMuted(state.muted);$('#sound').textContent=state.muted?'Sound off':'Sound on';return;}if(name==='pause'){if(state.mode==='control'&&controlRoom.finished)return;ffRate=1;if(state.screen==='driving')show('paused');else if(state.screen==='paused')show('driving');audio.setDrive(0,false);return;}if(name==='ff'){if(state.screen==='driving'){ffRate=ffRate===1?2:ffRate===2?4:1;toast(ffRate>1?`Fast-forward ${ffRate}×`:'Fast-forward off · 1×');}return;}if(state.screen!=='driving'||['free','control'].includes(state.mode))return;
  switch(name){case'go':if(mobile&&!state.speedSetting){state.speedSetting=30;$('#speed-control').value=30;$('#target-speed').value=30;}if(state.crashed){action('recover');return;}if(tractionLocked({...state,park:false})){toast('Close doors before departure / 請先關門');return;}state.guide=true;state.park=false;state.mobileBrake=false;state.cruise=true;break;
  case'depot':if(state.returning)return;state.depotSelected=!state.depotSelected;toast(state.depotSelected?'Depot route selected · follow the guidance into the apron':'Main line selected');break;
  case'depot-left':case'depot-right':if(Math.abs(state.v)>.05||state.door>.01){toast('Stop and close doors before selecting an exit');return;}if(!state.depotRoute){toast('Choose an exit after driving inside the depot');return;}state.depotExitDir=name==='depot-left'?1:-1;if(state.depotOutbound&&state.park){state.branchCurve=depotExitCurve(vehicle.sections[0].position,state.depotExitDir);state.branchDistance=0;toast('Depot exit selected');return;}action('cab');break;
@@ -1084,16 +1128,16 @@ function terminalStep(a,dt){
  a.sections.forEach((g,i)=>{const distance=a.loopDistance-i*10.6;let p,t;if(distance<0){const r=sample(35-distance);p=point(35-distance,laneOffset(35-distance,-1));t=new T.Vector3(-r.tx,0,-r.tz);}else{const u=Math.min(1,distance/terminalLength);p=terminalCurve.getPointAt(u);t=terminalCurve.getTangentAt(u);}g.position.copy(p);g.position.y+=.025;g.rotation.set(0,Math.atan2(-t.x,-t.z)+(a.flipped?Math.PI:0),0);if(i){const prior=a.sections[i-1].localToWorld(new T.Vector3(0,.9,a.flipped?-5.3:5.3)),front=g.localToWorld(new T.Vector3(0,.9,a.flipped?5.3:-5.3));g.position.add(prior.sub(front));}});
  if(a.loopDistance>=terminalLength){nextDispatch[1]=state.time+state.headway;a.dir=1;a.s=35;a.lat=1.9;a.stopIndex=0;a.served=[];a.terminal=null;a.posed=false;}
 }
-function actors(dt){const subjectS=viewS();
+function actors(dt,{cosmetic=true,simDt=dt}={}){const subjectS=viewS();
 
  const obstacles=state.mode!=='control'&&!noCab()&&state.mode!=='turnback'?vehicle.sections.map(g=>{const s=project(g.position.x,g.position.z,state.s),p=sample(s);return {s,lat:(g.position.x-p.x)*p.lx+(g.position.z-p.z)*p.lz,y:g.position.y};}):[];
- const participants=ai.filter(a=>a.active);if(state.mode!=='control'&&!noCab()&&state.mode!=='turnback'&&!state.depotRoute)participants.push({s:state.s,dir:state.returning?-1:1,active:true});
+ const participants=ai.filter(a=>a.active),activeSignals=signalObjects.filter(s=>!s.underpass);if(state.mode!=='control'&&!noCab()&&state.mode!=='turnback'&&!state.depotRoute)participants.push({s:state.s,dir:state.returning?-1:1,active:true});
  for(const a of ai){
   if(!a.active){a.sections.forEach(g=>g.visible=false);continue;}
-  if(a.terminal){terminalStep(a,dt);for(const g of a.sections)g.visible=Math.abs(a.s-subjectS)<700;continue;}
+  if(a.terminal){terminalStep(a,dt);for(const g of a.sections)g.visible=Math.abs(a.s-subjectS)<520;continue;}
   const st=STOPS[a.stopIndex],target=st?stopTarget(st,a.dir):a.dir===1?END_STOP-4:35;
   let stop=target;const limit=line=>{if((line-a.s)*a.dir>=-.01&&(line-stop)*a.dir<0)stop=line;};
-  for(const sig of signalObjects.filter(s=>!s.underpass))if(signalAt(sig)!=='go')limit(sig.centre-a.dir*(sig.stop+6));
+  for(const sig of activeSignals)if(signalAt(sig)!=='go')limit(sig.centre-a.dir*(sig.stop+6));
   for(const c of crossers)if(c.active&&crosserInPath(c.lat,c.dir,a.lat))limit(c.s-a.dir*9);
   const following=followingStop(a.s,a.dir,participants,a);if((following-stop)*a.dir<0)stop=following;
   for(const o of obstacles)if(Math.abs(o.lat-a.lat)<2.8&&Math.abs(o.y-sample(a.s).y)<3.5&&(o.s-a.s)*a.dir>=-6){const line=o.s-a.dir*16;if((line-stop)*a.dir<0)stop=line;}
@@ -1104,51 +1148,66 @@ function actors(dt){const subjectS=viewS();
   else if(a.dwell>0){a.dwell=Math.max(0,a.dwell-dt);a.v=0;a.door=Math.min(1,a.dwell,10-a.dwell);if(!a.dwell){a.pax=STOPS[a.stopIndex]?.terminus?0:Math.min(180,Math.round((a.pax||20)*.7)+12+a.stopIndex*3);if(dispatch&&dispatch.destination===STOPS[a.stopIndex]?.id){dispatch.terminated=true;}else a.stopIndex+=a.dir;}}
   else{let speedLimit=dispatch?Math.min(dispatch.speed/3.6,Math.sqrt((state.condition==='rain'?.65:.9)*curveRadius(a.s))):8.3;if(dispatch&&(dispatch.hold||dispatch.speed===0)&&inBox)speedLimit=Math.max(speedLimit,4);else if(dispatch?.hold)speedLimit=0;if(dispatch&&speedLimit<a.v)speedLimit=Math.max(speedLimit,a.v-1.6*dt);const move=approachStep(a.s,a.v,a.dir,speedLimit,stop,dt);a.s=move.position;a.v=move.speed;a.door=0;if(st&&Math.abs(a.s-target)<.03){a.dwell=10;a.served.push(st.id);}if(!st&&(a.s-target)*a.dir>-.03){a.terminal=a.dir===1?'reverse':'loop';a.turnTime=0;a.loopDistance=0;a.v=0;}}
   a.lat=dispatch?.skipped.length?laneOffset(a.s,a.dir,dispatch.skipped):a.dir===-1?returnOffset(a.s):laneOffset(a.s);
-  poseTram(a,a.s,a.lat,a.dir===-1,a.door);for(const g of a.sections){g.visible=a.active&&Math.abs(a.s-subjectS)<700;if(g.visible)contact(g,2.54,10.6,3.5,'ART');}
+  const vis=a.active&&Math.abs(a.s-subjectS)<520;
+  if(cosmetic&&(vis||!a.posed))poseTram(a,a.s,a.lat,a.dir===-1,a.door);
+  for(const g of a.sections){g.visible=vis;if(vis&&(cosmetic||Math.abs(a.s-state.s)<60))contact(g,2.54,10.6,3.5,'ART');}
  }
  // City traffic: one step of the lane-graph cars (recycled around the camera, out of its view), then their models follow.
  const cityLive=state.mode!=='control'&&cityTraffic;
- if(cityLive){const dir=camera.getWorldDirection(new T.Vector3()),fl=Math.hypot(dir.x,dir.z)||1,blockers=noCab()?[]:vehicle.sections.map(b=>({x:b.position.x,z:b.position.z,r:5.5,w:1.5}));
-  if(state.avatar==='foot'&&state.mode!=='free')blockers.push({x:player.x,z:player.z,r:.8,w:.5});if(playerCar.active)blockers.push({x:playerCar.x,z:playerCar.z,r:2.4,w:1});
-  const env={focus:{x:camera.position.x,z:camera.position.z},view:{x:camera.position.x,z:camera.position.z,fx:dir.x/fl,fz:dir.z/fl},blockers};
-  for(let t=Math.min(dt,1.5);t>1e-4;t-=.1)cityTraffic.step(Math.min(.1,t),env);cityPeople.step(Math.min(dt,.25),env);cityCats?.step(Math.min(dt,.25),env);}
- for(const w of cityWalkers){const h=w.h;w.group.visible=!!(cityLive&&h.path)&&Math.hypot(h.x-camera.position.x,h.z-camera.position.z)<150;
-  if(w.group.visible){w.group.position.set(h.x,h.y+.02,h.z);w.group.rotation.y=Math.atan2(-h.tx,-h.tz);posePedestrian(w.group,h.moved,dt);}}
- for(const a of cityCatActors){const c=a.c;a.group.visible=!!(cityLive&&c.path)&&Math.hypot(c.x-camera.position.x,c.z-camera.position.z)<140;
-  if(a.group.visible){a.group.position.set(c.x,c.y+.01,c.z);a.group.rotation.y=Math.atan2(-c.tx,-c.tz);posePet(a.group,c.moved,dt);}}
- for(const d of dogs)updateDogFollower(d,d.master.group,dt,d.groundY);
+ if(cosmetic){
+  if(cityLive){const dir=camera.getWorldDirection(_camDir),fl=Math.hypot(dir.x,dir.z)||1,blockers=noCab()?[]:vehicle.sections.map(b=>({x:b.position.x,z:b.position.z,r:5.5,w:1.5}));
+   if(state.avatar==='foot'&&state.mode!=='free')blockers.push({x:player.x,z:player.z,r:.8,w:.5});if(playerCar.active)blockers.push({x:playerCar.x,z:playerCar.z,r:2.4,w:1});
+   const env={focus:{x:camera.position.x,z:camera.position.z},view:{x:camera.position.x,z:camera.position.z,fx:dir.x/fl,fz:dir.z/fl},blockers};
+   for(let t=Math.min(simDt,1.5);t>1e-4;t-=.1)cityTraffic.step(Math.min(.1,t),env);cityPeople.step(Math.min(simDt,.25),env);cityCats?.step(Math.min(simDt,.25),env);}
+  for(const w of cityWalkers){const h=w.h;w.group.visible=!!(cityLive&&h.path)&&Math.hypot(h.x-camera.position.x,h.z-camera.position.z)<150;
+   if(w.group.visible){w.group.position.set(h.x,h.y+.02,h.z);w.group.rotation.y=Math.atan2(-h.tx,-h.tz);posePedestrian(w.group,h.moved,simDt,pedStep(w.group));}}
+  for(const a of cityCatActors){const c=a.c;a.group.visible=!!(cityLive&&c.path)&&Math.hypot(c.x-camera.position.x,c.z-camera.position.z)<(mobile?75:110);
+   if(a.group.visible){a.group.position.set(c.x,c.y+.01,c.z);a.group.rotation.y=Math.atan2(-c.tx,-c.tz);posePet(a.group,c.moved,simDt,pedStep(a.group));}}
+  for(const d of dogs){const nearMaster=d.master.group.visible&&d.master.group.position.distanceToSquared(camera.position)<(mobile?5625:12100);if(!nearMaster){d.group.visible=false;d.leash.visible=false;d.init=false;}else updateDogFollower(d,d.master.group,simDt,d.groundY,pedStep(d.master.group));}
+  parkingLotLife?.update(Math.min(simDt,.1),camera.position,playerCar);
+ }
  for(const c of traffic){if(c.life){const car=c.life;c.v=car.v;c.cross=car.piece?.kind==='cross'?car.piece.crossing.junction:null;
-   c.group.visible=!!(cityLive&&car.piece)&&Math.hypot(car.x-camera.position.x,car.z-camera.position.z)<520;
-   if(c.group.visible){c.group.position.set(car.x,car.y+.03,car.z);c.group.rotation.y=Math.atan2(-car.tx,-car.tz);contact(c.group,c.width,c.length,c.height,'Traffic');}continue;}
+   if(cosmetic){c.group.visible=!!(cityLive&&car.piece)&&Math.hypot(car.x-camera.position.x,car.z-camera.position.z)<380;
+    if(c.group.visible){c.group.position.set(car.x,car.y+.03,car.z);c.group.rotation.y=Math.atan2(-car.tx,-car.tz);
+     if(c.kind!=='minibus'){if(!c._wheelPivots){c._wheelPivots=[];c.group.traverse(n=>{if(n.name?.startsWith('road-wheel-'))c._wheelPivots.push(n);});}const near=c.group.position.distanceToSquared(camera.position)<9025;for(const w of c._wheelPivots)w.visible=near;}}}
+   if(c.group.visible)contact(c.group,c.width,c.length,c.height,'Traffic');continue;}
   if(cityLive){c.group.visible=false;c.v=0;continue;}
   if(state.mode==='control'&&c.releaseAt){if(state.time<c.releaseAt){c.v=0;continue;}c.releaseAt=0;}if(c.curve){const length=c.curve.getLength(),u=clamp(c.routeDistance/length,0,1),p=c.curve.getPointAt(u),t=c.curve.getTangentAt(u),front=c.routeDistance+c.length/2;let stop=c.routeDistance+1e6;const hold=line=>{if(front<=line+.3&&line-front<45)stop=Math.min(stop,Math.max(c.routeDistance,line-c.length/2));};
   // Route traffic (lanes baked into the curves): queue behind anything in the lane; hold at each signal or give-way line on the route.
   for(const o of traffic){if(o===c)continue;const d=o.group.position.clone().sub(p),ahead=d.x*t.x+d.z*t.z;if(ahead>0&&ahead<30&&Math.abs(d.x*t.z-d.z*t.x)<2.2&&Math.abs(d.y)<3)stop=Math.min(stop,Math.max(c.routeDistance,c.routeDistance+ahead-(o.length+c.length)/2-3));}
   for(const h of c.holds||[])if(!h.go())hold(h.at);
   if(state.mode!=='control'&&!noCab())for(const body of vehicle.sections){const delta=body.position.clone().sub(p),ahead=delta.x*t.x+delta.z*t.z,cross=Math.abs(delta.x*t.z-delta.z*t.x);if(ahead>0&&cross<4&&Math.abs(delta.y)<4)stop=Math.min(stop,c.routeDistance+Math.max(0,ahead-c.length/2-7));}
-  const move=approachStep(c.routeDistance,c.v,1,c.speed||11,stop,dt);c.routeDistance=move.position;c.v=move.speed;if(c.routeDistance>length){c.routeDistance=0;if(state.mode==='control')c.releaseAt=state.time+controlRoom.arrivalGap;}const v=clamp(c.routeDistance/length,0,1),q=c.curve.getPointAt(v),h=c.curve.getTangentAt(v);c.group.position.copy(q);c.group.position.y+=.08;c.group.rotation.y=Math.atan2(-h.x,-h.z);c.group.visible=Math.abs(project(q.x,q.z)-subjectS)<500;if(c.group.visible)contact(c.group,c.width,c.length,c.height,'Traffic');continue;}
+  const move=approachStep(c.routeDistance,c.v,1,c.speed||11,stop,dt);c.routeDistance=move.position;c.v=move.speed;if(c.routeDistance>length){c.routeDistance=0;if(state.mode==='control')c.releaseAt=state.time+controlRoom.arrivalGap;}const v=clamp(c.routeDistance/length,0,1),q=c.curve.getPointAt(v),h=c.curve.getTangentAt(v);c.group.position.copy(q);c.group.position.y+=.08;c.group.rotation.y=Math.atan2(-h.x,-h.z);c.group.visible=Math.abs(project(q.x,q.z)-subjectS)<500;if(cosmetic&&c.group.visible&&c.kind!=='minibus'){if(!c._wheelPivots){c._wheelPivots=[];c.group.traverse(n=>{if(n.name?.startsWith('road-wheel-'))c._wheelPivots.push(n);});}const near=c.group.position.distanceToSquared(camera.position)<9025;for(const w of c._wheelPivots)w.visible=near;}if(c.group.visible)contact(c.group,c.width,c.length,c.height,'Traffic');continue;}
  }
- for(const c of traffic){if(!c.group.visible){c.steer=0;c.prevYaw=undefined;continue;}const yaw=c.group.rotation.y;if(c.prevYaw!==undefined&&dt>1e-4){const dYaw=Math.atan2(Math.sin(yaw-c.prevYaw),Math.cos(yaw-c.prevYaw)),target=Math.abs(c.v)>.2?Math.max(-.48,Math.min(.48,Math.atan((c.length*.5)*(dYaw/dt)/Math.max(Math.abs(c.v),1.5)))):0;c.steer=smooth(c.steer||0,target,Math.min(1,dt*8));}c.prevYaw=yaw;animateRoadWheels(c.group,c.v*dt,c.steer||0);}
- updateStreetLife(dt,subjectS);updateBirds(dt,subjectS);
- for(const p of walkerObjects){
-  const previousX=p.group.position.x,previousY=p.group.position.y,previousZ=p.group.position.z;
-  const playerHere=state.mode!=='control'&&!noCab()&&state.index===p.station&&travelDirection()===p.side&&['boarding','departure'].includes(state.phase)&&state.door>.2;
-  const npc=ai.find(a=>a!==riders?.tram&&a.active&&a.stopIndex===p.station&&a.dir===p.side&&a.dwell>0&&a.door>.2);
-  const tram=playerHere?vehicle:npc,boarding=!!tram&&!p.roaming;
-  if(boarding){const clock=playerHere?state.dwell:10-npc.dwell;p.progress=clamp((clock-p.phase*.28)/(p.alight?2.4:4),0,1);const doors=tram.doors.filter(d=>d.side===(tram.flipped?-1:1)),d=doors[p.phase%doors.length],door=d.node.parent.localToWorld(d.base.clone());door.y=sample(stopCentre(STOPS[p.station],p.side)).y+.32+PLATFORM_RISE;const inside=door.clone().lerp(tram.sections[tram.flipped?tram.sections.length-1-d.si:d.si].position,.28);inside.y=door.y;p.group.position.lerpVectors(p.alight?inside:p.origin,p.alight?p.origin:inside,p.progress);const heading=(p.alight?p.origin:inside).clone().sub(p.alight?inside:p.origin);p.group.rotation.y=Math.atan2(-heading.x,-heading.z);p.group.visible=Math.abs(STOPS[p.station].s-subjectS)<450&&(p.alight||p.progress<1);}
-  else{const st=STOPS[p.station],R=p.patrolRadius??(p.roaming?35:3),speed=p.patrolSpeed??(p.roaming?1.3:1),centre=p.patrolCentre??stopCentre(st,p.side)+(p.phase-6)*4;
-   p.x??=Math.sin(p.phase*9)*R;p.dir??=p.phase%2?1:-1;p.wait??=0;
-   if(giveWay(p,sample(centre+p.x),dt,1.3)){if(p.wait>0)p.wait-=dt;else{p.x+=p.dir*speed*dt;if(Math.abs(p.x)>=R){p.x=Math.sign(p.x)*R;p.dir=-p.dir;p.wait=p.roaming?3:6;}}}
-   const q=centre+p.x;p.group.position.copy(point(q,p.side*(8.35+(p.phase%2)*.45)+p.dodge));p.group.position.y+=.32+PLATFORM_RISE;p.group.rotation.y=sample(q).heading+(p.dir<0?Math.PI:0);p.group.visible=Math.abs(st.s-subjectS)<450;}
-  if(p.group.visible)posePedestrian(p.group,Math.hypot(p.group.position.x-previousX,p.group.position.z-previousZ),dt);
+ if(cosmetic){
+  for(const c of traffic){if(!c.group.visible){c.steer=0;c.prevYaw=undefined;continue;}const yaw=c.group.rotation.y;if(c.prevYaw!==undefined&&simDt>1e-4){const dYaw=Math.atan2(Math.sin(yaw-c.prevYaw),Math.cos(yaw-c.prevYaw)),target=Math.abs(c.v)>.2?Math.max(-.48,Math.min(.48,Math.atan((c.length*.5)*(dYaw/simDt)/Math.max(Math.abs(c.v),1.5)))):0;c.steer=smooth(c.steer||0,target,Math.min(1,simDt*8));}c.prevYaw=yaw;animateRoadWheels(c.group,c.v*simDt,c.steer||0);}
+  updateStreetLife(simDt,subjectS,true,simDt);updateBirds(simDt,subjectS);
+  const pedVis=mobile?150:220;
+  for(const p of walkerObjects){
+   const playerHere=state.mode!=='control'&&!noCab()&&state.index===p.station&&travelDirection()===p.side&&['boarding','departure'].includes(state.phase)&&state.door>.2;
+   const npc=ai.find(a=>a!==riders?.tram&&a.active&&a.stopIndex===p.station&&a.dir===p.side&&a.dwell>0&&a.door>.2);
+   const tram=playerHere?vehicle:npc,boarding=!!tram&&!p.roaming,nearStop=Math.abs(STOPS[p.station].s-subjectS)<pedVis;
+   if(!boarding&&!nearStop){p.group.visible=false;p._moved=0;continue;}
+   const bx=p.group.position.x,bz=p.group.position.z;
+   if(boarding){const clock=playerHere?state.dwell:10-npc.dwell;p.progress=clamp((clock-p.phase*.28)/(p.alight?2.4:4),0,1);const doors=tram.doors.filter(d=>d.side===(tram.flipped?-1:1)),d=doors[p.phase%doors.length],door=d.node.parent.localToWorld(d.base.clone());door.y=sample(stopCentre(STOPS[p.station],p.side)).y+.32+PLATFORM_RISE;const inside=door.clone().lerp(tram.sections[tram.flipped?tram.sections.length-1-d.si:d.si].position,.28);inside.y=door.y;p.group.position.lerpVectors(p.alight?inside:p.origin,p.alight?p.origin:inside,p.progress);const heading=(p.alight?p.origin:inside).clone().sub(p.alight?inside:p.origin);p.group.rotation.y=Math.atan2(-heading.x,-heading.z);p.group.visible=nearStop&&(p.alight||p.progress<1);}
+   else{const st=STOPS[p.station],R=p.patrolRadius??(p.roaming?35:3),speed=p.patrolSpeed??(p.roaming?1.3:1),centre=p.patrolCentre??stopCentre(st,p.side)+(p.phase-6)*4;
+    p.x??=Math.sin(p.phase*9)*R;p.dir??=p.phase%2?1:-1;p.wait??=0;
+    if(giveWay(p,sample(centre+p.x),simDt,1.3)){if(p.wait>0)p.wait-=simDt;else{p.x+=p.dir*speed*simDt;if(Math.abs(p.x)>=R){p.x=Math.sign(p.x)*R;p.dir=-p.dir;p.wait=p.roaming?3:6;}}}
+    const q=centre+p.x;p.group.position.copy(point(q,p.side*(8.35+(p.phase%2)*.45)+p.dodge));p.group.position.y+=.32+PLATFORM_RISE;p.group.rotation.y=sample(q).heading+(p.dir<0?Math.PI:0);p.group.visible=nearStop;}
+   const stepD=Math.hypot(p.group.position.x-bx,p.group.position.z-bz);p._moved=(p._moved||0)+(stepD<1?stepD:0);
+   if(p.group.visible)posePedestrian(p.group,p._moved,simDt,pedStep(p.group));
+   p._moved=0;
+  }
  }
 
- for(const sig of signalObjects)for(const head of sig.heads){const phase=head.axis==='pedestrian'?(head.crossing==='side'?((state.mode==='control'?aspect(sig.control,'road'):signalAt(sig,true))==='stop'?'go':'stop'):state.mode==='control'?aspect(sig.control,'ped'):signalAt(sig)==='stop'?'go':'stop'):signalAt(sig,head.axis==='side'),lit=phase==='go'?2:phase==='amber'?1:0;head.bulbs.forEach((b,i)=>b.material.color.setHex(i===lit?[0xff4633,0xffd65b,0x55ff95][i]:0x1a2120));}
- // City crossroads heads follow the city traffic's stages: red+amber before green and amber after it; the green man flashes for 5 s.
- if(cityTraffic)for(const h of environment.citySignals){if(h.midblock==null)h.n??=cityLanes.nodes.filter(n=>n.signal).reduce((a,n)=>Math.hypot(n.x-h.node.x,n.z-h.node.z)<Math.hypot(a.x-h.node.x,a.z-h.node.z)?n:a);
-  const s=h.midblock==null?stageAt(h.n,cityTraffic.clock):midblockStage(h.midblock,cityTraffic.clock),on=h.midblock!=null?s.stage===h.stage:h.ped?(h.stage==='major'?s.stage==='major':/^arm/.test(s.stage)):s.stage===h.stage,soon=!h.ped&&s.stage===null&&s.next===h.stage&&s.left<=2;
-  const lit=h.ped?[!on,false,on&&(s.left>5||elapsed%.6<.3)]:[!on,on?s.left<=3:soon,on&&s.left>3];// soon implies red, so red + amber
-  h.bulbs.forEach((b,i)=>b.material.color.setHex(lit[i]?[0xff4633,0xffd65b,0x55ff95][i]:0x1a2120));}
+ if(cosmetic){
+  for(const sig of signalObjects)for(const head of sig.heads){const phase=head.axis==='pedestrian'?(head.crossing==='side'?((state.mode==='control'?aspect(sig.control,'road'):signalAt(sig,true))==='stop'?'go':'stop'):state.mode==='control'?aspect(sig.control,'ped'):signalAt(sig)==='stop'?'go':'stop'):signalAt(sig,head.axis==='side'),lit=phase==='go'?2:phase==='amber'?1:0;head.bulbs.forEach((b,i)=>b.material.color.setHex(i===lit?[0xff4633,0xffd65b,0x55ff95][i]:0x1a2120));}
+  // City crossroads heads follow the city traffic's stages: red+amber before green and amber after it; the green man flashes for 5 s.
+  if(cityTraffic)for(const h of environment.citySignals){if(h.midblock==null)h.n??=cityLanes.nodes.filter(n=>n.signal).reduce((a,n)=>Math.hypot(n.x-h.node.x,n.z-h.node.z)<Math.hypot(a.x-h.node.x,a.z-h.node.z)?n:a);
+   const s=h.midblock==null?stageAt(h.n,cityTraffic.clock):midblockStage(h.midblock,cityTraffic.clock),on=h.midblock!=null?s.stage===h.stage:h.ped?(h.stage==='major'?s.stage==='major':/^arm/.test(s.stage)):s.stage===h.stage,soon=!h.ped&&s.stage===null&&s.next===h.stage&&s.left<=2;
+   const lit=h.ped?[!on,false,on&&(s.left>5||elapsed%.6<.3)]:[!on,on?s.left<=3:soon,on&&s.left>3];// soon implies red, so red + amber
+   h.bulbs.forEach((b,i)=>b.material.color.setHex(lit[i]?[0xff4633,0xffd65b,0x55ff95][i]:0x1a2120));}
+ }
 
 }
 const cabDisplay=document.createElement('canvas');cabDisplay.width=512;cabDisplay.height=320;const cabTexture=new T.CanvasTexture(cabDisplay);cabTexture.colorSpace=T.SRGBColorSpace;cabTexture.flipY=false;
@@ -1228,7 +1287,7 @@ function makeAvatar(){player.group??=streetModel('pedestrian_0');player.group.na
   if(st.id==='A1'&&dir===-1)continue;
   const access=stationAccess(st,platform,dir),s=clamp(access.end+dir*2,4,LENGTH-4),r=sample(s),lat=platform.side*(roadSection(s).right+2.8),x=r.x+r.lx*lat,z=r.z+r.lz*lat;
   const group=streetModel('cyclist'),b={group,wheels:['bike_wheel_front','bike_wheel_rear'].map(k=>group.getObjectByName(k)),s,lat:1.6,dir:1,v:0,phase:0,parking:{x,z,y:groundAt(x,z,s).y,heading:r.heading},station:st.id};
-  const oldRider=group.getObjectByName('seated_rider');oldRider?.removeFromParent();const rider=colleague(GORDON);rider.name='seated_rider';rider.getObjectByName('contact shadow')?.removeFromParent();characterLighting(rider);litPeople.push(rider);group.add(rider);
+  const oldRider=group.getObjectByName('seated_rider');oldRider?.removeFromParent();const rider=colleague(GORDON);rider.name='seated_rider';rider.getObjectByName('contact shadow')?.removeFromParent();characterLighting(rider);litPeople.push(rider);group.add(skipWhenHidden(rider));
   group.name='parked-bike';poseCyclist(b,0);scene.add(group);bikes.push(b);parkBike(b,true);
  }
 }
@@ -1416,6 +1475,7 @@ function aim(dt){camera.far=state.mode==='free'&&state.freeY>150?3500:1600;const
 const lightRotation=new T.Quaternion(),lightInverse=new T.Quaternion(),lightPoint=new T.Vector3(),_sunMat=new T.Matrix4(),_sunZero=new T.Vector3(),_sunUp=new T.Vector3(0,1,0);
 function placeSun(subject){const d=ATMOS.uSunDir.value,texel=(sun.shadow.camera.right-sun.shadow.camera.left)/sun.shadow.mapSize.x;lightRotation.setFromRotationMatrix(_sunMat.lookAt(d,_sunZero,_sunUp));lightInverse.copy(lightRotation).invert();
  lightPoint.copy(subject).applyQuaternion(lightInverse);lightPoint.x=Math.round(lightPoint.x/texel)*texel;lightPoint.y=Math.round(lightPoint.y/texel)*texel;lightPoint.applyQuaternion(lightRotation);
+ if(lightPoint.distanceToSquared(sun.target.position)>1e-4)sunMovedSinceShadow=true;
  sun.target.position.copy(lightPoint);sun.position.copy(lightPoint).addScaledVector(d,220);}
 // Platform displays: every running vehicle (and the driver's own on a service run), turnarounds included. Redrawn once a second near the viewer.
 // Saloon displays for vehicles near the camera (both blink phases are cached per vehicle), and riders on the nearest one.
@@ -1444,7 +1504,6 @@ function hud(){if(state.mode==='control'&&state.screen!=='menu'){controlRoom.dra
 const rainPositions=new Float32Array(1200*6);
 for(let i=0;i<1200;i++){let x=(Math.random()-.5)*90,y=Math.random()*40,z=(Math.random()-.5)*90;rainPositions.set([x,y,z,x-.18,y-1.2,z-.08],i*6);}
 const rainGeometry=new T.BufferGeometry();rainGeometry.setAttribute('position',new T.BufferAttribute(rainPositions,3));const rainEffect=new T.LineSegments(rainGeometry,new T.LineBasicMaterial({color:0xc6e4e9,transparent:true,opacity:.22,depthWrite:false}));rainEffect.frustumCulled=false;shelterBridgeRain(rainEffect.material);scene.add(rainEffect);
-function freezeStatic(root){if(!root)return;root.updateMatrixWorld(true);root.traverse(n=>{n.matrixAutoUpdate=false;});}
 const nextLoadingFrame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
 function failLoading(error){
  ready=false;
@@ -1482,12 +1541,12 @@ async function boot(){try{let loaded=0;
  // District behind each kerb for the street furniture rules: the OZP use of the nearest plot (sandbox res / com / ind).
  const DISTRICT={residential:'res',village:'res',civic:'res',commercial:'com',mixed:'com',enterprise:'ind',industry:'ind',utility:'ind'};
  const districtAt=(x,z)=>{let best=null,bd=35;for(const p of cityBlocks){const d=Math.hypot(p.c[0]-x,p.c[1]-z);if(d<bd){bd=d;best=p;}}return DISTRICT[best?.group]||'res';};
- environment=buildEnvironment(scene,streetKit,{occupied:occupiedBy([...lots,...plotLand]),furniture,districtAt,lazyNight:true});const a1LionRoot=addA1Lion({scene}),a1Splats=addA1RoundaboutSplats({scene}),a1Veg=addA1RoundaboutVegetation({scene,groundAt:renderedGround}),greenBins=addGreenBins({scene,items:furniture.items,loader,modelUrl:modelUrl('green-bin.glb')}),furnitureModelsGroup=await loadFurnitureModels(furniture,{loader,url:src=>import.meta.env.BASE_URL+'street/models/'+src});scene.add(furnitureModelsGroup);loadingScreen.update(2,'Loading surroundings');await nextLoadingFrame();
+ const beforeEnv=new Set(scene.children);environment=buildEnvironment(scene,streetKit,{occupied:occupiedBy([...lots,...plotLand]),furniture,districtAt,lazyNight:true});const envRoots=scene.children.filter(c=>!beforeEnv.has(c));const a1LionRoot=addA1Lion({scene}),a1Splats=addA1RoundaboutSplats({scene}),a1Veg=addA1RoundaboutVegetation({scene,groundAt:renderedGround}),greenBins=addGreenBins({scene,items:furniture.items,loader,modelUrl:modelUrl('green-bin.glb')}),furnitureModelsGroup=await loadFurnitureModels(furniture,{loader,url:src=>import.meta.env.BASE_URL+'street/models/'+src});scene.add(furnitureModelsGroup);loadingScreen.update(2,'Loading surroundings');await nextLoadingFrame();
  const drawn=cityMask=networkMask(furniture.network,renderedGround,cityBlocks.roads);// lot buildings and trees keep off streets and paving drawn in the street editor
  const lotGroup=await buildLots(lots.filter(l=>!kitLot(l)),{kit:streetKit,ground:renderedGround,allowed:(x,z,r)=>sceneryClear(x,z,r)&&!drawn.buildingBlocked(x,z,r),allowedKept:(x,z,r)=>sceneryClear(x,z,r),allowedLow:(x,z,r)=>sceneryClear(x,z,r,true)&&!drawn.blocked(x,z,r),modelUrl:src=>import.meta.env.BASE_URL+'lots/models/'+src});scene.add(lotGroup);
  // City rebuild: residential, commercial, mixed-use, industrial, enterprise-park and village lots from the sandbox modern kit.
  const kitSites=cityBlocks.map(p=>({id:p.id,poly:p.poly.map(([x,z])=>({x,z})),edges:p.roles.map(role=>({role})),yaw:p.yaw,y:p.y-.15,modern:p.type,seed:p.seed}));// kit ground floor (y 0.15) on the plinth
- const kitCity=renderModernBuildings(kitSites,{near:220,staticCity:true});scene.add(kitCity);await kitCity.userData.ready;
+ kitCity=renderModernBuildings(kitSites,{near:mobile?95:135,staticCity:true});scene.add(kitCity);await kitCity.userData.ready;
  // Every plot stands on a paved plinth flush with its street's footway, with a forecourt out to the footway (blocks.js
  // plotPaving): hardscape runs unbroken from the kerb to the building, and no building stands in grass.
  let plotPavingMesh=null;{const {pos,idx}=plotPaving(cityBlocks,cityBlocks.roads),geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(pos,3));geo.setIndex(idx);geo.computeVertexNormals();
@@ -1497,7 +1556,7 @@ async function boot(){try{let loaded=0;
  if(new URLSearchParams(location.search).get('debug')==='city'){const warnings=cityDiagnostics(lots,furniture);planOverlay=cityOverlay(lots,lotGroup.userData.cityPlan,renderedGround);scene.add(planOverlay);if(warnings.length)console.warn('City plan:\n'+warnings.join('\n'));}
  const gfxButton=document.createElement('button');gfxButton.id='graphics-button';gfxButton.innerHTML='<b>⚙</b><small>Graphics</small>';gfxButton.setAttribute('aria-label','Graphics settings');gfxButton.setAttribute('aria-pressed','false');$('#edge-tools').append(gfxButton);
  gfxButton.onclick=()=>{gfxButton.blur();gfxButton.setAttribute('aria-pressed',String(gfx.toggle()));};
- environment.nightMaterials.push(...lotNightMaterials());railway=createRailway(scene,models.get('tuen-ma-train.glb').scene);
+ environment.nightMaterials.push(...lotNightMaterials());renderer.localClippingEnabled=true;railway=createRailway(scene,models.get('tuen-ma-train.glb').scene);
  const advertAnisotropy=Math.min(mobile?2:8,renderer.capabilities.getMaxAnisotropy());
  const buildingAdvertsPromise=addBuildingAdverts(scene,asset,advertAnisotropy);
  const tramAdvertsPromise=loadTramAdverts(asset,advertAnisotropy);
@@ -1519,12 +1578,19 @@ async function boot(){try{let loaded=0;
  [vehicle,...ai,...depotVehicles].forEach((tram,i)=>{const campaign=tramCampaign(i);applyTramAdvert(tram,tramAdverts.find(c=>c.id===campaign?.id));});
  // Saloon fit-out and cove adverts reuse the street/station billboard artwork (depot vehicles stay plain).
  [vehicle,...ai].forEach((tram,i)=>furnishTram(tram,saloonAds,i));
- makeSignals();makeTraffic();makeStreetLife();riders=createRiders({make:i=>{const g=streetModel('pedestrian_'+(i*7+2)%PEDESTRIAN_COUNT);g.name='saloon-rider';const shadow=g.getObjectByName('contact shadow');if(shadow)shadow.visible=false;return g;},pose:posePedestrian});makeScooters();makeBirds();makeStopMarkers();makeAvatar();
+ makeSignals();makeTraffic();makeStreetLife();riders=createRiders({make:i=>{const g=streetModel('pedestrian_'+(i*7+2)%PEDESTRIAN_COUNT);g.name='saloon-rider';const shadow=g.getObjectByName('contact shadow');if(shadow)shadow.visible=false;return skipWhenHidden(g);},pose:posePedestrian});makeScooters();makeBirds();makeStopMarkers();makeAvatar();
+ for(const r of envRoots)freezeStatic(r);
+ freezeStatic(lotGroup);if(planOverlay)freezeStatic(planOverlay);
+ for(const h of [...environment.citySignals,...environment.signals])if(!h.sharedPole)freezeStatic(h.group);
  for(const st of stations)freezeStatic(st.root);
  freezeStatic(kitCity);freezeStatic(plotPavingMesh);freezeStatic(a1LionRoot);freezeStatic(furnitureModelsGroup);
  for(const list of [a1Splats,a1Veg,greenBins])for(const r of list)freezeStatic(r);
  for(const a of depotVehicles)for(const g of a.sections)freezeStatic(g);
  if(railway?.root){const movingRail=new Set([...railway.trains.map(t=>t.group),...railway.viaductLights.flatMap(l=>[l,l.target])]);railway.root.updateMatrixWorld(true);railway.root.matrixAutoUpdate=false;for(const child of railway.root.children)if(!movingRail.has(child))freezeStatic(child);}
+ for(const a of ai)for(const g of a.sections)skipWhenHidden(g);
+ for(const t of [vehicle,...ai])for(const it of t?.interiors||[])skipWhenHidden(it.node);
+ for(const a of [...traffic,...cityWalkers,...walkerObjects,...sitters,...crossers,...cyclists,...plazaPeople,...joggers,...scooters,...bikes,...birds])skipWhenHidden(a.group);
+ if(player.group)skipWhenHidden(player.group);
  const footways=[];scene.traverse(mesh=>{if(mesh.userData.corridorPaving)footways.push(mesh);});
  corridorFootway=surfaceSampler(footways);
  streetBlocked=streetObstacles(environment.fences,[...colliders,...environment.drivePosts,...environment.signals.filter(s=>!s.sharedPole).map(s=>s.group.position)]);
@@ -1541,7 +1607,7 @@ async function boot(){try{let loaded=0;
   if(point.length===3&&point.every(Number.isFinite)&&Math.abs(point[0])<5000&&Math.abs(point[1])<5000){
    const [x,z]=point,d=Math.max(45,Math.min(155,point[2])),s=project(x,z+d);
    reset('free');Object.assign(state,{mode:'free',avatar:'drive',freeWalk:false,freeX:x,freeZ:z+d,freeS:s,freeY:renderedGround(x,z)+d*1.25,freeHeading:0});
-   document.body.dataset.mode='free';Object.assign(orbit,{yaw:0,pitch:-Math.atan(1.25)});environment.update(s);
+   document.body.dataset.mode='free';Object.assign(orbit,{yaw:0,pitch:-Math.atan(1.25)});environment.update(s);shadowForce=true;
   }
  }
  if(new URLSearchParams(location.search).has('ozpCapture')){
@@ -1563,23 +1629,23 @@ async function boot(){try{let loaded=0;
 // ponytail: phone GPU budget. People (contact blob under each) and instanced beds (trees, railings, ramp trucks) stop casting into the shadow pass,
 // and the shadow map refreshes every other frame. Phones and slow devices also shed resolution: the governor lowers the pixel ratio while frames stay slow.
 if(mobile)autoFullscreen(()=>toast('Tip · Share ▸ Add to Home Screen for full screen · 加到主畫面可全螢幕',7));
-let shadowParity=0,lastCpu=0;
-function tuneShadows(){if(mobile)renderer.shadowMap.autoUpdate=false;scene.traverse(n=>{if(n.isSkinnedMesh||(mobile&&n.isInstancedMesh))n.castShadow=false;});}
+function tuneShadows(){renderer.shadowMap.autoUpdate=false;scene.traverse(n=>{if(n.isSkinnedMesh||(mobile&&n.isInstancedMesh)||/^railing plate /.test(n.name))n.castShadow=false;});}
 // Apply the governor's verdict: pixel ratio, then scenery distance and shadows as it sheds load.
 function applyGovernor(){renderer.setPixelRatio(governor.ratio);renderer.setSize(innerWidth,innerHeight);atmosphere.setSize(innerWidth,innerHeight);
- const keep=1-.15*governor.shed;setSceneryScale(keep);camera.far=1600*keep;camera.updateProjectionMatrix();setGraphics(atmosphere.cinematic);governor.suspend(1);}
+ const keep=1-.15*governor.shed;setSceneryScale(keep);camera.far=1600*keep;camera.updateProjectionMatrix();if(kitCity?.userData?.lod){kitCity.userData.lod.near=Math.round((mobile?95:135)*keep);kitCity.userData.update?.(camera,true);}setGraphics(atmosphere.cinematic);governor.suspend(1);}
 let lastNow=0;
 function frame(now){if(state.screen==='loading'){if(ready)requestAnimationFrame(frame);return;}renderer.info.reset();const t0=performance.now();draw(now);lastCpu=performance.now()-t0;const i=renderer.info;
  gfx.frame(now-lastNow,lastCpu,{calls:i.render.calls,triangles:i.render.triangles,width:renderer.domElement.width,height:renderer.domElement.height,ratio:renderer.getPixelRatio(),geometries:i.memory.geometries,textures:i.memory.textures,govRatio:governor.ratio,shed:governor.shed});lastNow=now;requestAnimationFrame(frame);}
-function draw(now){const rawFrame=(now-last);if(state.screen==='driving'&&gfx.settings.scale==='auto'){if(governor.tick(rawFrame,lastCpu,rawFrame/1000))applyGovernor();}else governor.suspend(1);if(mobile)renderer.shadowMap.needsUpdate=(shadowParity^=1)===1;const dt=clamp(rawFrame/1000,.001,.05);last=now;elapsed+=dt;
- if(state.screen==='driving'){if(ffRate>1){const why=ffBlock();if(why){ffRate=1;toast('Fast-forward off · '+why);}}let rest=dt*(window.__sgmts?.simulationRate??1)*ffRate;while(rest>0){let d=Math.min(rest,mobile?1/30:1/60);if(state.avatar==='drive')update(d);else{const held=[...keys];keys.clear();update(d);held.forEach(k=>keys.add(k));}actors(d);if(state.avatar!=='drive')updateAvatar(d);updateRiders(d);rest-=d;}if(state.frameTimes.length<90000)state.frameTimes.push(rawFrame);else state.frameTimes[state.frames%90000]=rawFrame;state.frames++;}
+function draw(now){const rawFrame=(now-last);if(state.screen==='driving'&&gfx.settings.scale==='auto'){if(governor.tick(rawFrame,lastCpu,rawFrame/1000))applyGovernor();}else governor.suspend(1);const dt=clamp(rawFrame/1000,.001,.05);last=now;elapsed+=dt;
+ const simDt=dt*(window.__sgmts?.simulationRate??1)*ffRate;
+ if(state.screen==='driving'){if(ffRate>1){const why=ffBlock();if(why){ffRate=1;toast('Fast-forward off · '+why);}}let rest=simDt;while(rest>0){let d=Math.min(rest,mobile?1/30:1/60);if(state.avatar==='drive')update(d);else{const held=[...keys];keys.clear();update(d);held.forEach(k=>keys.add(k));}actors(d,{cosmetic:rest<=d+1e-9,simDt});if(state.avatar!=='drive')updateAvatar(d);rest-=d;}updateRiders(simDt);if(state.frameTimes.length<90000)state.frameTimes.push(rawFrame);else state.frameTimes[state.frames%90000]=rawFrame;state.frames++;}
  if(state.screen==='menu'){state.time+=dt;actors(dt);poseTram(vehicle,state.s,state.lat);}
  updateScooters(state.screen==='driving'||state.screen==='menu'?dt:0);distinctPeople();
  if(state.screen==='driving'||state.screen==='menu'){const foot=state.avatar==='foot'&&!player.sit&&state.screen==='driving';walkPeak=Math.max(player.v,walkPeak*.85);
   solid.update(dt,foot?{x:player.x,z:player.z,speed:walkPeak}:null);chatter(dt);if(keys.has('KeyH')&&!hornHeld){hornHeld=true;hornReaction();}else if(!keys.has('KeyH'))hornHeld=false;}
  bubbles.update(dt);
  showDestination(vehicle,travelDirection()===1);for(const a of ai)if(a.active)showDestination(a,a.dir===1);
- const subjectS=state.mode==='turnback'?0:viewS();environment.update(subjectS,elapsed);for(const st of stations)st.root.visible=Math.abs(st.s-subjectS)<600;for(const b of bikes)b.group.visible=Math.abs(b.s-subjectS)<400;if(state.mode!=='control'||state.screen==='menu')aim(dt);if(gfx.settings.far!=='auto'&&camera.far!==gfx.settings.far){camera.far=gfx.settings.far;camera.updateProjectionMatrix();}railway.update(state.time,camera);const worldSoundLevel=state.screen==='driving'?1:state.screen==='menu'?.3:0;audio.updateRailwaySound(railway.trains,camera,worldSoundLevel,dt);
+ const subjectS=state.mode==='turnback'?0:viewS();environment.update(subjectS,elapsed);for(const st of stations)st.root.visible=Math.abs(st.s-subjectS)<600;for(const b of bikes)b.group.visible=Math.abs(b.s-subjectS)<(mobile?160:240);if(state.mode!=='control'||state.screen==='menu')aim(dt);if(gfx.settings.far!=='auto'&&camera.far!==gfx.settings.far){camera.far=gfx.settings.far;camera.updateProjectionMatrix();}railway.update(state.time,camera);const worldSoundLevel=state.screen==='driving'?1:state.screen==='menu'?.3:0;audio.updateRailwaySound(railway.trains,camera,worldSoundLevel,dt);
  {const cam=camera.position,dist=o=>o?cam.distanceTo(o):1e9,pos=a=>a.group?.visible===false?null:a.group?.position||a.sections?.[0].position;
   const driving=state.screen==='driving'&&state.mode!=='free'&&state.avatar==='drive';
   audio.setDrive(driving?Math.abs(state.v)*3.6:0,driving&&(keys.has('KeyW')||keys.has('ArrowUp')||keys.has('KeyF')||state.cruise),driving&&!state.park);
@@ -1591,9 +1657,9 @@ function draw(now){const rawFrame=(now-last);if(state.screen==='driving'&&gfx.se
    listener,traffic:atWheel?cityTraffic.cars.filter(o=>o.piece).map(o=>({ref:o.id,kind:o.kind,x:o.x,y:o.y,z:o.z,v:o.v})):[],
    weather:state.condition==='rain'?'rain':'clear',night:state.condition==='night',distance:c.group?cam.distanceTo(c.group.position):8});
   audio.updateWorldSound({people:[...walkerObjects,...crossers,...plazaPeople,...cyclists,...scooters].map(a=>dist(pos(a))),cars:atWheel?[]:traffic.map(a=>dist(pos(a))),trams:ai.filter(a=>a.active).map(a=>dist(pos(a)))},worldSoundLevel);}lightScene();audio.updateMusic(state);if(state.screen==='driving')carRadio.refresh();if(state.screen==='menu'||options.open){const track=audio.musicStatus().find(t=>t.target>0),choice=state.screen==='menu'?state.menuMusic:state.gameMusic,label=state.muted?'Sound muted':track?.error?'Music unavailable · choose another track':track?.playing?'Now playing: '+track.title:choice==='off'?'Music off':state.screen==='paused'?'Music paused':'Choose music to listen';for(const id of ['music-playing','journey-music-playing'])if($('#'+id).textContent!==label)$('#'+id).textContent=label;const buttonLabel=track?.playing&&!state.muted?'♫ Music on':'♫ Play menu music';if($('#menu-music').textContent!==buttonLabel)$('#menu-music').textContent=buttonLabel;}// ponytail: hide saloon/cab detail beyond 30 m (the third-person camera sits ~40 m back); interiors are unreadable through tinted glass there.
- for(const t of [vehicle,...ai,...depotVehicles])for(const it of t?.interiors||[])it.node.visible=it.section.position.distanceToSquared(camera.position)<900;for(const a of depotVehicles)for(const g of a.sections)g.visible=Math.abs(subjectS-DEPOT.s)<700;if(townHud&&(document.body.dataset.town==='on'||state.avatar==='car')&&state.screen==='driving'){const c=state.avatar==='car'?playerCar:player;camera.getWorldDirection(townLook);townHud.update({x:c.x,z:c.z,yaw:c.yaw,fx:townLook.x,fz:townLook.z,speed:Math.abs(c.v||0),reverse:c.v<-.1,lights:playerCar.lightsOn,avatar:state.avatar});}if(hudTick++%5===0)hud();updateArrivalBoards();updateSaloonScreens();
+ for(const t of [vehicle,...ai,...depotVehicles])for(const it of t?.interiors||[])it.node.visible=it.section.position.distanceToSquared(camera.position)<900;for(const a of depotVehicles)for(const g of a.sections)g.visible=Math.abs(subjectS-DEPOT.s)<450;if(townHud&&(document.body.dataset.town==='on'||state.avatar==='car')&&state.screen==='driving'){const c=state.avatar==='car'?playerCar:player;camera.getWorldDirection(townLook);townHud.update({x:c.x,z:c.z,yaw:c.yaw,fx:townLook.x,fz:townLook.z,speed:Math.abs(c.v||0),reverse:c.v<-.1,lights:playerCar.lightsOn,avatar:state.avatar});}if(hudTick++%5===0)hud();updateArrivalBoards();updateSaloonScreens();
  // One reminder per journey, the first time the driver is stationary, that the cab can be left.
- if(tipsEnabled&&state.screen==='driving'&&state.mode!=='control'&&state.mode!=='free'&&state.avatar==='drive'&&!state.walkTip&&state.time>8&&Math.abs(state.v)<.05&&state.phase!=='boarding'){state.walkTip=true;toast('Tip · press Enter to get out: walk around, ride a parked bike or board any ART · 按 Enter 落車',7);}if(toastTime>0){toastTime-=dt;if(toastTime<=0)$('#toast').classList.remove('visible');}rainEffect.visible=state.condition==='rain';if(rainEffect.visible){rainEffect.position.copy(state.mode==='free'||state.avatar!=='drive'?camera.position:vehicle.sections[0].position);rainEffect.position.y-=elapsed*16%30;}atmosphere.update(dt,elapsed,renderedGround(look.x,look.z));if(state.mode==='control'&&state.screen!=='menu')controlRoom.render(now);else{vehicle.sections.forEach(g=>g.visible=!noCab());updateWheel();if(cockpitLive())renderFeed();atmosphere.render();}}
+ if(tipsEnabled&&state.screen==='driving'&&state.mode!=='control'&&state.mode!=='free'&&state.avatar==='drive'&&!state.walkTip&&state.time>8&&Math.abs(state.v)<.05&&state.phase!=='boarding'){state.walkTip=true;toast('Tip · press Enter to get out: walk around, ride a parked bike or board any ART · 按 Enter 落車',7);}if(toastTime>0){toastTime-=dt;if(toastTime<=0)$('#toast').classList.remove('visible');}rainEffect.visible=state.condition==='rain';if(rainEffect.visible){rainEffect.position.copy(state.mode==='free'||state.avatar!=='drive'?camera.position:vehicle.sections[0].position);rainEffect.position.y-=elapsed*16%30;}atmosphere.update(dt,elapsed,renderedGround(look.x,look.z));if(state.mode==='control'&&state.screen!=='menu')controlRoom.render(now);else{vehicle.sections.forEach(g=>g.visible=!noCab());updateWheel();if(sun.castShadow){shadowTick++;const interval=mobile?2:(sunMovedSinceShadow?2:4);if(shadowForce||shadowTick%interval===0){renderer.shadowMap.needsUpdate=true;shadowForce=false;sunMovedSinceShadow=false;}else renderer.shadowMap.needsUpdate=false;}else renderer.shadowMap.needsUpdate=false;if(cockpitLive())renderFeed();atmosphere.render();}}
 addEventListener('resize',()=>{governor.suspend(1);renderer.setSize(innerWidth,innerHeight);atmosphere.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();stackLayoutKey='';if(state.screen==='driving')placeStack();});
 const controlRoom=createControlRoom({state,renderer,scene,getFleet:()=>ai,getSignals:()=>signalObjects,getTraffic:()=>traffic,getCrossers:()=>crossers,clockText,pause:()=>action('pause'),exit:()=>{keys.clear();show('menu');state.mode='service';document.body.dataset.mode='service';for(const a of ai)delete a.control;},restart:()=>startJourney('control'),setHeadway:value=>{state.headway=value;$('#headway').value=value;resetStreetLife();},prepareView:s=>{
  environment.update(s,elapsed);for(const st of stations)st.root.visible=Math.abs(st.s-s)<600;for(const a of ai)for(const g of a.sections)g.visible=a.active&&Math.abs(a.s-s)<700;vehicle.sections.forEach(g=>g.visible=false);
@@ -1605,7 +1671,7 @@ const controlRoom=createControlRoom({state,renderer,scene,getFleet:()=>ai,getSig
  for(const a of depotVehicles)for(const g of a.sections)g.visible=Math.abs(s-DEPOT.s)<700;
 }});
 setUiTheme(document.body.dataset.uiTheme);
-window.__sgmts={get riders(){return riders;},get cityTraffic(){return cityTraffic;},playerCar,get cityPeople(){return cityPeople;},get cityCats(){return cityCats;},dogs,cats,updateRiders,bubbles,solid,crowdPeople,player,controlRoom,fitOneLine,state,atmosphere,STOPS,LENGTH,END_STOP,sample,LOOP,renderer,scene,camera,errors,reset,action,stopTarget,dockError,get ready(){return ready;},get vehicle(){return vehicle;},get manifest(){return manifest;},get signals(){return signalObjects;},get environment(){return environment;},get railway(){return railway;},railwaySoundStatus:audio.railwaySoundStatus,get traffic(){return traffic;},get ai(){return ai;},get crossers(){return crossers;},get cyclists(){return cyclists;},actors,update,terminalStep,terminalLength,weather,lightScene,nextDispatch,get depotVehicles(){return depotVehicles;},get walkers(){return walkerObjects;},get sitters(){return sitters;},get joggers(){return joggers;},get plazaPeople(){return plazaPeople;},seats,toggleSit,player,bikes,toggleAvatar,talk,updateAvatar,orbit,keys,aim,get birds(){return birds;},get stations(){return stations;},CAMERAS,signalAt,JUNCTIONS,setCamera:n=>{state.cam=n;resetOrbit();firstCamera=true;},pose:()=>poseTram(vehicle,state.s,state.lat),musicStatus:audio.musicStatus,announcementStatus:audio.announcementStatus,announce:audio.announce,proof:false,simulationRate:1,get ff(){return ffRate;},ffBlock,hudOverlaps,coach:()=>{const st=STOPS[state.index];return coach(st,st?(stopTarget(st)-state.s)*travelDirection():0,state.mode==='turnback',state.mode==='explore');},makeSchedule,clockText,NOSE};
+window.__sgmts={get riders(){return riders;},get parkingLotLife(){return parkingLotLife;},get cityTraffic(){return cityTraffic;},playerCar,get cityPeople(){return cityPeople;},get cityCats(){return cityCats;},dogs,cats,updateRiders,bubbles,solid,crowdPeople,player,controlRoom,fitOneLine,state,atmosphere,STOPS,LENGTH,END_STOP,sample,LOOP,renderer,scene,camera,errors,reset,action,stopTarget,dockError,get ready(){return ready;},get vehicle(){return vehicle;},get manifest(){return manifest;},get signals(){return signalObjects;},get environment(){return environment;},get railway(){return railway;},railwaySoundStatus:audio.railwaySoundStatus,get traffic(){return traffic;},get ai(){return ai;},get crossers(){return crossers;},get cyclists(){return cyclists;},actors,update,terminalStep,terminalLength,weather,lightScene,nextDispatch,get depotVehicles(){return depotVehicles;},get walkers(){return walkerObjects;},get sitters(){return sitters;},get joggers(){return joggers;},get plazaPeople(){return plazaPeople;},seats,toggleSit,player,bikes,toggleAvatar,talk,updateAvatar,orbit,keys,aim,get birds(){return birds;},get stations(){return stations;},CAMERAS,signalAt,JUNCTIONS,setCamera:n=>{state.cam=n;resetOrbit();firstCamera=true;shadowForce=true;},pose:()=>poseTram(vehicle,state.s,state.lat),musicStatus:audio.musicStatus,announcementStatus:audio.announcementStatus,announce:audio.announce,proof:false,simulationRate:1,get ff(){return ffRate;},ffBlock,hudOverlaps,coach:()=>{const st=STOPS[state.index];return coach(st,st?(stopTarget(st)-state.s)*travelDirection():0,state.mode==='turnback',state.mode==='explore');},makeSchedule,clockText,NOSE};
 show('loading');
 boot();
 

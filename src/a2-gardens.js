@@ -1,5 +1,6 @@
 import * as T from 'three';
 import {mergeByMaterial} from './batching.js';
+import {riversideSquareFloor} from './a2-square-extension.js';
 import {datum,frontage,pavingY,portalX,portalZ,halfWidth,halfRun,zMin,zMax,worldCoordinates,galleryEdge} from './a2-site.js';
 
 const stone=new T.MeshStandardMaterial({color:0xd2c7ae,roughness:.88});
@@ -59,51 +60,82 @@ export function buildSquarePaving(group){
 
 // Swept planting islands have a gently bent spine, flared shoulders and rounded ends.
 // Each course follows the grade, so timber seat edges meet the paving along the whole bed.
-export function buildGardens(parent,{tree,kit,shrub,chunk}){
- const garden=new T.Group();garden.name='Terraced station gardens';parent.add(garden);
- function island(cx,cz,rx,rz,bend,levels){
-  const top=.45*levels;
-  function point(theta,inset){
-   const s=Math.sin(theta),c=Math.cos(theta);
-   return [cx+bend*(s*s-.38)+c*(rx-inset),cz+s*(rz-inset)];
-  }
-  function course(inset,h0,h1,material){
-   const p=[],idx=[],n=64;
-   for(let i=0;i<n;i++){
-    const [x,z]=point(Math.PI*2*i/n,inset),ground=pavingY(x,z)-datum;
-    p.push(x,ground+h0,z,x,ground+h1,z);
+ export function buildGardens(parent,{tree,kit,shrub,chunk}){
+  const garden=new T.Group();garden.name='Terraced station gardens';parent.add(garden);
+  function island(cx,cz,rx,rz,bend,levels,level=pavingY,hasTrees=true){
+   const top=.45*levels;
+   function point(theta,inset){
+    const s=Math.sin(theta),c=Math.cos(theta);
+    return [cx+bend*(s*s-.38)+c*(rx-inset),cz+s*(rz-inset)];
    }
-   p.push(cx,pavingY(cx,cz)-datum+h1,cz);
-   for(let i=0;i<n;i++){const a=i*2,b=(i+1)%n*2;idx.push(a,a+1,b,b,a+1,b+1,a+1,n*2,b+1);}
-   const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(p,3));g.setIndex(idx);g.computeVertexNormals();
-   const m=new T.Mesh(g,material);m.castShadow=m.receiveShadow=true;garden.add(m);
+   function course(inset,h0,h1,material){
+    const p=[],idx=[],n=64;
+    for(let i=0;i<n;i++){
+     const [x,z]=point(Math.PI*2*i/n,inset),ground=level(x,z)-datum;
+     p.push(x,ground+h0,z,x,ground+h1,z);
+    }
+    p.push(cx,level(cx,cz)-datum+h1,cz);
+    for(let i=0;i<n;i++){const a=i*2,b=(i+1)%n*2;idx.push(a,a+1,b,b,a+1,b+1,a+1,n*2,b+1);}
+    const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(p,3));g.setIndex(idx);g.computeVertexNormals();
+    const m=new T.Mesh(g,material);m.castShadow=m.receiveShadow=true;garden.add(m);
+   }
+   for(let i=0;i<levels;i++){course(i*.78,-.04+i*.45,.39+i*.45,stone);course(i*.78-.04,.39+i*.45,.45+i*.45,i===0?wood:stone);}
+   course((levels-1)*.78+.34,top,top+.055,turf);
+   if(hasTrees){
+    const count=rz>14?4:rz>11?3:2;
+    for(let i=0;i<count;i++){
+     const t=count===2?(i-.5)*.85:(i/(count-1)-.5)*1.24;
+     const x=cx+bend*(t*t-.38)+(i%2?.72:-.72),z=cz+t*rz;
+     const w=worldCoordinates(x,z),seed=Math.abs(Math.sin(cx*8+z*.372));
+     tree(new T.Vector3(w.x,level(x,z)+top,w.z),seed,chunk);
+    }
+   }
+   for(let i=0;i<Math.floor(rz*1.45);i++){
+    const t=Math.sin(i*57.39)*.78,u=Math.cos(i*3.83)*.65;
+    const x=cx+bend*(t*t-.38)+u*(rx-levels*.78)*Math.sqrt(1-t*t),z=cz+t*(rz-levels*.78);
+    const w=worldCoordinates(x,z),p=new T.Vector3(w.x,level(x,z)+top+.03,w.z);
+    shrub(p,.5+.5*Math.sin(i*7.39+cx),chunk);
+    if(i%3===0)kit('vegetation_flowering',p,i*2.399,new T.Vector3(1.4,1.4,1.4),chunk);
+   }
   }
-  for(let i=0;i<levels;i++){course(i*.78,-.04+i*.45,.39+i*.45,stone);course(i*.78-.04,.39+i*.45,.45+i*.45,i===0?wood:stone);}
-  course((levels-1)*.78+.34,top,top+.055,turf);
-  const count=rz>12?3:2;
-  for(let i=0;i<count;i++){
-   const t=count===2?(i-.5)*.85:(i-1)*.59;
-   const x=cx+bend*(t*t-.38)+(i%2?.72:-.72),z=cz+t*rz;
-   const w=worldCoordinates(x,z),seed=Math.abs(Math.sin(cx*8+z*.372));
-   tree(new T.Vector3(w.x,pavingY(x,z)+top,w.z),seed,chunk);
-  }
-  for(let i=0;i<Math.floor(rz*1.35);i++){
-   const t=Math.sin(i*57.39)*.78,u=Math.cos(i*3.83)*.65;
-   const x=cx+bend*(t*t-.38)+u*(rx-levels*.78)*Math.sqrt(1-t*t),z=cz+t*(rz-levels*.78);
-   const w=worldCoordinates(x,z),p=new T.Vector3(w.x,pavingY(x,z)+top+.03,w.z);
-   shrub(p,.5+.5*Math.sin(i*7.39+cx),chunk);
-   if(i%5===0)kit('vegetation_flowering',p,i*2.399,new T.Vector3(1.4,1.4,1.4),chunk);
-  }
- }
- // The two main cross-plaza passages remain open opposite the concourse entrances.
- for(const [x,z,rx,rz,bend,n] of [
-  [-32,86,5.4,19,3,2],[-65,91,6.3,16,-3,2],[-31,56,4.4,7,-1,1],
-  [-47,20,9.4,17,6.8,3],[-65,7,4,13,-1.8,2],[-29,1,4.8,17,-2.8,2],
+  // The two main cross-plaza passages remain open opposite the concourse entrances.
+  for(const [x,z,rx,rz,bend,n] of [
+   [-32,86,5.4,19,3,2],[-65,91,6.3,16,-3,2],[-31,56,4.4,7,-1,1],
+   [-47,20,9.4,17,6.8,3],[-65,7,4,13,-1.8,2],[-29,1,4.8,17,-2.8,2],
 
-  [-49,101,4.5,6.5,1,1]
- ])island(x,z,rx,rz,bend,n);
- mergeByMaterial(garden);
-}
+   [-49,101,4.5,6.5,1,1]
+  ])island(x,z,rx,rz,bend,n);
+  // Landscaped terraced gardens and planters across the newly added A2 riverside
+  // square, keeping station entrance axes, turning-head approaches and river edges open.
+  for(const [x,z,rx,rz,bend,levels,hasTrees] of [
+   // North riverside plaza
+   [90,-330,5.8,11,-1.6,2,true],[58,-304,6.2,12,1.8,2,true],[88,-296,5.2,11,1.2,1,true],
+   [64,-264,6.5,14,1.8,2,true],[76,-222,6.0,14,-1.6,2,true],[44,-230,5.2,12,1.2,1,true],
+   [-56,-240,3.8,10,.6,1,true],
+   // North-central east forecourt
+   [56,-186,6.5,14,-2.0,2,true],[28,-172,4.6,12,1.2,1,true],
+   [32,-132,5.2,12,-1.4,1,true],[58,-122,5.5,11,1.2,2,true],
+   // Main east station plaza
+   [42,-52,5.8,12,-1.4,1,true],[76,-32,7.0,15,2.0,2,true],[42,-18,5.5,11,1.5,2,true],
+   [98,-6,6.2,14,-1.6,2,true],[62,12,7.8,16,2.4,2,true],[36,16,5.0,11,-1.2,1,true],
+   [98,24,5.8,12,1.4,1,true],[104,54,6.2,15,-1.8,2,true],[68,56,7.0,14,1.8,2,true],
+   [38,68,5.5,13,1.2,1,true],[76,88,6.8,14,-2.0,2,true],[42,98,5.2,11,-1.0,1,true],
+   [106,92,5.5,12,1.4,1,true],
+   // South-west and south-east newly added square
+   [-42,134,6.8,14,-1.8,2,true],[-22,154,5.2,13,1.4,1,true],[-38,174,5.5,12,-1.2,1,true],
+   [36,130,5.8,12,1.5,2,true],[60,124,5.2,10,-1.2,1,true],[34,162,6.5,14,-1.8,2,true],
+   [64,166,6.0,13,1.6,2,true],[92,170,5.2,10,-1.2,1,true],[22,188,4.5,9,1.0,1,true],
+   // Low shrub and flowering planters beneath the Tuen Ma Line viaduct (between piers)
+   [0,145,3.6,9.5,0,1,false],[0,177,3.6,9.5,0,1,false],[0,209,3.4,8.5,0,1,false],
+   [.8,-143,3.6,9.5,0,1,false],[3.6,-175,3.6,9.5,0,1,false]
+  ]){
+   const w=worldCoordinates(x,z),baseY=riversideSquareFloor(w.x,w.z);
+   if(baseY===null)continue;
+   const forecourtLevel=(px,pz)=>{const pw=worldCoordinates(px,pz);return riversideSquareFloor(pw.x,pw.z)??baseY;};
+   island(x,z,rx,rz,bend,levels,forecourtLevel,hasTrees);
+  }
+  mergeByMaterial(garden);
+ }
 
 export {canopyMaterial} from './street/canopy-trees.js';
 

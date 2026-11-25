@@ -10,6 +10,7 @@ import {sweptKerbs} from '../street/kerbs.js';
 import {signalCrossingMarkings} from '../street/sandbox/street-rules.js';
 import {keepLeftBollard,warningBands} from './refuge.js';
 import {signPost} from './signs.js';
+import {mergeByMaterial} from '../batching.js';
 
 const LANE=3.65,ARROW=[[-2,-.15],[.8,-.15],[.8,-.6],[2,0],[.8,.6],[.8,.15],[-2,.15]];
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -173,5 +174,6 @@ export function buildCrossings(scene,{mats,junctionBox,batch,lampPositions,refug
  // Signs, lit a little at night (retroreflective plates).
  const signs=new T.Group();signs.name='Junction regulatory signs';scene.add(signs);
  for(const r of records)signPost(signs,r);
+ mergeByMaterial(signs);
  return {lamps,records};
 }

@@ -2,12 +2,21 @@
 // scenery masks and the SGMTS corridor reserve.
 import assert from 'node:assert/strict';
 import * as T from 'three';
-import {frames,frameAt,buildNetwork,networkMask,reserveClash,junctions,halfWidth,PRESETS,Y,BEND} from '../street/network.js';
+import {frames,frameAt,buildNetwork,networkMask,reserveClash,junctions,halfWidth,PRESETS,Y,BEND,surfaceSampler} from '../street/network.js';
 import {setNetwork,pose,record,ROAD,ROADS} from '../street/roads.js';
 import {sample} from '../alignment.js';
 import {hillOutline,onHill,hillMesh} from '../street/hills.js';
 
 const near=(a,b,e=1e-3)=>Math.abs(a-b)<e;
+// A collision BVH may reorder triangles after the first walking-height query.
+const reordered=new T.BufferGeometry();
+reordered.setAttribute('position',new T.Float32BufferAttribute([0,2,0,4,2,0,0,2,4,40,8,0,44,8,0,40,8,4],3));
+reordered.setIndex([0,1,2,3,4,5]);
+const floor=surfaceSampler([{geometry:reordered}]);
+assert.equal(floor(1,1),2);
+reordered.index.array.set([3,4,5,0,1,2]);reordered.boundsTree={};
+assert.equal(floor(1,1),2);assert.equal(floor(41,1),8);
+
 // straight legs, rounded corner: a 100 m + 100 m L is shorter by 2t − arc (t = R for a right angle)
 const L=frames({pts:[[0,0],[100,0],[100,100]]});
 assert.ok(near(L.at(-1).d,200-2*BEND+Math.PI*BEND/2,.6),'corner rounded on BEND m');

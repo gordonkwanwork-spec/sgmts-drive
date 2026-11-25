@@ -214,13 +214,13 @@ export function buildPedestrianBridges(scene,m,lampAt){
     box(3.95,floor+.012,zc, .5,.024,1.9,m.tactile);
    }
    const cab=new T.Mesh(new T.BoxGeometry(2.9,.14,3.04),steel);cab.name='Moving lift floor';cab.position.set(6.56,BASE-.07,zc);g.add(cab);
-   cabins.set(lift,(height,street=0,bridge=0)=>{cab.position.y=height-b.datum-.07;cab.updateMatrix();for(const [i,open] of [street,bridge].entries())doors[i].forEach((leaf,k)=>{leaf.position.z=zc+(k?1:-1)*(.5+.99*open);leaf.updateMatrix();});});
+   cabins.set(lift,(height,street=0,bridge=0)=>{cab.position.y=height-b.datum-.07;cab.updateMatrix();cab.updateMatrixWorld(true);for(const [i,open] of [street,bridge].entries())doors[i].forEach((leaf,k)=>{leaf.position.z=zc+(k?1:-1)*(.5+.99*open);leaf.updateMatrix();leaf.updateMatrixWorld(true);});});
    const a=local(b.frame,link.from.x,link.from.z),v=local(b.frame,link.to.x,link.to.z),dx=(v.x-a.x)/link.length,dz=(v.z-a.z)/link.length;
    const corners=[[a,1,link.y0],[a,-1,link.y0],[v,-1,link.y1],[v,1,link.y1]].map(([p,k,y])=>[p.x+k*dz*1.8,y-b.datum,p.z-k*dx*1.8]);
    const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(corners.flat(),3));geo.setAttribute('uv',new T.Float32BufferAttribute([0,0,1,0,1,link.length/3.6,0,link.length/3.6],2));geo.setIndex([0,1,2,0,2,3]);geo.computeVertexNormals();add(geo,m.walk);
   }
   const infill=new T.InstancedMesh(type2,steel,panels.length);infill.name='Type 2 bridge railing panels';
-  panels.forEach((matrix,i)=>infill.setMatrixAt(i,matrix));infill.castShadow=infill.receiveShadow=true;g.add(infill);
+  panels.forEach((matrix,i)=>infill.setMatrixAt(i,matrix));infill.castShadow=false;infill.receiveShadow=true;g.add(infill);
   for(const [mat,geos] of bins){const mesh=new T.Mesh(mergeGeometries(geos),mat);mesh.castShadow=mesh.receiveShadow=true;g.add(mesh);for(const geo of geos)geo.dispose();}
  }
  return cabins;

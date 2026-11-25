@@ -372,9 +372,9 @@ export function buildIconicBridge(parent,light){
  };
  group.userData.setNight=setNight;
  function poseLift(lift,worldY,streetOpen=0,bridgeOpen=0){
-  const {floor,movingDoors}=mechanisms.get(lift);floor.position.y=worldY-datum-.08;floor.updateMatrix();
+  const {floor,movingDoors}=mechanisms.get(lift);floor.position.y=worldY-datum-.08;floor.updateMatrix();floor.updateMatrixWorld(true);
   for(const [stop,amount] of [['street',streetOpen],['bridge',bridgeOpen]]){
-   movingDoors[stop].forEach((door,i)=>{door.position.x=lift.x+(i*2-1)*(.45+amount*.94);door.updateMatrix();});
+   movingDoors[stop].forEach((door,i)=>{door.position.x=lift.x+(i*2-1)*(.45+amount*.94);door.updateMatrix();door.updateMatrixWorld(true);});
   }
  }
  poseLift.setNight=setNight;

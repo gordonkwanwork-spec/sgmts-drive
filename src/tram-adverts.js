@@ -29,7 +29,7 @@ export function applyTramAdvert(tram,campaign){
     const inverse=section.matrixWorld.clone().invert();
     section.traverse(mesh=>{
       // Exterior panels and selected passenger windows only; cabins, lamps and wheels retain their materials.
-      if(!mesh.isMesh||!(mesh.parent===section||/_door_(left|right)_[01](_leaf_[ab])?$/.test(mesh.parent.name)))return;
+      if(!mesh.isMesh||!(mesh.parent===section||/_door_(left|right)_[01](_leaf_[ab])?$|_closed_doors$/.test(mesh.parent.name)))return;
       // Full-body wrap (18 Nov 2026): every car prints the hero over body and passenger glazing; cab glazing stays clear.
       if(!/^(body_white|body_orange|body_black|glass$|livery_)/.test(mesh.material?.name))return;
       const glass=mesh.material.name==='glass';

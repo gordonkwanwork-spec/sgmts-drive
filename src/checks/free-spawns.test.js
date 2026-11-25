@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {FREE_SPAWNS,freeSpawn} from '../free-spawns.js';
 import {STOPS,DEPOT,LENGTH,sample,project} from '../alignment.js';
-assert.equal(FREE_SPAWNS.length,STOPS.length+10);// + three city-drive starts and A2 overlook and lift starts
+assert.equal(FREE_SPAWNS.length,STOPS.length+11);// + three city-drive starts and A2 overlook and lift starts, plus the river promenade
 assert.equal(FREE_SPAWNS.filter(p=>p.car).length,3);for(const p of FREE_SPAWNS.filter(p=>p.car))assert.ok(p.walk&&freeSpawn(p.id).freeCar===1,'a city drive starts in explore mode, in the car');
 assert.equal(new Set(FREE_SPAWNS.map(p=>p.id)).size,FREE_SPAWNS.length);
 for(const location of FREE_SPAWNS){
@@ -23,4 +23,5 @@ assert.equal(freeSpawn('hsk-streets').freePitch,-.73);
 assert.equal(freeSpawn('hsk-streets').freeY,480);
 
 assert.equal(freeSpawn('hsk-d7-walk').freeWalk,1);
+assert.equal(freeSpawn('a2-riverside-walk').freeWalk,1);
 assert.equal(freeSpawn('hsk-streets').freeWalk,0);

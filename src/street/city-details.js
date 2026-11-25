@@ -12,9 +12,11 @@ import {presetOf,frameAt} from './network.js';
 import {hydrant,treePit,busStop,busStopMarks} from './sandbox/amenities.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {project} from '../alignment.js';
+import {nearServiceRoad,CV_ROAD_WIDTH} from '../depot.js';
+const onServiceRoad=(x,z,pad=1.5)=>nearServiceRoad(x,z,CV_ROAD_WIDTH/2+pad)!=null;
 const hash=s=>{let h=2166136261;for(const ch of s)h=Math.imul(h^ch.charCodeAt(0),16777619)>>>0;return h/4294967296;};
 // districtAt(x, z) → 'res' | 'com' | 'ind' (the OZP use of the plots behind the kerb); plantTree({x,y,z}, u, chunk) plants a street tree.
-export function cityDetails(networkGroup,{batch,kitParts,fences,lampPositions,mats,districtAt=()=>'res',plantTree=null}){
+export function cityDetails(networkGroup,{batch,kitParts,fences,lampPositions,mats,districtAt=()=>'res',plantTree=null,treeAllowed=()=>true}){
  const {railRun,kit}=railingBuilder({batch,kitParts,fences}),ONE=new T.Vector3(1,1,1),chunk=(x,z)=>Math.floor(project(x,z)/240);
  const offset=(edge,t,d=.28)=>{const p=edge.point(t);return new T.Vector3(p.x+p.nx*d,p.y+Math.max(0,d-.125)*.025,p.z+p.nz*d);};
  const place=(name,list,P,yaw)=>list.forEach((q,i)=>batch(name+'-'+i,q.geometry,q.material,P,ONE,new T.Euler(0,yaw,0),chunk(P.x,P.z)));
@@ -37,7 +39,7 @@ export function cityDetails(networkGroup,{batch,kitParts,fences,lampPositions,ma
   restrictionSign(batch,sign,chunk(sign.x,sign.z));
   zone.edge.items.push({t:sign.t,r:.65,kind:'restriction'});
  }
- const clearOf=(e,t,r)=>!e.items.some(i=>Math.abs(i.t-t)<i.r+r)&&!e.lamps.some(l=>Math.abs(l-t)<r+.4)&&!(e.crossings||[]).some(c=>Math.abs(c-t)<4.5+r);
+ const clearOf=(e,t,r)=>{const p=e.point(t);return !onServiceRoad(p.x,p.z,r+1.2)&&!e.items.some(i=>Math.abs(i.t-t)<i.r+r)&&!e.lamps.some(l=>Math.abs(l-t)<r+.4)&&!(e.crossings||[]).some(c=>Math.abs(c-t)<4.5+r);};
 
  // Bus stops on the distributors: one per kerb run of 120 m or more, mid-block between two lamps, 30 m clear of junctions and
  // crossings on a straight kerb, at least 350 m from the next stop. The kerb railing opens along the shelter.
@@ -63,7 +65,8 @@ export function cityDetails(networkGroup,{batch,kitParts,fences,lampPositions,ma
   const point=t=>{const {e,d}=local(t);return offset(e,d);};
   // Short runs guide pedestrians to the crossing opening. Keep ordinary frontages and street-end roundabouts open.
   const railed=t=>{
-   const {e,d}=local(t);
+   const {e,d}=local(t),p=e.point(d);
+   if(onServiceRoad(p.x,p.z,1.8))return false;
    if(e.items?.some(i=>i.kind==='shelter'&&Math.abs(i.t-d)<i.r))return false;
    return (e.kind==='corner'&&wide(e))||centres.some(c=>Math.abs(c-t)<3.9+9);
   };
@@ -103,6 +106,7 @@ export function cityDetails(networkGroup,{batch,kitParts,fences,lampPositions,ma
  for(const edge of straight){const length=edge.length;
   for(let t=12;t<length-8;t+=30){
    if((edge.crossings||[]).some(c=>Math.abs(c-t)<5)||edge.items.some(i=>Math.abs(i.t-t)<i.r))continue;const p=edge.point(t),P=offset(edge,t,.75);
+   if(onServiceRoad(P.x,P.z,1.5))continue;
    // One lamp row for two lanes; stagger the second row on wider roads.
    if((edge.side===-1&&(edge.road.carriageway||7.3)<12)||hidesMap(P,.12))continue;
    const height=(edge.road.carriageway||7.3)>=12?10:8;
@@ -114,7 +118,7 @@ export function cityDetails(networkGroup,{batch,kitParts,fences,lampPositions,ma
  // One litter bin per crossing, just beyond the dropped kerb on the left-hand footway (the other end if that is taken).
  for(const c of crossings){const sides=[1,-1].map(sd=>straight.find(e=>e.road.id===c.road&&e.side===sd&&c.d>e.from&&c.d<e.to)).filter(Boolean);
   find:for(const e of sides)for(const t of [5.2,-5.2].map(off=>(e.road.staggers.get(c.d)?.centre(e.side)??c.d)-e.from+off)){if(t<2||t>e.length-2||e.items.some(i=>Math.abs(i.t-t)<i.r+.5)||e.lamps.some(l=>Math.abs(l-t)<1.2))continue;
-   const p=e.point(t),P=offset(e,t,.7);kit('litter_bin',P,kerbYaw(p)+Math.PI,null,chunk(P.x,P.z));e.items.push({t,r:.4,kind:'bin'});bins++;break find;}}
+   const p=e.point(t),P=offset(e,t,.7);if(onServiceRoad(P.x,P.z,1.5))continue;kit('litter_bin',P,kerbYaw(p)+Math.PI,null,chunk(P.x,P.z));e.items.push({t,r:.4,kind:'bin'});bins++;break find;}}
  // Fire hydrants (sandbox staggeredHydrants): along each street at most 100 m apart, alternating kerbs, each nudged up to 25 m
  // to clear crossings, lamps and other items; local −Z (the 100 mm cap) to the road.
  for(const road of new Set(straight.map(e=>e.road))){const runs=straight.filter(e=>e.road===road);if(!runs.length)continue;const a=Math.min(...runs.map(e=>e.from)),b=Math.max(...runs.map(e=>e.to)),n=Math.ceil((b-a)/100);
@@ -125,13 +129,13 @@ export function cityDetails(networkGroup,{batch,kitParts,fences,lampPositions,ma
  // footway leaves 2.2 m of through zone beside a pit of at least 1.2 m.
  if(plantTree)for(const e of straight){const fp=presetOf(e.road).footpath,D=Math.min(1.5,fp-2.2),d=district(e);if(D<1.2||!(wide(e)?d!=='ind':d==='res'))continue;
   for(let t=27;t<e.length-10;t+=30){if(t<10||!clearOf(e,t,1.5)||(e.crossings||[]).some(c=>Math.abs(c-t)<9))continue;
-   const p=e.point(t),P=offset(e,t,.33+D/2);if(hidesMap(P,3.5))continue;place('city-tree-pit',treePit(1.5,D),P,kerbYaw(p));plantTree(P,hash(e.road.id+t+e.side),chunk(P.x,P.z));e.items.push({t,r:1,kind:'tree'});treeCount++;}}
+   const p=e.point(t),P=offset(e,t,.33+D/2);if(!treeAllowed(P.x,P.z)||hidesMap(P,3.5))continue;place('city-tree-pit',treePit(1.5,D),P,kerbYaw(p));plantTree(P,hash(e.road.id+t+e.side),chunk(P.x,P.z));e.items.push({t,r:1,kind:'tree'});treeCount++;}}
  // Signal controller cabinet at each signal junction: behind the first main-road primary pole, 2.5 m upstream, doors to the footway.
  for(const c of controls.filter(c=>c.kind==='signal'&&c.stage==='major'&&c.ped&&!c.pedOnly)){if(controls.some(o=>o.cabinet&&o.node===c.node))continue;c.cabinet=true;
   const up=[-Math.sin(c.yaw),-Math.cos(c.yaw)],out=[Math.sin(c.ped.yaw),Math.cos(c.ped.yaw)],P=new T.Vector3(c.x+up[0]*2.5+out[0]*.6,c.y,c.z+up[1]*2.5+out[1]*.6);
   kit('cabinet_controller',P,c.ped.yaw+Math.PI,null,chunk(P.x,P.z));cabinets++;}
  // Median planters (network.js): a clipped hedge of low shrubs filling the bed, as lumpy overlapping clumps 0.5–0.8 m high.
- const clump=new T.IcosahedronGeometry(1,1),hedge=[0x4f7a3a,0x5d8a42,0x46703a].map(c=>new T.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:.14,roughness:.9,flatShading:true}));
+ const clump=new T.IcosahedronGeometry(1,0),hedge=[0x4f7a3a,0x5d8a42,0x46703a].map(c=>new T.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:.14,roughness:.9,flatShading:true}));
  for(const pl of networkGroup.userData.planters||[])for(let d=pl.from+.5;d<pl.to-.4;d+=.9){const f=frameAt(pl.F,d),u=hash(pl.road+d.toFixed(1)),h=.5+.3*u,P=new T.Vector3(f.x,f.y+pl.y(d)+h*.35,f.z);
   batch('city-hedge-'+(Math.floor(u*3)),clump,hedge[Math.floor(u*3)],P,new T.Vector3(pl.width*.5,h*.65,.75),new T.Euler(0,Math.atan2(f.tx,f.tz)+(u-.5)*.3,0),chunk(P.x,P.z));shrubs++;}
  // TS102 Give Way (sandbox road-signs.js): inverted triangle 600 mm high, red border, 讓 / GIVE WAY, lower edge 2.3 m, on its own post.

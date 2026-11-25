@@ -155,17 +155,47 @@ export function midblockStage(offset,clock){
 }
 export function stageAt(n,clock){const S=STAGES[n.arms??2]||STAGES[2],C=CYCLE[n.arms??2]||63,t=((clock+n.id*11)%C+C)%C;for(const [stage,a,b] of S)if(t>=a&&t<b)return {stage,left:b-t};
  const k=S.findIndex(([,a])=>a>t);return {stage:null,next:S[k<0?0:k][0],left:(k<0?C:S[k][1])-t};}
+/** Binary-search pose along a polyline whose points carry cumulative `.s`. */
+export function poseOn(pts,s){
+ let lo=1,hi=pts.length-1;
+ while(lo<hi){const mid=(lo+hi)>>1;if(pts[mid].s<s)lo=mid+1;else hi=mid;}
+ const a=pts[lo-1],b=pts[lo],u=Math.max(0,Math.min(1,(s-a.s)/((b.s-a.s)||1))),dx=b.x-a.x,dz=b.z-a.z,l=Math.hypot(dx,dz)||1;
+ return {x:a.x+dx*u,y:a.y+(b.y-a.y)*u,z:a.z+dz*u,tx:dx/l,tz:dz/l};
+}
+/** Spatial spawn pool cached around `env.focus` so random spawns stay local without scanning distant links. */
+export function makeFocusSampler(items,defaultFar){
+ const entries=items.map(item=>{
+  let x0=Infinity,x1=-Infinity,z0=Infinity,z1=-Infinity;
+  for(const q of item.pts){if(q.x<x0)x0=q.x;if(q.x>x1)x1=q.x;if(q.z<z0)z0=q.z;if(q.z>z1)z1=q.z;}
+  return {item,cx:(x0+x1)/2,cz:(z0+z1)/2,r:Math.hypot(x1-x0,z1-z0)/2};
+ });
+ const totalAll=items.reduce((s,p)=>s+p.len,0);
+ let fx=Infinity,fz=Infinity,far=-1,pool=items,total=totalAll;
+ return env=>{
+  if(!env?.focus)return {pool:items,total:totalAll};
+  const wantFar=env.far??defaultFar;
+  if(Math.hypot(fx-env.focus.x,fz-env.focus.z)>25||far!==wantFar){
+   fx=env.focus.x;fz=env.focus.z;far=wantFar;const lim=wantFar+25;
+   const near=[];let t=0;
+   for(const e of entries)if(Math.hypot(e.cx-fx,e.cz-fz)<=lim+e.r){near.push(e.item);t+=e.item.len;}
+   pool=near.length?near:items;total=near.length?t:totalAll;
+  }
+  return {pool,total};
+ };
+}
+
 // Cars. opts: {count, seed, signal(crossing) → true when the road phase is green, time() for crossroads phases}.
 // step(dt, {focus:{x,z}, blockers:[{x,z,r,w?}], view:{x,z,fx,fz} (camera, for respawns out of sight)}).
 const STOP_MARGIN=.5,ACCELERATION=1.9;
 export function createTraffic(graph,{count=40,seed=7,signal=()=>true,fleet=[{length:4.6,width:1.9}]}={}){
  let rs=seed>>>0;const rnd=()=>{rs=Math.imul(rs^rs>>>15,2246822507)+0x9e3779b9>>>0;return (rs>>>8)/16777216;};
  const lanes=graph.pieces.filter(p=>p.kind==='lane'&&p.len>12),cars=[],stats={respawns:0,redRuns:0,exits:0};let clock=0;
- const pose=(p,s)=>{const P=p.pts;let i=1;while(i<P.length-1&&P[i].s<s)i++;const a=P[i-1],b=P[i],u=Math.max(0,Math.min(1,(s-a.s)/((b.s-a.s)||1))),dx=b.x-a.x,dz=b.z-a.z,l=Math.hypot(dx,dz)||1;return {x:a.x+dx*u,y:a.y+(b.y-a.y)*u,z:a.z+dz*u,tx:dx/l,tz:dz/l};};
+ const nearLanes=makeFocusSampler(lanes,420);
+ const pose=(p,s)=>poseOn(p.pts,s);
  const choose=p=>{if(!p.next.length)return null;const w=p.next.map(q=>q.dir==='straight'||q.kind!=='turn'?3:1);let t=rnd()*w.reduce((a,b)=>a+b,0);for(let i=0;i<w.length;i++)if((t-=w[i])<0)return p.next[i];return p.next.at(-1);};
  const place=(c,p,s)=>{c.piece=p;c.s=s;c.v=0;c.next=choose(p);c.wait=0;Object.assign(c,pose(p,s));};
  const free=(p,s)=>{const q=pose(p,s);return cars.every(o=>!o.piece||Math.hypot(o.x-q.x,o.z-q.z)>45);};// never drop a parked car in front of a moving one
- function spawn(c,env){for(let tries=0;tries<40;tries++){const p=lanes[Math.floor(rnd()*lanes.length)],maxS=p.stopS!=null?Math.min(p.len-4,p.stopS-c.length/2-4):p.len-4;if(maxS<=4)continue;const s=2+rnd()*(maxS-2),q=pose(p,s);
+ function spawn(c,env){const {pool}=nearLanes(env);for(let tries=0;tries<40;tries++){const p=pool[Math.floor(rnd()*pool.length)],maxS=p.stopS!=null?Math.min(p.len-4,p.stopS-c.length/2-4):p.len-4;if(maxS<=4)continue;const s=2+rnd()*(maxS-2),q=pose(p,s);
    if(env?.focus){const d=Math.hypot(q.x-env.focus.x,q.z-env.focus.z);if(d<(env.near??150)||d>(env.far??420))continue;
     if(env.view){const dx=q.x-env.view.x,dz=q.z-env.view.z,l=Math.hypot(dx,dz)||1;if(l<260&&(dx*env.view.fx+dz*env.view.fz)/l>.55)continue;}}
    if(free(p,s)){place(c,p,s);return true;}}return false;}
@@ -323,9 +353,9 @@ export function footways(net){const out=[];
  return out;}
 // People stroll their stretch of footway, pause and turn back at its ends, and are recycled near the focus like the cars.
 export function createPeople(paths,{count=28,seed=11}={}){let rs=seed>>>0;const rnd=()=>{rs=Math.imul(rs^rs>>>15,2246822507)+0x9e3779b9>>>0;return (rs>>>8)/16777216;};
- const total=paths.reduce((s,p)=>s+p.len,0),people=Array.from({length:count},(_,id)=>({id,path:null,speed:1.05+rnd()*.5}));
- const pose=(p,s)=>{const P=p.pts;let i=1;while(i<P.length-1&&P[i].s<s)i++;const a=P[i-1],b=P[i],u=Math.max(0,Math.min(1,(s-a.s)/((b.s-a.s)||1))),dx=b.x-a.x,dz=b.z-a.z,l=Math.hypot(dx,dz)||1;return {x:a.x+dx*u,y:a.y+(b.y-a.y)*u,z:a.z+dz*u,tx:dx/l,tz:dz/l};};
- function spawn(h,env){for(let tries=0;tries<30;tries++){let t=rnd()*total,p=paths[0];for(const q of paths){if((t-=q.len)<0){p=q;break;}}const s=1+rnd()*(p.len-2),q=pose(p,s);
+ const nearPaths=makeFocusSampler(paths,140),people=Array.from({length:count},(_,id)=>({id,path:null,speed:1.05+rnd()*.5}));
+ const pose=(p,s)=>poseOn(p.pts,s);
+ function spawn(h,env){const {pool,total}=nearPaths(env);if(!total)return false;for(let tries=0;tries<30;tries++){let t=rnd()*total,p=pool[0];for(const q of pool){if((t-=q.len)<0){p=q;break;}}const s=1+rnd()*(p.len-2),q=pose(p,s);
    if(env?.focus){const d=Math.hypot(q.x-env.focus.x,q.z-env.focus.z);if(d<(env.near??25)||d>(env.far??140))continue;
     if(env.view&&d<90){const dx=q.x-env.view.x,dz=q.z-env.view.z;if((dx*env.view.fx+dz*env.view.fz)/(d||1)>.6)continue;}}
    if(people.some(o=>o.path&&Math.hypot(o.x-q.x,o.z-q.z)<3))continue;Object.assign(h,{path:p,s,dir:rnd()<.5?1:-1,wait:0,moved:0},q);return true;}return false;}

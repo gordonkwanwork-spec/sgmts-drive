@@ -44,10 +44,16 @@ export function furnitureMaterials(){if(M)return M;
   if(walking){x.moveTo(62,42);x.lineTo(58,74);x.stroke();x.lineWidth=9;x.beginPath();x.moveTo(60,46);x.lineTo(44,64);x.lineTo(40,78);x.moveTo(62,46);x.lineTo(78,60);x.lineTo(88,72);x.moveTo(58,74);x.lineTo(46,94);x.lineTo(36,112);x.moveTo(58,74);x.lineTo(74,92);x.lineTo(80,112);}
   else{x.moveTo(64,42);x.lineTo(64,78);x.stroke();x.lineWidth=9;x.beginPath();x.moveTo(56,44);x.lineTo(52,82);x.moveTo(72,44);x.lineTo(76,82);x.moveTo(58,76);x.lineTo(58,114);x.moveTo(70,76);x.lineTo(70,114);}
   x.stroke();const t=new T.CanvasTexture(c);t.colorSpace=T.SRGBColorSpace;t.flipY=false;return t;};
+ const redMan=figure(false),greenMan=figure(true),redManFlip=mirrored(figure(false)),greenManFlip=mirrored(figure(true));
  return M={galvanised:new T.MeshStandardMaterial({color:0xa3adae,metalness:.55,roughness:.58}),lamp:new T.MeshStandardMaterial({color:0xfff1dc,emissive:0xfff1dc,emissiveIntensity:0}),metal:new T.MeshStandardMaterial({color:0x465654,metalness:.65,roughness:.4}),
   iron:new T.MeshStandardMaterial({color:0x3d4845,metalness:.65,roughness:.85}),postGreen:new T.MeshStandardMaterial({color:0x126d4c,roughness:.65}),patch:new T.MeshStandardMaterial({color:0x85877b,roughness:1}),
   postLabel:labelMaterial(['郵政','POST'],'#126d4c'),signLabel:labelMaterial(['行人 →','FOOTPATH'],'#18664e'),cycleSign:new T.MeshBasicMaterial({map:new T.CanvasTexture(blue),transparent:true,side:T.FrontSide}),
-  redMan:figure(false),greenMan:figure(true),redManFlip:mirrored(figure(false)),greenManFlip:mirrored(figure(true)),banner:banner(),
+  redMan,greenMan,redManFlip,greenManFlip,banner:banner(),
+  sigVeh:new T.MeshBasicMaterial({color:0xffffff}),
+  sigPedStop:new T.MeshBasicMaterial({color:0xffffff,map:redMan}),
+  sigPedStopFlip:new T.MeshBasicMaterial({color:0xffffff,map:redManFlip}),
+  sigPedGo:new T.MeshBasicMaterial({color:0xffffff,map:greenMan}),
+  sigPedGoFlip:new T.MeshBasicMaterial({color:0xffffff,map:greenManFlip}),
   poleWhite:new T.MeshStandardMaterial({color:0xe6e4da,roughness:.45}),leafGreen:new T.MeshStandardMaterial({color:0x2e7d4f,metalness:.2,roughness:.45}),smoked:new T.MeshStandardMaterial({color:0x5a3a24,metalness:.8,roughness:.12}),lanternGrey:new T.MeshStandardMaterial({color:0x8a8f8c,metalness:.5,roughness:.4})};}
 // Undo a mirrored parent (scale.x −1) on a lens texture.
 function mirrored(t){t.wrapS=T.RepeatWrapping;t.repeat.x=-1;t.offset.x=1;return t;}
@@ -63,19 +69,19 @@ export function cycleSymbol(){if(symbol)return symbol;const c=symbol=document.cr
  x.beginPath();x.moveTo(64,10);x.lineTo(91,43);x.lineTo(73,43);x.lineTo(73,92);x.lineTo(55,92);x.lineTo(55,43);x.lineTo(37,43);x.closePath();x.fill();return c;}
 const geo={box:new T.BoxGeometry(1,1,1),cyl:new T.CylinderGeometry(1,1,1,7),plane:new T.PlaneGeometry(1,1)};
 // CL0053 silhouette: round Ø219 column and swept bracket. Unspecified bracket/housing profiles are visual approximations.
-geo.pole=new T.CylinderGeometry(1,1,1,16);
-geo.lantern=new T.SphereGeometry(1,16,8);
-geo.smartArm=new T.TubeGeometry(new T.CubicBezierCurve3(new T.Vector3(0,0,.55),new T.Vector3(0,-.12,-.2),new T.Vector3(0,.6,-.85),new T.Vector3(0,.6,-1.6)),20,.035,8,false);
+geo.pole=new T.CylinderGeometry(1,1,1,10);
+geo.lantern=new T.SphereGeometry(1,10,6);
+geo.smartArm=new T.TubeGeometry(new T.CubicBezierCurve3(new T.Vector3(0,0,.55),new T.Vector3(0,-.12,-.2),new T.Vector3(0,.6,-.85),new T.Vector3(0,.6,-1.6)),10,.035,5,false);
 // Cycle-track leaf arm (site photos): stalk + midrib, almond leaf outline and two vein pairs as one tube mesh.
 // Springs from the pole axis and points −Z, tilted up by `tilt`; `lamp` is the midrib point the lantern hangs from.
 function leafArm(len,width,tilt){const d=new T.Vector3(0,Math.sin(tilt),-Math.cos(tilt)),B=new T.Vector3(0,.3,-.4),on=t=>B.clone().addScaledVector(d,len*t),edge=(t,s)=>on(t).setX(s*width*Math.sin(Math.PI*t)**.7);
- const tube=(pts,r,closed=false)=>new T.TubeGeometry(new T.CatmullRomCurve3(pts,closed),closed?72:24,r,6,closed);
+ const tube=(pts,r,closed=false)=>new T.TubeGeometry(new T.CatmullRomCurve3(pts,closed),closed?22:8,r,4,closed);
  const parts=[tube([...Array.from({length:13},(_,i)=>edge(i/12,1)),...Array.from({length:11},(_,i)=>edge((11-i)/12,-1))],.024,true),tube([new T.Vector3(0,-.12,-.06),new T.Vector3(0,.05,-.22),B,on(.5),on(.97)],.032)];
  for(const t of [.3,.62])for(const s of [-1,1])parts.push(tube([on(t),edge(t+.16,s*.92)],.012));
  return {geometry:mergeGeometries(parts),lamp:on(.45)};}
 geo.leafBig=leafArm(1.7,.42,.4);geo.leafSmall=leafArm(1.15,.3,.5);
-geo.sensorArm=new T.TubeGeometry(new T.CatmullRomCurve3([new T.Vector3(0,0,0),new T.Vector3(.3,.04,0),new T.Vector3(.55,.2,0),new T.Vector3(.62,.42,0)]),20,.03,6,false);
-geo.smartBrace=new T.TubeGeometry(new T.QuadraticBezierCurve3(new T.Vector3(0,-.28,0),new T.Vector3(0,.5,-.6),new T.Vector3(0,.6,-1.6)),16,.025,8,false);
+geo.sensorArm=new T.TubeGeometry(new T.CatmullRomCurve3([new T.Vector3(0,0,0),new T.Vector3(.3,.04,0),new T.Vector3(.55,.2,0),new T.Vector3(.62,.42,0)]),8,.03,4,false);
+geo.smartBrace=new T.TubeGeometry(new T.QuadraticBezierCurve3(new T.Vector3(0,-.28,0),new T.Vector3(0,.5,-.6),new T.Vector3(0,.6,-1.6)),8,.025,4,false);
 
 // ---------- Blender street-kit parts (instanced with the template's own materials) ----------
 // FEHD warning stickers on the litter bin (lime panel, purple cloud outline, white speech bubble).
@@ -155,7 +161,15 @@ export function runPoints(run){const road=ROAD[run.road],a=road.toParam(Math.min
 
 // Builds every catalogue item into `batch` (instanced) and returns what the rest of the game needs: lamp heads for the
 // baked night light, railing fences for collision, bins, and traffic-signal groups (animated by experience.js).
-export function placeFurniture(data,{batch,kitParts,railAllowed=()=>true}){const m=furnitureMaterials(),lampPositions=[],fences=[],bins=[],drivePosts=[],signals=[],errors=[],clearings=[];
+const mirrorCache=new WeakMap(),DUMMY_BULB={material:{color:{setHex(){}}}};
+function mirrorGeometry(geo){
+ if(mirrorCache.has(geo))return mirrorCache.get(geo);
+ const m=geo.clone().applyMatrix4(new T.Matrix4().makeScale(-1,1,1));
+ if(m.index){const ix=m.index.array;for(let i=0;i<ix.length;i+=3){const t=ix[i+1];ix[i+1]=ix[i+2];ix[i+2]=t;}m.index.needsUpdate=true;}
+ else{for(const attr of Object.values(m.attributes)){const a=attr.array,s=attr.itemSize;for(let i=0;i<attr.count;i+=3)for(let k=0;k<s;k++){const p=(i+1)*s+k,q=(i+2)*s+k,t=a[p];a[p]=a[q];a[q]=t;}attr.needsUpdate=true;}}
+ m.computeBoundingBox();m.computeBoundingSphere();mirrorCache.set(geo,m);return m;
+}
+export function placeFurniture(data,{batch,kitParts,railAllowed=()=>true,signalLens=null,signalBody=null,chunkAt=null}){const m=furnitureMaterials(),lampPositions=[],fences=[],bins=[],drivePosts=[],signals=[],errors=[],clearings=[];
  const {kit,railRun}=railingBuilder({batch,kitParts,fences});
  const at=(P,x,y,z)=>new T.Vector3(x,y,z).applyAxisAngle(UP,P.yaw).add(new T.Vector3(P.x,P.y,P.z));
  const box=(key,mat,P,x,y,z,w,h,d)=>batch(key,geo.box,mat,at(P,x,y,z),new T.Vector3(w,h,d),new T.Euler(0,P.yaw,0),chunkOf(P));
@@ -207,11 +221,31 @@ export function placeFurniture(data,{batch,kitParts,railAllowed=()=>true}){const
   // Blender signal pole + head (site photo); each lens gets its own material so experience.js can light it.
   // Blender signal pole + head (site photo); each lens gets its own material so experience.js can light it. params.hand −1 mirrors
   // the vehicle head to the pole's other side; a shared-pole pedestrian head (pedYaw) hangs on the side away from the vehicle lenses.
-  traffic_signal(P,it){const axis=it.params?.axis||'corridor',ped=axis==='pedestrian',crossing=it.params?.crossing||'corridor',g=new T.Group(),body=new T.Group(),lens={};g.position.set(P.x,P.y,P.z);g.rotation.y=P.yaw;g.add(body);
-   const hand=!ped&&it.params?.hand===-1?-1:1,lensMat=(name,flip)=>new T.MeshBasicMaterial({color:0x293731,map:name==='signal_ped_stop'?(flip?m.redManFlip:m.redMan):name==='signal_ped_go'?(flip?m.greenManFlip:m.greenMan):null});body.scale.x=hand;
+  traffic_signal(P,it){const axis=it.params?.axis||'corridor',ped=axis==='pedestrian',crossing=it.params?.crossing||'corridor',g=new T.Group();g.position.set(P.x,P.y,P.z);g.rotation.y=P.yaw;
+   const hand=!ped&&it.params?.hand===-1?-1:1,baseLens=(name,flip)=>name==='signal_ped_stop'?(flip?m.sigPedStopFlip:m.sigPedStop):name==='signal_ped_go'?(flip?m.sigPedGoFlip:m.sigPedGo):m.sigVeh;
+   if(signalLens){
+    const ch=P.s!=null?chunkOf(P):(chunkAt?chunkAt(P.x,P.z):0),pos=new T.Vector3(P.x,P.y,P.z),rot=new T.Euler(0,P.yaw,0),lens={};
+    for(const part of kitParts(ped?'signal_pedestrian':'signal_vehicle')){const name=part.material.name,lit=/^signal_(red|amber|green|ped_)/.test(name),geo=hand<0?mirrorGeometry(part.geometry):part.geometry;
+     if(lit)lens[name]=signalLens('sig-lens-'+(ped?'ped-':'veh-')+(hand<0?'m-':'')+name,geo,baseLens(name,false),pos,rot,ch);
+     else if(signalBody)signalBody(geo,part.material,pos,rot,ch);
+     else batch('sig-body-'+(ped?'ped-':'veh-')+(hand<0?'m-':'')+name,geo,part.material,pos,ONE,rot,ch);}
+    g.name=ped?'Pedestrian signal':'Traffic signal';g.userData.furnitureId=it.id;
+    signals.push({group:g,bulbs:ped?[lens.signal_ped_stop,DUMMY_BULB,lens.signal_ped_go]:[lens.signal_red,lens.signal_amber,lens.signal_green],axis,crossing,junction:it.params?.junction,id:it.id});
+    if(!ped&&Number.isFinite(it.params?.pedYaw)){
+     const head=new T.Group(),lenses={},yaw=it.params.pedYaw*Math.PI/180,behind=Math.sin(yaw)>0?-1:1,headRot=new T.Euler(0,P.yaw+yaw,0);
+     for(const part of kitParts('signal_pedestrian_head')){const name=part.material.name,lit=/^signal_ped_/.test(name),geo=behind<0?mirrorGeometry(part.geometry):part.geometry;
+      if(lit)lenses[name]=signalLens('sig-lens-head-'+(behind<0?'m-':'')+name,geo,baseLens(name,behind<0),pos,headRot,ch);
+      else if(signalBody)signalBody(geo,part.material,pos,headRot,ch);
+      else batch('sig-head-'+(behind<0?'m-':'')+name,geo,part.material,pos,ONE,headRot,ch);}
+     signals.push({group:head,bulbs:[lenses.signal_ped_stop,DUMMY_BULB,lenses.signal_ped_go],axis:'pedestrian',crossing,junction:it.params.junction,id:it.id+'-pedestrian',sharedPole:true});
+    }
+    return;
+   }
+   const body=new T.Group(),lens={};g.add(body);
+   const lensMat=(name,flip)=>new T.MeshBasicMaterial({color:0x293731,map:name==='signal_ped_stop'?(flip?m.redManFlip:m.redMan):name==='signal_ped_go'?(flip?m.greenManFlip:m.greenMan):null});body.scale.x=hand;
    for(const part of kitParts(ped?'signal_pedestrian':'signal_vehicle')){const name=part.material.name,lit=/^signal_(red|amber|green|ped_)/.test(name),mesh=new T.Mesh(part.geometry,lit?lensMat(name,false):part.material);
     if(lit)lens[name]=mesh;else mesh.castShadow=mesh.receiveShadow=true;body.add(mesh);}
-   const bulbs=ped?[lens.signal_ped_stop,{material:new T.MeshBasicMaterial()},lens.signal_ped_go]:[lens.signal_red,lens.signal_amber,lens.signal_green];
+   const bulbs=ped?[lens.signal_ped_stop,DUMMY_BULB,lens.signal_ped_go]:[lens.signal_red,lens.signal_amber,lens.signal_green];
    g.name=ped?'Pedestrian signal':'Traffic signal';g.userData.furnitureId=it.id;signals.push({group:g,bulbs,axis,crossing,junction:it.params?.junction,id:it.id});
    if(!ped&&Number.isFinite(it.params?.pedYaw)){
     // Behind the vehicle head: the pedestrian head's +X (its right) must point opposite the vehicle facing (local +Z).
@@ -219,7 +253,7 @@ export function placeFurniture(data,{batch,kitParts,railAllowed=()=>true}){const
     const behind=Math.sin(yaw)>0?-1:1;head.scale.x=behind;
     for(const part of kitParts('signal_pedestrian_head')){const name=part.material.name,lit=/^signal_ped_/.test(name),mesh=new T.Mesh(part.geometry,lit?lensMat(name,behind<0):part.material);if(lit)lenses[name]=mesh;else mesh.castShadow=mesh.receiveShadow=true;head.add(mesh);}
     // Phases address this head separately; its parent is the shared vehicle pole.
-    signals.push({group:head,bulbs:[lenses.signal_ped_stop,{material:new T.MeshBasicMaterial()},lenses.signal_ped_go],axis:'pedestrian',crossing,junction:it.params.junction,id:it.id+'-pedestrian',sharedPole:true});
+    signals.push({group:head,bulbs:[lenses.signal_ped_stop,DUMMY_BULB,lenses.signal_ped_go],axis:'pedestrian',crossing,junction:it.params.junction,id:it.id+'-pedestrian',sharedPole:true});
    }},
  };
  for(const it of data.items||[]){try{const P=it.at||pose(it);if(it.road==='cycleway'&&cycleCrossing(P.s))continue;/* it.at: a world pose {x,y,z,yaw} (city junction signals) */if(isModel(it.type)){if(it.params?.light)light(P,0,it.params.light,0,it,it.params.light);continue;}const build=BUILD[it.type];if(!build)throw Error('unknown type '+it.type);build(P,it);

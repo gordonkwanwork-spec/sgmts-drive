@@ -272,9 +272,9 @@ function apply(r,pose){
 }
 /** Pose one pedestrian. `distance` is ground travel this frame; group.userData.action picks sit/jump/wheelchair:
  *  {sit:seatHeight} seats them (blending down over ~0.6 s), {air:true} while airborne, landing crouch after. */
-export function posePedestrian(group,distance,dt=1/60){
+export function posePedestrian(group,distance,dt=1/60,minStep=1/240){
  // The frame loop can send microsecond remainder steps; distance/dt is meaningless there (it read as 'stopped' and restarted the walk clip every frame). Pool them.
- const pool=group.userData.pool??={d:0,t:0};pool.d+=distance;pool.t+=dt;if(pool.t<1/240)return;distance=pool.d;dt=pool.t;pool.d=pool.t=0;
+ const pool=group.userData.pool??={d:0,t:0};pool.d+=distance;pool.t+=dt;if(pool.t<minStep)return;distance=pool.d;dt=pool.t;pool.d=pool.t=0;
  const baked=group.userData.tripoAnimation;
  if(baked){
   const a=group.userData.action||{},speed=distance/dt/group.scale.y;

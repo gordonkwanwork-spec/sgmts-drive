@@ -1,3 +1,4 @@
+import {d6Span} from '../a2-river-alignment.js';
 import {D5_MOUTH} from '../depot.js';
 import {roadDestination} from '../city/destinations.js';
 import {staggerDistance,staggeredCrossing,staggerKerbs} from './staggered-crossing.js';
@@ -237,7 +238,7 @@ function corner(j,c){const {A,B,at,side:s,a}=j,hB=B.P.carriageway/2,fB=B.P.footp
 // added: a junction fill polygon wound the other way would otherwise be culled and show the terrain through the road.
 function sink(flat=()=>false){const bufs=new Map();
  const upright=(b,from)=>{for(let k=from;k<b.idx.length;k+=3){const [i,j,l]=[b.idx[k],b.idx[k+1],b.idx[k+2]],P=b.pos,ax=P[i*3],az=P[i*3+2],ny=(P[j*3+2]-az)*(P[l*3]-ax)-(P[j*3]-ax)*(P[l*3+2]-az);if(ny<0){b.idx[k+1]=l;b.idx[k+2]=j;}}};
- const buf=(mat,pos)=>{let cells=bufs.get(mat);if(!cells)bufs.set(mat,cells=new Map());const cell=Math.floor(pos[0]/240)+','+Math.floor(pos[2]/240);let b=cells.get(cell);if(!b)cells.set(cell,b={pos:[],idx:[]});return b;};
+ const buf=(mat,pos)=>{let cells=bufs.get(mat);if(!cells)bufs.set(mat,cells=new Map());const cell=Math.floor(pos[0]/480)+','+Math.floor(pos[2]/480);let b=cells.get(cell);if(!b)cells.set(cell,b={pos:[],idx:[]});return b;};
  return {tri(mat,pts){if(!pts.length)return;const b=buf(mat,pts[0]),n=b.pos.length/3,k0=b.idx.length;for(const p of pts)b.pos.push(...p);for(let i=1;i+1<pts.length;i++)b.idx.push(n,n+i+1,n+i);if(flat(mat))upright(b,k0);},
  raw(mat,pos,idx){if(!pos.length)return;const b=buf(mat,pos),n=b.pos.length/3,k0=b.idx.length;for(const v of pos)b.pos.push(v);for(const i of idx)b.idx.push(i+n);if(flat(mat))upright(b,k0);},
  meshes(name){const result=[...bufs].flatMap(([mat,cells])=>[...cells].map(([cell,{pos,idx}])=>{const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setAttribute('uv',new T.Float32BufferAttribute(Array.from({length:pos.length/3*2},(_,i)=>pos[(i>>1)*3+(i&1?2:0)]/5),2));g.setIndex(idx);g.computeVertexNormals();const m=new T.Mesh(g,mat);m.name=name;m.userData.cell=cell;m.receiveShadow=true;return m;}));bufs.clear();return result;}};
@@ -283,8 +284,10 @@ export function surfaceSampler(meshes){
  function sampleMesh(entry,x,z,height){
   const {geo,wide}=entry,{min,max}=geo.boundingBox,p=geo.attributes.position,ix=geo.index;
   if(x<min.x||x>max.x||z<min.z||z>max.z)return height;
-  if(!entry.bins){
-   entry.bins=new Map();
+  // Building the walking BVH reorders the index buffer. Rebuild triangle bins
+  // on the next query if an idle collision pass has changed their triangle IDs.
+  if(!entry.bins||entry.tree!==geo.boundsTree){
+   entry.tree=geo.boundsTree;wide.length=0;entry.bins=new Map();
    for(let k=0;k<(ix?.count??p.count);k+=3){
     const a=ix?ix.getX(k):k,b=ix?ix.getX(k+1):k+1,c=ix?ix.getX(k+2):k+2;
     const ax=p.getX(a),bx=p.getX(b),cx=p.getX(c),az=p.getZ(a),bz=p.getZ(b),cz=p.getZ(c);
@@ -367,10 +370,10 @@ export function buildNetwork(network,{mats={},ground=()=>0,continuousKerbs=false
  // footway, with rounded brick noses at least 6 m long (refuge and signal poles stand there) and, between the noses, a raised
  // concrete planter (walls 350 mm above the paving, 250 mm in from the kerb) planted with shrubs by city-details.js.
  const refugeRails=[],refugeBollards=[],planters=[],refugeCrossings=new Set();
- function median(o,p,q,m,open0=false,open1=false,pave=M.red){const {r,F}=o,R=m/2,a=open0?p:p+R,b=open1?q:q-R,K=.15,edge=(d,sd)=>{const f=frameAt(F,d);return f.y+streetLevel(r,d,sd*R)+(f.crossSlope||0)*sd*R;},top=d=>streetLevel(r,d,R)+K;
+ function median(o,p,q,m,open0=false,open1=false,pave=M.red,allowPlanting=true){const {r,F}=o,R=m/2,a=open0?p:p+R,b=open1?q:q-R,K=.15,edge=(d,sd)=>{const f=frameAt(F,d);return f.y+streetLevel(r,d,sd*R)+(f.crossSlope||0)*sd*R;},top=d=>streetLevel(r,d,R)+K;
   for(const sd of [-1,1]){addKerb(b-a,t=>{const d=a+t,f=frameAt(F,d),base=edge(d,sd);return {x:f.x+f.lx*sd*R,z:f.z+f.lz*sd*R,nx:-f.lx*sd,nz:-f.lz*sd,y:base+K,base};});
    strip(out,mats.channel||M.kerb,F,a,b,sd*(R+.3),sd*R,(d,l)=>streetLevel(r,d,l)+.001);}
-  const nose=Math.max(6,m),pa=p+nose,pb=q-nose,wo=R-.375,wi=wo-.15,H=.35,planted=pb-pa>4&&wi>.3;
+  const nose=Math.max(6,m),pa=p+nose,pb=q-nose,wo=R-.375,wi=wo-.15,H=.35,planted=allowPlanting&&pb-pa>4&&wi>.3;
   if(!planted)strip(out,pave,F,a,b,-R+.125,R-.125,top);
   else{strip(out,pave,F,a,pa,-R+.125,R-.125,top);strip(out,pave,F,pb,b,-R+.125,R-.125,top);
    for(const sd of [-1,1])strip(out,pave,F,pa,pb,...(sd<0?[-R+.125,-wo]:[wo,R-.125]),top);
@@ -564,6 +567,7 @@ export function buildNetwork(network,{mats={},ground=()=>0,continuousKerbs=false
   const asphaltEnd=r.turningTangent??c1;
   for(const [a,b] of m?[[-h,-m/2],[m/2,h]]:[[-h,0],[0,h]])strip(out,M.road,F,c0,asphaltEnd,a,b,lvl);
   if(m)for(const [p,q] of minus(c0,asphaltEnd,medians.map(([p,q])=>[p+m/2,q-m/2])))for(const [a,b] of [[-m/2,0],[0,m/2]])strip(out,M.road,F,p,q,a,b,lvl);// across median gaps, and under the round noses
+  const span=d6Span(r,F,h+P.footpath);
   for(const [p,q] of medians){
    let openStart=r.tie&&p<.01,openEnd=r.endTie&&q>L-.01;
    let paving=M.red;
@@ -576,9 +580,21 @@ export function buildNetwork(network,{mats={},ground=()=>0,continuousKerbs=false
     refugeCrossings.add(r.id+'@'+d);
     if(r.staggers.has(d)){openStart ||= atStart;openEnd ||= atEnd;}
    }
-   median(o,p,q,m,openStart,openEnd,paving);
+   if(span&&p<span[1]&&q>span[0]){
+    const start=Math.max(p,span[0]),end=Math.min(q,span[1]);
+    if(p<start)median(o,p,start,m,openStart,true,paving);
+    median(o,start,end,m,start>p||openStart,end<q||openEnd,M.grey,false);
+    if(end<q)median(o,end,q,m,true,openEnd,paving);
+   }else median(o,p,q,m,openStart,openEnd,paving);
   }
   markings(o,c0,Math.min(c1,head-1),m,medians);}
+ // Open Road D5's north footpath and kerb cleanly at the Depot / parking lot service road mouth.
+ {const d5=roads.find(o=>o.r.id==='city-d5-west');
+  if(d5){
+   const gate=nearestOn(d5.F,D5_MOUTH.x,D5_MOUTH.z),sd=Math.sign(gate.lat)||1;
+   if(!cuts.has(d5))cuts.set(d5,{1:[],[-1]:[]});
+   cuts.get(d5)[sd].push([gate.d-6.2,gate.d+6.2]);
+  }}
  for(const o of roads){const {r,P,F}=o,L=F.at(-1).d,h=P.carriageway/2,fw=M[r.footway||'red'],gap=cuts.get(o)||{1:[],[-1]:[]},s0=starts.get(r.id+':0'),s1=starts.get(r.id+':1');
   const c0=s0?s0.carriageway:0,c1=L-(s1?s1.carriageway:0);
   if(h>0&&r.standard==='sandbox')carriageway(o,c0,c1,s0,s1);

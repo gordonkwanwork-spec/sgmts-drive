@@ -113,7 +113,7 @@ function select(lot,focus){
  $('detailTitle').textContent='Parcel '+lot.id;const body=$('detailBody');body.replaceChildren();
  if(lot.note)body.append(elem('p',lot.note));if(!lot.review)body.append(elem('p','Outside the infill review.'));
  const bar=elem('div','','swatchbar');for(const [key,colour] of [['built','#006b62'],['used','#899895']]){const part=elem('span','');part.style.cssText='width:'+100*lot[key]/(lot.total||1)+'%;background:'+colour;bar.append(part);}body.append(bar);
- const stats=elem('dl','');for(const [label,val] of [['Mapped parcel',ha(lot.total)],['Building coverage',ha(lot.built)+' · '+pct(lot.coverage)],['Infrastructure & paving',ha(lot.used)],['Open ground',ha(lot.open)],['Largest clear square',Math.floor(lot.span)+' × '+Math.floor(lot.span)+' m']])stats.append(elem('dt',label),elem('dd',val));body.append(stats);
+ const stats=elem('dl','');for(const [label,val] of [['Mapped parcel',ha(lot.total)],['Building coverage',ha(lot.built)+' · '+pct(lot.coverage)],['Infrastructure, paving & water',ha(lot.used)],['Open ground',ha(lot.open)],['Largest clear square',Math.floor(lot.span)+' × '+Math.floor(lot.span)+' m']])stats.append(elem('dt',label),elem('dd',val));body.append(stats);
  if(lot.street)body.append(elem('p','Clear-square centre · '+Math.round(lot.street.distance)+' m to '+lot.street.name));
  if(lot.clipped)body.append(elem('p','Parcel reaches the edge of the OZP sheet.'));
  const site=elem('a','Inspect site in game ↗','inspect');const [x,y,s]=lot.square||[lot.box[0],lot.box[1],0];

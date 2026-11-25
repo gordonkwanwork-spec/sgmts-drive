@@ -45,7 +45,7 @@ const ROADS=[
  {id:'crossing-east',name:'Crossing road',...LOCAL,carriageway:7.3,tie:tie(1680,-1),joinEnd:'tin-ha',pts:[[200,-1468],[270,-1452],[320,-1456],[365,-1490],[433,-1551]]},
  {id:'gic-access',name:'G/IC access',...ACCESS,turningRadius:11,join:'crossing-west',pts:[[-45,-1542],[-55,-1450],[-60,-1362]]},
  // Road D6 beside the railway: from the crossing road south to the station, then east to Tin Ha Road.
- // Road D6 runs 24 m west of the railway viaduct to a turning head north of the station (it never passes under the deck).
+ // Road D6 runs 24 m west of the railway viaduct to the north edge of the regional square (it never passes under the deck).
  {id:'d6',name:'Road D6',zh:'D6號路',...D(16.6,2),loose:4,turningRadius:14,join:'crossing-east',pts:[[285,-1452],[257,-1300],[236,-1240],[215,-1175],[190,-1100],[180,-1070]]},
  {id:'ra1-access',name:'R(A)1 access',...ACCESS,turningRadius:11,join:'d6',pts:[[205,-1140],[150,-1157],[106,-1172]]},
  // Station north road: the OZP cul-de-sac east of the railway, from Tin Ha Road.
@@ -58,7 +58,7 @@ const ROADS=[
  {id:'d3-south',name:'Road D3',zh:'D3號路',...D(20,5.4),tie:tie(3400,1),joinEnd:'roundabout',pts:[[-108,-2600]]},
  {id:'d3-d1',name:'Road D3',zh:'D3號路',...D(20,5.4),tie:tie(3400,-1),pts:[[-100,-2860],[-96,-3000],[-90,-3120],[-78,-3215],[-62,-3300]],end:tie(4398,-1)},
  {id:'roundabout',name:'D3/D5 roundabout',preset:'local',carriageway:8,footpath:3.5,lines:'none',loop:true,pts:ring},
- {id:'d5-west',name:'Road D5',zh:'D5號路',...D(16.6,2),join:'roundabout',pts:[[-160,-2488],[-240,-2512],[-300,-2527],[-400,-2556],[-480,-2578],[-560,-2600],[-630,-2618]]},
+ {id:'d5-west',name:'Road D5',zh:'D5號路',...D(16.6,2),join:'roundabout',pts:[[-160,-2488],[-260,-2532],[-375,-2544],[-435,-2482],[-505,-2375]]},
  // Road D1: crosses at Ch 3971 (squared to 20° within the 46 m reserve), west to Ha Tsuen, east to the D1/D3/D4 crossroads.
  {id:'d1-west',name:'Road D1',zh:'D1號路',...D(18,3.4),tie:tie(3971,1),pts:[[-405,-3066],[-480,-3016],[-560,-2966],[-640,-2920]]},
  {id:'d1-east',name:'Road D1',zh:'D1號路',...D(18,3.4),tie:tie(3971,-1),joinEnd:'d3-d1',atEnd:[-78,-3214],pts:[[-230,-3160],[-160,-3184]]},
@@ -138,6 +138,18 @@ function fillet(V,rmin,s0,s1,report,straight=[]){V=V.map(p=>[...p]).filter((p,i,
   const sg=Math.sign(th),c=[p[0]-az*R[i]*sg,p[1]+ax*R[i]*sg],a0=Math.atan2(p[1]-c[1],p[0]-c[0]),n=Math.max(1,Math.ceil(R[i]*Math.abs(th)/2));
   for(let k=1;k<=n;k++){const ang=a0+th*k/n;out.push([c[0]+Math.cos(ang)*R[i],c[1]+Math.sin(ang)*R[i]]);}run+=R[i]*Math.abs(th);}
  line(out.at(-1),V.at(-1));return out;}
+// Extend the existing approach tangents into the three marked development sites and the
+// station square. These final controls are inside the sites, beyond the OZP road reserves.
+const stationApproaches = {
+ // Eastern cul-de-sacs open onto the north, station and south forecourts.
+ 'station-north': [[276,-932]],
+ 'station-street': [[180,-775]],
+ 'yick-yuen': [[190,-556],[129,-565]],
+ 'ra2-access': [[-110,-1180],[-139,-1048]],
+ 'ra1-access': [[94,-1183],[43,-1049]],
+ 'd7-north': [[-54,-891],[-19,-935],[16,-946]],
+ d6: [[157,-1018],[119,-934],[87.84,-864.26]],
+};
 function finish(id){if(done.has(id))return done.get(id);const {R,road}=byId.get(id);done.set(id,road);if(R.loop)return road;
  let mid=road.pts.map(p=>[...p]),head=[],tail=[],s0=0,s1=0;
  // corridor ties: the 28 m stub stays on the arm axis; a control point 50 m out keeps the curve tangent to it
@@ -160,7 +172,9 @@ function finish(id){if(done.has(id))return done.get(id);const {R,road}=byId.get(
   let Q=Q0.filter(q=>proj(q)>neck+10);const X=Q.length>1?meet(J,out(1),Q[0],Q[1]):null,corner=X&&proj(X)>neck&&proj(X)<neck+150?X:out(neck+20);
   Q=Q.filter(q=>proj(q)>proj(corner)+5);
   if(atEnd){mid=[...Q.reverse(),corner];tail=[J];s1=neck;}else{mid=[corner,...Q];head=[J];s0=neck;}}
- let least=Infinity;const st=[];road.pts=fillet([...head,...mid,...tail],R.rmin??RMIN(road),s0,s1,r=>least=Math.min(least,r),st);STRAIGHT.set(R.id,st.filter(([a,b])=>b-a>1));
+ // Drop the former turning-head centre where the new site approach continues its tangent.
+ if(id==='ra2-access'||id==='ra1-access')mid.pop();
+ let least=Infinity;const st=[];road.pts=fillet([...head,...mid,...tail,...(stationApproaches[id]||[])],R.rmin??RMIN(road),s0,s1,r=>least=Math.min(least,r),st);STRAIGHT.set(R.id,st.filter(([a,b])=>b-a>1));
  if(least<(R.rmin??RMIN(road)))notes0.push(`${road.id}: a ${least.toFixed(0)} m bend (minimum ${R.rmin??RMIN(road)} m)`);return road;}
 const notes0=[],STRAIGHT=new Map();// road id → straight runs [from, to] along it (m)
 for(const R of ROADS)finish(R.id);
@@ -179,13 +193,18 @@ for(const r of out){
  if(!r.tie){const clash=reserveClash(centreline(r.pts),{width:halfWidth(r)});if(clash)fails.push(`${r.id} enters the corridor reserve at ${clash.map(v=>v.toFixed(0))}`);}
  else{const clash=reserveClash(centreline(r.pts).slice(2),{width:halfWidth(r)});if(clash)fails.push(`${r.id} enters the corridor reserve at ${clash.map(v=>v.toFixed(0))}`);}
  const pts=sampleRoad(r);
- // Only the Road D8 underpass passes the railway (beside VB1, between the piers); everything else stays 6 m off the deck line.
- if(!/d8-(west|east)$/.test(r.id)){const hit=pts.filter((_,i)=>i%3===1).find(p=>RAIL.some(q=>Math.hypot(p[0]-q[0],p[1]-q[1])<halfWidth(r)+6));/* centreline within half width + 6 m, as city-network.test.js */if(hit)fails.push(`${r.id} runs under the railway viaduct at ${hit.map(v=>v.toFixed(0))}`);}
+ // D8 and the two streets crossed by the northern viaduct pass between piers.
+ if(!/d8-(west|east)$/.test(r.id)&&!['city-crossing-east','city-tin-ha'].includes(r.id)){const hit=pts.filter((_,i)=>i%3===1).find(p=>RAIL.some(q=>Math.hypot(p[0]-q[0],p[1]-q[1])<halfWidth(r)+6));/* centreline within half width + 6 m, as city-network.test.js */if(hit)fails.push(`${r.id} runs under the railway viaduct at ${hit.map(v=>v.toFixed(0))}`);}
  for(const lot of lots){const hits=pts.filter(p=>pointInPolygon(p,lot.poly));if(!hits.length)continue;
   notes.push((LOGISTICS.has(lot.id)?'LOGISTICS LOT EDGE · ':'')+`${r.id} overlaps ${lot.id} (${lot.zone}) at ${hits.length} sample points, e.g. ${hits[0].map(v=>v.toFixed(0))}`);}
 }
 console.log(notes0.join('\n')||'Every bend meets its minimum radius.');console.log(`Checked against ${keepBuildings.length} logistics building footprints.`);console.log(notes.join('\n')||'No lot overlaps.');
 if(fails.length){console.error('FAIL\n'+fails.join('\n'));if(!process.argv.includes('--force'))process.exit(1);}
+// Keep the commissioned kerbside facilities when rebuilding the road centrelines.
+for(const road of out){
+ const layby=data.network?.roads.find(r=>r.id===road.id)?.busLayby;
+ if(layby)road.busLayby=layby;
+}
 data.network={source:'OZP S/HSK/2A road reserves traced on the project underlay; city rebuild 2026-11-14',scope:'SGMTS corridor plus the OZP road network around it; logistics lots untouched',roads:out,
  areas:[{id:'roundabout-island',finish:'grass',pts:Array.from({length:24},(_,i)=>{const a=i/24*Math.PI*2,r=RING.r-presetOf({preset:'local',carriageway:8}).carriageway/2-.6;return [+(RING.x+Math.cos(a)*r).toFixed(2),+(RING.z+Math.sin(a)*r).toFixed(2)];})}]};
 const d=x=>JSON.stringify(x);

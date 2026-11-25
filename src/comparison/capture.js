@@ -1,6 +1,7 @@
 // Capture from the assembled scene so a parcel, a frontage plot and a building have distinct outlines.
 import {Vector3,Matrix4} from 'three';
 import {BUILDINGS,SITE,CV_ROAD,CV_ROAD_WIDTH} from '../depot.js';
+import {STW_BUILDINGS,STW_TANKS,STW_YARDS,UTILITY_BRIDGE} from '../sewage-plant.js';
 import {STOPS,sample,PATH,LOOP,RAILWAY,cycleSample,CYCLE_INTERRUPTS,LENGTH} from '../alignment.js';
 import {corridorReserve} from '../lots/wand.js';
 
@@ -54,8 +55,19 @@ export async function captureComparison({scene,lots,environment,lotGroup,kitCity
   built.fill([[-1,-1],[1,-1],[1,1],[-1,1]].map(([u,v])=>[p.x+u*p.w*c/2+v*p.d*s/2,p.z-u*p.w*s/2+v*p.d*c/2]));
  }
  for(const b of BUILDINGS)built.fill([[b.x0,b.z0],[b.x1,b.z0],[b.x1,b.z1],[b.x0,b.z1]]);
+ for(const b of STW_BUILDINGS)built.fill(b.poly);
+ for(const t of STW_TANKS){built.ctx.beginPath();built.ctx.arc(t.cx,t.cz,t.r,0,2*Math.PI);built.ctx.fill();}
+ const river=scene.getObjectByName('A2 river and promenades');
+ if(river){
+  for(const name of ['Riverside promenade','Promenade access ramp','Upper riverside footpath','Grassed embankment','Plaza terrace steps','Station promenade ramp','Terrace upper landing']){
+   for(const mesh of river.getObjectsByProperty('name',name))used.project(mesh);
+  }
+  used.ctx.save();used.ctx.fillStyle='#387eaa';river.getObjectByName('Flowing water').traverse(used.project);used.ctx.restore();
+ }
  used.ctx.beginPath();used.ctx.arc(LOOP.center.x,LOOP.center.z,LOOP.outerRadius+3.75,0,2*Math.PI);used.ctx.fill();
  used.fill(SITE);used.line(CV_ROAD.map(xy),CV_ROAD_WIDTH);
+ for(const y of STW_YARDS)used.fill(y.poly);
+ used.line([UTILITY_BRIDGE.start,UTILITY_BRIDGE.end],UTILITY_BRIDGE.width);
  for(const {x,z,r} of corridorReserve()){used.ctx.beginPath();used.ctx.arc(x,z,r,0,2*Math.PI);used.ctx.fill();}
  used.line(Array.from({length:Math.ceil(RAILWAY.length/4)+1},(_,i)=>xy(RAILWAY.at(i*4))),14);
  const starts=[0,...CYCLE_INTERRUPTS.map(g=>g.end)],ends=[...CYCLE_INTERRUPTS.map(g=>g.start),LENGTH];
@@ -65,7 +77,7 @@ export async function captureComparison({scene,lots,environment,lotGroup,kitCity
  for(const root of scene.children){
   if(root.name==='Drawn street network'||/^(junction-|underpass-|Pedestrian footbridge )/.test(root.name))root.traverse(used.project);
  }
- for(const name of ['Plot paving','Hung Shui Kiu regional plaza','A2 commercial forecourt','A2 iconic footbridge']){
+ for(const name of ['Plot paving','Hung Shui Kiu regional plaza','A2 riverside square','A2 commercial forecourt','A2 iconic footbridge']){
   scene.getObjectByName(name)?.traverse(used.project);
  }
  for(const name of ['Hung Shui Kiu Station','A2 commercial frontage']){

@@ -55,10 +55,10 @@ export const PARKED_BAYS=['E1-3','E1-5','E2-2','W2-4','W1-7'].map(id=>BAYS.find(
 // east–west aisles joined by a west aisle. It is fenced from the depot and reached only by the public service road.
 export const CV_STALLS=[];for(const [y0,y1] of [[400,471],[532,603],[603,674],[735,795]])for(let x=365;x+16.5<=665;x+=16.5){const a=px(x,y0),b=px(x+16.5,y1);CV_STALLS.push({x:(a.x+b.x)/2,z:(a.z+b.z)/2,w:Math.abs(b.x-a.x),d:Math.abs(b.z-a.z)});}
 // 2.4 m chain-link fence enclosing the park from the depot buildings, access strip and SGMTS corridor; the only
-// opening is the 9 m gate where the public service road enters from the west.
-export const CV_FENCE=[[[294,478],[292,392],[740,392]],[[740,392],[740,800]],[[740,800],[300,800],[296,524]]].map(ring);
+// opening is the 12.1 m controlled gate (entry/exit lanes + pedestrian walkway) where the service road enters from the west.
+export const CV_FENCE=[[[296,473],[296,396],[675,396],[736,465],[736,796],[316,796],[298,530]]].map(ring);
 // Same boundary as CV_FENCE, closed, for point-in-polygon tests: the park is its own paved lot, not depot yard.
-export const CV_PARK=ring([[294,478],[292,392],[740,392],[740,800],[300,800],[296,524]]);
+export const CV_PARK=ring([[296,473],[296,396],[675,396],[736,465],[736,796],[316,796],[298,530]]);
 // Public service road (7.3 m, two-way): from Road D5 north along the site's west side, then east over the drainage
 // reserve into the vehicle park's north aisle. Never touches the SGMTS corridor. y rises from D5's level to the depot platform.
 // City rebuild 2 (14 Nov 2026): Road D5 itself is now a city street on that alignment, so the service road starts at a

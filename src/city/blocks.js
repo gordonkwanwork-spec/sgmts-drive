@@ -2,7 +2,7 @@
 // cityLots): every plot is cut from a street's frontage, stands on a paved plinth flush with that street's footway and faces it.
 // Nothing is placed by filling an OZP lot outline, so no building rises out of grass. The OZP only decides what a plot becomes
 // (zone under it → building types from the sandbox modern kit). A second row is allowed behind a frontage plot of the same OZP
-// lot, across a paved court. Logistics lots, the depot, open space and green belt take no plots (src/lots/massing.js keeps them).
+// lot, across a paved court. Logistics lots, the depot, sewage treatment works, open space and green belt take no plots (src/lots/massing.js keeps them).
 import {TYPES} from './kit/hk-modern-plan.js';
 import {frameAt,streetLevel,nearestOn} from '../street/network.js';
 import {pointInPolygon} from '../lots/wand.js';
@@ -18,7 +18,7 @@ const MIX=[
  [/Industry Park/,'industry',['factory-estate','industrial-office','flatted-factory'],0,.5,true],
  [/^I$/,'industry',['flatted-factory','godown','factory-estate','flatted-factory'],0,.5,false],
  [/^G\/IC/,'civic',['office-classic','industrial-office'],4,1.5,false],
- [/Sewage|Cooling|Port Back-up|Refuse/,'utility',['godown'],6,3,false],
+ [/Cooling|Port Back-up|Refuse/,'utility',['godown'],6,3,false],
  [/^V/,'village',['village-houses'],3,1.5,false],
 ];
 // Frontage outside every OZP lot (the existing villages beyond the plan): village houses.

@@ -8,9 +8,10 @@ import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 
 const mats=new Map();
 const mat=(color,o={})=>{const key=JSON.stringify([color,o]);if(!mats.has(key))mats.set(key,new T.MeshStandardMaterial({color,roughness:.7,...o}));return mats.get(key);};
-const geo={box:new T.BoxGeometry(1,1,1),cyl:new T.CylinderGeometry(1,1,1,16),disc:new T.CircleGeometry(1,20)};
+const geo={box:new T.BoxGeometry(1,1,1),cyl:new T.CylinderGeometry(1,1,1,16),bar:new T.CylinderGeometry(1,1,1,4,1,true),disc:new T.CircleGeometry(1,20)};
 function box(p,material,x,y,z,w,h,d,rx=0,ry=0,rz=0){const m=new T.Mesh(geo.box,material);m.position.set(x,y+h/2,z);m.scale.set(w,h,d);m.rotation.set(rx,ry,rz);p.add(m);return m;}
 function cyl(p,material,x,y,z,r,h){const m=new T.Mesh(geo.cyl,material);m.position.set(x,y+h/2,z);m.scale.set(r,h,r);p.add(m);return m;}
+function bar(p,material,x,y,z,r,h){const m=new T.Mesh(geo.bar,material);m.position.set(x,y+h/2,z);m.scale.set(r,h,r);p.add(m);return m;}
 const plates=new Map();
 function plate(key,w,h,draw){if(!plates.has(key)){const c=document.createElement('canvas');c.width=Math.round(256*w/h);c.height=256;draw(c.getContext('2d'),c.width,c.height);
  const tex=new T.CanvasTexture(c);tex.colorSpace=T.SRGBColorSpace;tex.anisotropy=4;plates.set(key,new T.MeshStandardMaterial({map:tex,emissive:0xffffff,emissiveMap:tex,emissiveIntensity:.16,roughness:.45,side:T.DoubleSide}));}return plates.get(key);}
@@ -27,19 +28,19 @@ const cache=new Map(),once=(key,make)=>{if(!cache.has(key))cache.set(key,parts(m
 export const hydrant=()=>once('hydrant',()=>{const g=new T.Group(),paint=mat('#b8262b',{roughness:.42,metalness:.15}),HY=.68,HR=.14;
  const along=(gm,axis)=>axis==='x'?gm.rotateZ(Math.PI/2):gm.rotateX(Math.PI/2),mesh=(gm,x=0,y=0,z=0)=>{const m=new T.Mesh(gm,paint);m.position.set(x,y,z);g.add(m);};
  const profile=[[0,0],[.2,0],[.2,.022],[.185,.032],[.15,.052],[.122,.082],[.106,.12],[.099,.16],[.116,.165],[.116,.197],[.088,.202],[.086,.42],[.1,.424],[.1,.446],[.086,.45],[.086,.5],[.12,.505],[.12,.537],[.092,.542],[.092,.6],[0,.6]];
- mesh(new T.LatheGeometry(profile.map(([r,y])=>new T.Vector2(r,y)),20));mesh(new T.SphereGeometry(HR,20,12),0,HY,0);
- mesh(new T.CylinderGeometry(.045,.05,.05,16),0,HY+HR-.005,0);mesh(new T.CylinderGeometry(.02,.022,.035,5),0,HY+HR+.035,0);
- for(const s of [-1,1]){mesh(along(new T.CylinderGeometry(.052,.058,.12,16),'x'),s*.15,HY,0);mesh(along(new T.CylinderGeometry(.07,.07,.02,16),'x'),s*.215,HY,0);
-  mesh(along(new T.CylinderGeometry(.05,.05,.05,16),'x'),s*.245,HY,0);mesh(along(new T.CylinderGeometry(.057,.057,.04,16),'x'),s*.29,HY,0);}
- mesh(along(new T.CylinderGeometry(.075,.075,.05,16),'z'),0,HY,-.125);mesh(along(new T.CylinderGeometry(.068,.068,.035,16),'z'),0,HY,-.165);
+ mesh(new T.LatheGeometry(profile.map(([r,y])=>new T.Vector2(r,y)),12));mesh(new T.SphereGeometry(HR,12,8),0,HY,0);
+ mesh(new T.CylinderGeometry(.045,.05,.05,8),0,HY+HR-.005,0);mesh(new T.CylinderGeometry(.02,.022,.035,5),0,HY+HR+.035,0);
+ for(const s of [-1,1]){mesh(along(new T.CylinderGeometry(.052,.058,.12,8),'x'),s*.15,HY,0);mesh(along(new T.CylinderGeometry(.07,.07,.02,8),'x'),s*.215,HY,0);
+  mesh(along(new T.CylinderGeometry(.05,.05,.05,8),'x'),s*.245,HY,0);mesh(along(new T.CylinderGeometry(.057,.057,.04,8),'x'),s*.29,HY,0);}
+ mesh(along(new T.CylinderGeometry(.075,.075,.05,8),'z'),0,HY,-.125);mesh(along(new T.CylinderGeometry(.068,.068,.035,8),'z'),0,HY,-.165);
  const arrow=plate('hydrant-arrow',.5,1,(c,W,H)=>{c.fillStyle='#b8262b';c.fillRect(0,0,W,H);c.fillStyle='#f2c230';c.beginPath();c.moveTo(W/2,H*.98);c.lineTo(W*.22,H*.08);c.lineTo(W/2,H*.43);c.lineTo(W*.78,H*.08);c.closePath();c.fill();});
- const a=new T.Mesh(new T.SphereGeometry(HR+.002,10,8,Math.PI*1.5-.45,.9,.4,.75),arrow);a.position.y=HY;g.add(a);return g;});
+ const a=new T.Mesh(new T.SphereGeometry(HR+.002,8,6,Math.PI*1.5-.45,.9,.4,.75),arrow);a.position.y=HY;g.add(a);return g;});
 
 // H5144A tree pit: kerbed surround (W along the kerb × D), soil, and the circular steel guard. The tree is planted separately.
 export const treePit=(W,D)=>once('pit'+W+'x'+D,()=>{const g=new T.Group(),c=mat('#b8b5aa',{roughness:.92}),e=.1,R=.32,gd=mat('#3a4440',{metalness:.4,roughness:.6});
  box(g,c,0,-.02,-(D+e)/2,W+2*e,.1,e);box(g,c,0,-.02,(D+e)/2,W+2*e,.1,e);box(g,c,-(W+e)/2,-.02,0,e,.1,D);box(g,c,(W+e)/2,-.02,0,e,.1,D);box(g,mat('#3b2f25',{roughness:1}),0,-.05,0,W,.04,D);
- for(const y of [.08,.62,1.16]){const ring=new T.Mesh(new T.CylinderGeometry(R,R,.06,24,1,true),gd);ring.position.y=y;g.add(ring);}
- for(let i=0;i<16;i++){const a=i/16*Math.PI*2;cyl(g,gd,Math.cos(a)*R,0,Math.sin(a)*R,.0075,1.2);}return g;});
+ for(const y of [.08,.62,1.16]){const ring=new T.Mesh(new T.CylinderGeometry(R,R,.06,12,1,true),gd);ring.position.y=y;g.add(ring);}
+ for(let i=0;i<16;i++){const a=i/16*Math.PI*2;bar(g,gd,Math.cos(a)*R,0,Math.sin(a)*R,.0075,1.2);}return g;});
 
 // Open-fronted shelters, local +Z into the footway. Route flags stand at the
 // boarding end (traffic travels along −X). Panels face approaching passengers.

@@ -118,6 +118,15 @@ assert(LOOKS.night.env>=.4,'night env intensity reflects moonlit sky');
  for(const key of ['concrete','kerb','channel','galvanised','metal','teal']){
   assert(env.materials[key].emissive.getHex()!==0&&env.materials[key].emissiveIntensity>0,`env.materials.${key} lit at night`);
  }
+ const countMeshes=name=>{let n=0;scene.getObjectByName(name)?.traverse(o=>{if(o.isMesh&&o.name!=='Fixed night illumination')n++;});return n;};
+ assert(countMeshes('Commercial vehicle park')<=15,'Commercial vehicle park parked trucks instanced');
+ assert(countMeshes('A2 furnished plaza')<=30,'A2 furnished plaza merged while keeping chess sets');
+ assert(countMeshes('A2 river and promenades')<=35,'A2 river and promenades consolidated');
+ assert(countMeshes('Junction regulatory signs')<=12,'Junction regulatory signs merged by material');
+ const lensBatches=[];scene.traverse(o=>{if(o.isInstancedMesh&&o.name.startsWith('signal-lenses-'))lensBatches.push(o);});
+ assert(lensBatches.length>0&&env.signals.length>0&&env.citySignals.length>0,'signals and citySignals use instanced lens batches');
+ env.signals[0].bulbs[0].material.color.setHex(0x55ff95);
+ env.citySignals[0].bulbs[0].material.color.setHex(0x55ff95);
 
  // Toggling back to day resets all newly wired emissives and overlays cleanly.
  env.setNight(false);
